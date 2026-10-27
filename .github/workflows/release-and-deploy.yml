@@ -1,0 +1,132 @@
+name: Release & Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+# Une seule release à la fois, sans jamais annuler une release en cours.
+concurrency:
+  group: release-and-deploy
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  release:
+    name: release
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Le GITHUB_TOKEN reste en lecture : le push du commit de release (main est protégée),
+    # le tag, la GitHub Release et les commentaires passent par le token de la GitHub App.
+    permissions:
+      contents: read
+    outputs:
+      published: ${{ steps.result.outputs.published }}
+      tag: ${{ steps.result.outputs.tag }}
+    env:
+      HUSKY: 0
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Resolve App bot identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GIT_AUTHOR_NAME: ${{ steps.bot.outputs.name }}
+          GIT_AUTHOR_EMAIL: ${{ steps.bot.outputs.email }}
+          GIT_COMMITTER_NAME: ${{ steps.bot.outputs.name }}
+          GIT_COMMITTER_EMAIL: ${{ steps.bot.outputs.email }}
+        run: npx semantic-release
+
+      # @semantic-release/git crée le commit de release localement puis le tague :
+      # HEAD porte un tag v* et diffère du commit déclencheur seulement si une version est publiée.
+      - name: Detect published release
+        id: result
+        run: |
+          tag="$(git tag --points-at HEAD --list 'v*' | head -n 1)"
+          if [ -n "$tag" ] && [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "Published $tag"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "No new release"
+          fi
+
+  deploy-pwa:
+    name: deploy-pwa
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      HUSKY: 0
+    steps:
+      # Le tag de release porte la nouvelle version (package.json, CHANGELOG.md).
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release.outputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v6
+
+      # GitHub Pages sert le site sous /<dépôt>/ : sans basePath, les assets /_next/… renvoient 404.
+      - name: Build static export
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: out
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

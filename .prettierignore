@@ -1,0 +1,12 @@
+out/
+coverage/
+android/
+node_modules/
+.next/
+
+# Spécifications rédigées à la main : Prettier alignerait chaque tableau sur sa cellule la plus longue.
+docs/
+
+# Fichiers générés (semantic-release, npm).
+CHANGELOG.md
+package-lock.json
