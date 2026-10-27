@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 512 512">
+  <title>Mia</title>
+  <!-- Fond pleine page ; le symbole tient dans le cercle central de 80 % (zone sûre « maskable »). -->
+  <rect width="512" height="512" fill="#0f172a"/>
+  <path d="M140 364V148l116 136 116-136v216" fill="none" stroke="#38bdf8" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#38bdf8">
+    <circle cx="140" cy="364" r="26"/>
+    <circle cx="140" cy="148" r="26"/>
+    <circle cx="372" cy="148" r="26"/>
+    <circle cx="372" cy="364" r="26"/>
+  </g>
+  <g fill="#0f172a">
+    <circle cx="140" cy="364" r="9"/>
+    <circle cx="140" cy="148" r="9"/>
+    <circle cx="372" cy="148" r="9"/>
+    <circle cx="372" cy="364" r="9"/>
+  </g>
+  <circle cx="256" cy="284" r="26" fill="#e0f2fe"/>
+</svg>

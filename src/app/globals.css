@@ -1,0 +1,8 @@
+/* source('../') : ne scanne que src/ (les docs/*.md citent de nombreuses classes Tailwind). */
+@import 'tailwindcss' source('../');
+
+@theme {
+  --font-sans:
+    'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}

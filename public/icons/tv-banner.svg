@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <title>Mia</title>
+  <!-- Bannière Android TV (16:9, 320x180 dp) : le « M » neuronal sert d'initiale au mot « Mia ».
+       Lettres tracées en chemins (aucune police requise) pour la conversion en tv_banner.xml (FEAT-15). -->
+  <rect width="1280" height="720" fill="#0f172a"/>
+  <path d="M303 510V210l161 189 161-189v300" fill="none" stroke="#38bdf8" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#38bdf8">
+    <circle cx="303" cy="510" r="36"/>
+    <circle cx="303" cy="210" r="36"/>
+    <circle cx="625" cy="210" r="36"/>
+    <circle cx="625" cy="510" r="36"/>
+    <circle cx="733" cy="255" r="32"/>
+  </g>
+  <g fill="#0f172a">
+    <circle cx="303" cy="510" r="12.5"/>
+    <circle cx="303" cy="210" r="12.5"/>
+    <circle cx="625" cy="210" r="12.5"/>
+    <circle cx="625" cy="510" r="12.5"/>
+    <circle cx="733" cy="255" r="11"/>
+  </g>
+  <circle cx="464" cy="399" r="36" fill="#e0f2fe"/>
+  <g fill="none" stroke="#f8fafc" stroke-width="40" stroke-linecap="round">
+    <path d="M733 350v140"/>
+    <circle cx="923" cy="420" r="70"/>
+    <path d="M993 350v140"/>
+  </g>
+</svg>
