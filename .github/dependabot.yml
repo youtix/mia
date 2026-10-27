@@ -1,0 +1,46 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Ignore les versions publiées depuis moins de 3 jours (paquets npm compromis puis retirés).
+    cooldown:
+      default-days: 3
+    commit-message:
+      # Dépendances embarquées dans l'app : fix(deps) déclenche une release patch et un redéploiement.
+      prefix: fix
+      prefix-development: chore
+      include: scope
+    groups:
+      prod:
+        dependency-type: production
+        update-types: [minor, patch]
+      dev:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # Les plugins de eslint-config-next ne supportent pas ESLint 10.
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
+      # Peer de typescript-eslint : typescript < 6.1.0.
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
+      # Les types Node suivent la version majeure de .nvmrc.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns: ['*']
