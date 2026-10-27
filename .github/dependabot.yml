@@ -31,6 +31,10 @@ updates:
       # Les types Node suivent la version majeure de .nvmrc.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+      # La v10 exige conventional-changelog-writer 9 ; les plugins de semantic-release embarquent
+      # encore la v8. La CI n'exécute pas semantic-release : la casse n'apparaîtrait qu'à la release.
+      - dependency-name: conventional-changelog-conventionalcommits
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /

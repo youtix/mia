@@ -354,7 +354,13 @@ describe('GitHub', () => {
       'commit-message': { prefix: 'fix', 'prefix-development': 'chore', include: 'scope' },
     });
     expect(npm?.ignore?.map((rule) => rule['dependency-name'])).toEqual(
-      expect.arrayContaining(['eslint', '@eslint/js', 'typescript', '@types/node']),
+      expect.arrayContaining([
+        'eslint',
+        '@eslint/js',
+        'typescript',
+        '@types/node',
+        'conventional-changelog-conventionalcommits',
+      ]),
     );
     expect(actions).toMatchObject({
       schedule: { interval: 'weekly' },

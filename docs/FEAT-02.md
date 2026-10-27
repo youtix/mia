@@ -177,7 +177,7 @@ coverage: {
 
 ### 3.7. Release Automatique (`semantic-release`) & Déploiement Automatique sur `main`
 Packages à installer :
-* `semantic-release`, `@semantic-release/changelog`, `@semantic-release/git`, `@semantic-release/github`, `@semantic-release/npm`, `conventional-changelog-conventionalcommits` (requis par le preset `conventionalcommits`, non fourni par semantic-release)
+* `semantic-release`, `@semantic-release/changelog`, `@semantic-release/git`, `@semantic-release/github`, `@semantic-release/npm`, `conventional-changelog-conventionalcommits` en `^9` (requis par le preset `conventionalcommits`, non fourni par semantic-release ; la v10 exige `conventional-changelog-writer` 9 alors que `@semantic-release/release-notes-generator` 14 embarque encore la v8)
 * **Configuration `.releaserc.json`** :
   * Branche : `["main"]`.
   * Plugins :
@@ -199,7 +199,7 @@ Packages à installer :
 
 ### 3.8. Dependabot (`.github/dependabot.yml`)
 * Configure la vérification hebdomadaire (`schedule.interval: "weekly"`, `cooldown.default-days: 3`) pour `package-ecosystem: "npm"` et `package-ecosystem: "github-actions"`, avec des messages conformes à Commitlint :
-  * npm : `commit-message: { prefix: "fix", prefix-development: "chore", include: "scope" }` → `fix(deps)` pour les dépendances embarquées dans l'app (release patch + redéploiement), `chore(deps-dev)` pour l'outillage. Mises à jour mineures/patch groupées (`prod`, `dev`). Ignorés : versions majeures de `eslint`, `@eslint/js` et `@types/node`, et `typescript >= 6.1.0`.
+  * npm : `commit-message: { prefix: "fix", prefix-development: "chore", include: "scope" }` → `fix(deps)` pour les dépendances embarquées dans l'app (release patch + redéploiement), `chore(deps-dev)` pour l'outillage. Mises à jour mineures/patch groupées (`prod`, `dev`). Ignorés : versions majeures de `eslint`, `@eslint/js`, `@types/node` et `conventional-changelog-conventionalcommits` (la CI n'exécute pas semantic-release : une incompatibilité n'apparaîtrait qu'à la release), et `typescript >= 6.1.0`.
   * github-actions : `commit-message: { prefix: "chore", include: "scope" }`, toutes les mises à jour dans un seul groupe (`actions`).
 
 ---
