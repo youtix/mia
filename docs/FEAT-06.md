@@ -70,6 +70,10 @@ Implémente ces fonctions pures prenant `state: MiaSaveState` et retournant un n
 * Une carte **"+ Nouveau Joueur"** permet d'ouvrir le formulaire de création rapide :
   * Choix de l'avatar en grille navigable au D-Pad.
   * Rangée de boutons de **Noms Rapides en 1 clic** (`Mia`, `Joueur 1`, `Joueur 2`, etc.) très pratique sur Android TV + champ `<input type="text">` accessible pour saisir un prénom personnalisé.
+* **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Les zones (`useGridNavigation`) de la grille des profils, des avatars et des noms rapides sont déclarées **dans des composants rendus à l'intérieur de `ModalDialog`** (sinon elles restent sous la couche de la modale, suspendues), et enchaînées avec `onEdge`. Un formulaire ouvert dans une seconde modale forme une couche imbriquée.
+  * Dans le champ prénom, Gauche / Droite / Retour arrière / Espace / Entrée restent au champ ; Haut / Bas en sortent vers la zone active ; Échap vaut Retour.
+  * Avec `onClose`, Retour (Retour arrière, bouton Android) ferme la modale sauf si la zone active a son propre `onBack` (ex: formulaire → retour à la grille des profils).
 
 ---
 

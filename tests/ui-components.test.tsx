@@ -562,8 +562,9 @@ describe('ModalDialog', () => {
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      // Le focus est rendu au nettoyage des effets, dans une tâche distincte du retrait du DOM.
+      expect(opener).toHaveFocus();
     });
     expect(onClose).toHaveBeenCalledOnce();
-    expect(opener).toHaveFocus();
   });
 });

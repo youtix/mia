@@ -69,6 +69,8 @@ Affiche de façon compacte au-dessus du plateau :
   * Si les cartes ne correspondent pas : laisse les cartes visibles pendant `900ms` avant d'appeler `resolveEvaluation`.
 * **Navigation D-Pad (`useGridNavigation`)** :
   * Configure `useGridNavigation({ scopeId: 'memory-grid', rows: config.rows, cols: config.cols, isActive: phase === 'playing' })`.
+  * **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) : passer `ref={getItemRef(i)}` et `isFocused={isItemFocused(i)}` à chaque `MemoryCardView` (anneau en mode D-Pad uniquement, focus DOM et défilement automatiques). Sans `onSelect`, OK clique la carte ciblée : même gestionnaire qu'au tap. Les boutons du HUD forment une autre zone, rejointe par `onEdge`. Une zone inactive ne reçoit pas Retour : si Retour doit rester disponible pendant `preview` / `evaluating`, garder la zone active et ignorer OK pendant ces phases.
+  * La modale de fin de niveau déclare sa propre zone (`useGridNavigation`, `initialIndex` sur « Étoile Suivante ») **dans un composant rendu à l'intérieur de `ModalDialog`** : sa couche suspend le plateau automatiquement. Sans `onClose`, Retour est routé vers l'`onBack` de cette zone (ex: Carte des Étoiles).
 * **Modale de Fin de Niveau (`ModalDialog`)** :
   * En cas de victoire (`phase === 'won'`) : appelle le callback `onVictory({ moves, mistakes, isPerfect })` et propose **"Étoile Suivante (#N+1) →"** (pré-focalisé), **"Rejouer"** et **"Carte des Étoiles"**.
   * En cas de défaite (`phase === 'lost'`) : propose **"Réessayer"** (pré-focalisé).

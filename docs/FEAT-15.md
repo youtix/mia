@@ -91,6 +91,7 @@ Dans `android/app/src/main/AndroidManifest.xml`, applique impérativement ces 4 
 
 ### 3.3. Gestion du Bouton Physique `Retour` Android (`src/core/navigation/useAndroidBackButton.ts`)
 * Utilise `App.addListener('backButton', ...)` de `@capacitor/app` pour revenir à l'écran parent ou fermer une modale ouverte lorsqu'on appuie sur le bouton `Retour` de la télécommande Android TV.
+* **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) : le bouton physique n'émet aucun `keydown`. Brancher l'écouteur sur `dispatchBack()` (`useNavigation`), qui applique le routage des touches (zone active de la couche du dessus, sinon `onClose` de la modale ouverte) et renvoie `false` si rien ne l'a géré : c'est alors à ce hook de décider (ex: `App.exitApp()` sur l'écran d'accueil).
 
 ### 3.4. Conformité Stricte F-Droid
 * Vérifie dans `android/build.gradle` et `android/app/build.gradle` qu'aucune dépendance propriétaire (`com.google.android.gms`, `com.google.firebase`, etc.) n'est présente.

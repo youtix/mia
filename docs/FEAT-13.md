@@ -66,6 +66,10 @@ tests/
   * Si `axis === 'H'`, `ArrowLeft` déplace de `-1` case et `ArrowRight` de `+1` case (avec `mergeWithPreviousIfSameVehicle: alreadyMovedInThisLockSession`).
   * Si `axis === 'V'`, `ArrowUp` déplace de `-1` case et `ArrowDown` de `+1` case.
   * Touche `OK / Entrée` ou `Retour / Échap` : repasse `isVehicleLocked = false`.
+* **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Le parking n'est pas une grille : utiliser `useNavigationScope({ scopeId: 'traffic-jam-board', onDirection, onSelect, onBack })` et afficher l'anneau avec `isFocusVisible` (zone active **et** mode D-Pad). Le moteur gère déjà le réveil après le tactile, les répétitions (flèches maintenues répétées, OK / Retour une seule fois) et `preventDefault()`.
+  * `findNearestTarget` cherche dans le cône de ±45° puis dans le demi-plan : `null` signifie qu'aucun véhicule ne se trouve plus loin dans cette direction, signal pour passer à la zone des boutons du HUD (`isActive`).
+  * Fournir `getFocusedElement` et `ownsElement` (refs des `VehiclePiece`) : sans eux, OK sur un véhicule ayant le focus DOM reste natif (bouton hors zone) et le premier appui après le tactile ne fait que révéler le curseur. `useNavigationScope` ne déplace pas le focus DOM : le plateau appelle `focus()` sur le véhicule ciblé au D-Pad s'il veut les annonces TalkBack.
 
 ---
 

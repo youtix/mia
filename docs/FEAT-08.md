@@ -75,6 +75,11 @@ tests/
     4. **Parfait (`isPerfect`)** : Grande étoile dorée ⭐ + badge Couronne 👑.
 * **Ergonomie Télécommande Android TV** :
   * À l'ouverture de `StarMapScreen`, le focus D-Pad (`focusedIndex`) se place **automatiquement sur la tuile du prochain niveau à jouer (`nextPlayableLevel`)** et fait défiler la vue (`scrollIntoView`) jusqu'à cette étoile.
+* **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `layout.tsx` monte `NavigationProvider` (import depuis le barrel `@/core/navigation`, compatible avec un composant serveur).
+  * Chaque groupe (boutons de l'en-tête, tuiles de chaque palier, actions des `GameHubCard`) est une zone `useGridNavigation` ; une seule est active à la fois, l'écran les enchaîne avec `onEdge` (bascule de `isActive` + `setFocusedIndex` sur la zone cible, ex: conserver la colonne d'un palier à l'autre).
+  * `initialIndex` place le curseur sur `nextPlayableLevel` ; avec `getItemRef`, focus DOM et défilement suivent le curseur en mode D-Pad. En mode tactile, rien ne défile automatiquement : le défilement initial vers cette étoile sur mobile est à la charge de `StarMapScreen`.
+  * Le bouton Retour d'`AppShell` n'expose pas de `ref` : l'ajouter (ex: `backButtonRef`) pour l'inclure dans une zone avec focus DOM synchronisé, sinon se limiter à `isBackFocused`.
 
 ---
 
