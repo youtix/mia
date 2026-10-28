@@ -1,3 +1,9 @@
+## [0.6.0](https://github.com/youtix/mia/compare/v0.5.0...v0.6.0) (2026-10-28)
+
+### Features
+
+* **profile:** add local multi-profile management and selector modal ([#7](https://github.com/youtix/mia/issues/7)) ([4337b67](https://github.com/youtix/mia/commit/4337b67110bf3958d973a66a53677c883cc33926))
+
 ## [0.5.0](https://github.com/youtix/mia/compare/v0.4.0...v0.5.0) (2026-10-28)
 
 ### Features
