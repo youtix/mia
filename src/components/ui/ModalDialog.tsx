@@ -1,5 +1,6 @@
 'use client';
 
+import { NavigationLayer } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -21,8 +22,9 @@ export interface ModalDialogProps {
   title: string;
   subtitle?: string;
   /**
-   * Fermeture par `Échap`, par le fond ou par le bouton ✕. Sans `onClose`, la modale impose un choix
-   * (ex: fin de partie) et laisse `Échap` remonter au moteur de navigation D-Pad (FEAT-04).
+   * Fermeture par `Échap`, par le fond ou par le bouton ✕, et par Retour (Retour arrière, bouton
+   * Android) quand aucune zone D-Pad de la modale ne le gère. Sans `onClose`, la modale impose un
+   * choix (ex: fin de partie) et laisse `Échap` remonter au moteur de navigation D-Pad (FEAT-04).
    */
   onClose?: () => void;
   /** Élément focalisé à l'ouverture (défaut : la boîte de dialogue elle-même) */
@@ -180,7 +182,9 @@ function DialogLayer({
           ) : null}
         </div>
 
-        {children}
+        {/* Couche D-Pad (FEAT-04) : suspend les zones de l'écran sous-jacent tant que la modale est
+            montée ; les zones déclarées dans son contenu s'empilent au-dessus. */}
+        <NavigationLayer onBack={onClose}>{children}</NavigationLayer>
 
         {onClose ? (
           <FocusableButton
