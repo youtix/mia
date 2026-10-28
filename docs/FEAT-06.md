@@ -63,6 +63,10 @@ Implémente ces fonctions pures prenant `state: MiaSaveState` et retournant un n
    * Change `activeProfileId` si le profil existe.
 4. `deleteProfile(state: MiaSaveState, profileId: string): MiaSaveState`
    * Supprime le profil demandé. S'il s'agissait du profil actif, sélectionne le premier profil restant (ou recrée un profil par défaut via `ensureDefaultProfile`).
+* **Contrat FEAT-05** ([§5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Appliquer ces fonctions par `updateState` (`useMiaStorage`) : il attend la fin du chargement initial et sérialise les écritures (`ensureDefaultProfile` au démarrage n'écrase jamais la sauvegarde chargée).
+  * `createDefaultSaveState()` ne contient aucun profil (`activeProfileId: null`). `activeProfileId` peut aussi valoir `null` alors que des profils existent (profil actif introuvable au chargement) : l'interface doit alors proposer le choix du profil.
+  * Chaque profil doit avoir un `id` non vide et unique et des champs `name` / `avatarId` / `createdAt` textuels : un profil invalide est écarté au chargement (copie de secours). Un `avatarId` inconnu du catalogue est conservé : `AvatarBadge` doit prévoir un repli.
 
 ### 3.3. Interface `ProfileSelectorModal` (`src/components/profile/ProfileSelectorModal.tsx`)
 * Affiche la grille des profils existants sous forme de `FocusableCard` navigables au D-Pad (`useGridNavigation`) et au tactile.

@@ -11,7 +11,7 @@
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
 4. [Conception Détaillée des Jeux (Memory & Traffic Jam)](#4-conception-détaillée-des-jeux-memory--traffic-jam)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-17`)](#6-découpage-en-features-atomiques-feat-01-à-feat-17)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-18`)](#6-découpage-en-features-atomiques-feat-01-à-feat-18)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -29,6 +29,7 @@
    - [FEAT-15.md](./FEAT-15.md) — Empaquetage Android & Android TV via Capacitor (Conformité F-Droid)
    - [FEAT-16.md](./FEAT-16.md) — Intégration APK dans la Release Automatique, Recette F-Droid & Documentation
    - [FEAT-17.md](./FEAT-17.md) — PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes
+   - [FEAT-18.md](./FEAT-18.md) — Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import) *(brouillon)*
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -315,13 +316,16 @@ flowchart TD
     F15 --> F16["FEAT-16 : APK dans Release Auto, Recette F-Droid & README"]
 
     F02 --> F17["FEAT-17 : PWA Hors-ligne (Service Worker) & Icônes PNG"]
+
+    F05 --> F18["FEAT-18 : Réglages & Sauvegarde (Export / Import)"]
+    F08 --> F18
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-17`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-18`)
 
-Chacune des 17 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 18 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -342,6 +346,7 @@ Chacune des 17 features possède sa spécification complète et autonome pour l'
 | **15** | [FEAT-15.md](./FEAT-15.md) | **Empaquetage Android & Android TV via Capacitor (Conformité F-Droid)** | `FEAT-08`, `FEAT-11`, `FEAT-14` |
 | **16** | [FEAT-16.md](./FEAT-16.md) | **Intégration APK dans la Release Automatique, Recette F-Droid & Documentation** | `FEAT-02`, `FEAT-15` |
 | **17** | [FEAT-17.md](./FEAT-17.md) | **PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes** | `FEAT-01`, `FEAT-02` |
+| **18** | [FEAT-18.md](./FEAT-18.md) | **Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)** *(brouillon)* | `FEAT-05`, `FEAT-08` |
 
 ---
 
@@ -496,6 +501,14 @@ Chacune des 17 features possède sa spécification complète et autonome pour l'
 
 * **Objectif** : Rendre la PWA Web (GitHub Pages) installable partout et 100% fonctionnelle hors-ligne : service worker maison sans dépendance runtime qui pré-cache tout l'export `out/` (compatible `basePath`, jamais enregistré dans l'APK Capacitor ni en développement), mises à jour atomiques au lancement suivant, icônes PNG `any`/`maskable` et `apple-touch-icon` générées depuis les SVG de `FEAT-01`.
 * **Dépendances** : `FEAT-01`, `FEAT-02`.
+
+---
+
+### `FEAT-18` : Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import) ([FEAT-18.md](./FEAT-18.md))
+
+* **Objectif** : Donner accès, au doigt comme à la télécommande, aux réglages de l'appareil (mode TV forcé, son, contraste élevé) et à la sauvegarde de la progression (export / import JSON, réinitialisation) fournis par `FEAT-05`.
+* **Dépendances** : `FEAT-05`, `FEAT-08`.
+* **Statut** : brouillon issu de la session de cadrage de `FEAT-05`, à cadrer avant implémentation.
 
 ---
 

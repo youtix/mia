@@ -1,3 +1,5 @@
+// Module direct, pas le barrel : il ferait entrer StorageContext et Capacitor dans le JS client.
+import { TV_MODE_BOOTSTRAP_SCRIPT } from '@/core/storage/tv-mode';
 import '@fontsource-variable/atkinson-hyperlegible-next';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
@@ -23,7 +25,12 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="fr">
+    // suppressHydrationWarning : le script inline pose `data-tv` sur <html> avant l'hydratation.
+    <html lang="fr" suppressHydrationWarning>
+      <head>
+        {/* Mode TV (FEAT-05 §3.4) : posé avant le premier rendu, sinon les marges sauteraient. */}
+        <script dangerouslySetInnerHTML={{ __html: TV_MODE_BOOTSTRAP_SCRIPT }} />
+      </head>
       <body className="min-h-dvh bg-slate-900 font-sans text-slate-50 antialiased">{children}</body>
     </html>
   );

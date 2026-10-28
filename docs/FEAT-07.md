@@ -106,6 +106,10 @@ export interface GameProgressSummary<TConfig = unknown> {
      * Conserve `isPerfect: existing.isPerfect || params.isPerfect`.
      * Met à jour `bestMoves = Math.min(existing.bestMoves, params.moves)` et `bestTimeSeconds = Math.min(existing.bestTimeSeconds, params.timeSeconds)`.
      * Incrémente `timesPlayed + 1` et met à jour `lastPlayedLevelId = params.levelId`.
+   * **Contrat FEAT-05** ([§5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)) :
+     * Enregistrer la victoire par `updateState((state) => recordLevelVictory(state, params))` (`useMiaStorage`).
+     * Première victoire : initialiser `bestMoves` / `bestTimeSeconds` avec les valeurs de la partie, jamais `Infinity` (sérialisé en `null` par JSON, le niveau serait écarté au chargement suivant). Toutes les valeurs numériques doivent être finies et ≥ 0.
+     * Indexer `levels` par `levelId` (le champ `levelId` est réaligné sur sa clé) et `gamesProgress` par un `GameId` connu : la progression d'un jeu hors `GameId` est écartée au chargement (ajouter le jeu au type `GameId` avant d'enregistrer sa progression).
 
 ---
 
