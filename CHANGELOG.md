@@ -1,3 +1,9 @@
+## [0.5.0](https://github.com/youtix/mia/compare/v0.4.0...v0.5.0) (2026-10-28)
+
+### Features
+
+* **storage:** add local storage service with schema migration ([#6](https://github.com/youtix/mia/issues/6)) ([8a850a4](https://github.com/youtix/mia/commit/8a850a4279b8ded90ea0ca73399cc6be7a6763f4))
+
 ## [0.4.0](https://github.com/youtix/mia/compare/v0.3.0...v0.4.0) (2026-10-28)
 
 ### Features
