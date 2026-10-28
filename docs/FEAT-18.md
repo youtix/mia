@@ -48,6 +48,7 @@ tests/
 * **Exporter** : `exportBackup()` → fichier `mia-sauvegarde-AAAA-MM-JJ.json`.
 * **Importer** : lecture d'un fichier → `importBackup(json)` ; en cas d'échec, afficher `result.message` (déjà en français, ex: version plus récente de Mia). Confirmer avant de remplacer les profils (`ModalDialog`) en suggérant d'exporter d'abord. Les réglages de l'appareil sont conservés ([FEAT-05 §5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)).
 * **Réinitialiser** : `resetAllData()` après une double confirmation (efface profils, étoiles et réglages).
+* **Profils** ([FEAT-06 §5](./FEAT-06.md#5-décisions-dimplémentation-session-de-cadrage)) : après `resetAllData()` ou l'import d'une sauvegarde sans profil, `useProfileGate` (monté par le Hub) recrée « Joueur 1 » ; un import sans profil actif (`activeProfileId: null`) ouvre le choix du joueur imposé. La suppression d'un profil est déjà proposée par `ProfileSelectorModal` (mode « Gérer les profils »).
 
 ---
 

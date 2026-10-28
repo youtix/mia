@@ -63,6 +63,11 @@ tests/
   * `layout.tsx` monte `StorageProvider` (import depuis le barrel `@/core/storage`, compatible avec un composant serveur) et conserve le script inline du mode TV dans `<head>` ainsi que `suppressHydrationWarning` sur `<html>`.
   * Tant que `isLoaded` vaut `false` (pré-rendu statique, premier rendu), `state` est l'état par défaut : afficher un état d'attente plutôt qu'un Hub vide, et n'ouvrir `ProfileSelectorModal` qu'une fois la sauvegarde chargée.
   * Aucun écran de réglages ni de sauvegarde n'est prévu ici : voir [FEAT-18](./FEAT-18.md) (point d'entrée depuis le Hub).
+* **Contrat FEAT-06** ([§5](./FEAT-06.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Appeler `useProfileGate()` (`@/core/storage`) dans le Hub : il crée « Joueur 1 » dès que la sauvegarde chargée n'a aucun profil (premier lancement, réinitialisation, import vide) et renvoie `mustChooseProfile` (des profils, aucun actif).
+  * Monter `<ProfileSelectorModal isOpen={isSelectorOpen || mustChooseProfile} onClose={mustChooseProfile ? undefined : closeSelector} />` (`@/components/profile`) une fois `isLoaded` : sans `onClose`, le choix est imposé (ni ✕, ni Échap) ; `onClose` est aussi appelé après un choix ou une création. La modale gère seule création et suppression.
+  * Bouton du profil actif : `AvatarBadge` (`size="sm"`, décoratif) et prénom dans un `FocusableButton`, placé dans l'emplacement `profile` d'`AppShell`.
+  * Les cartes de profil comptent les étoiles sans catalogue (`countProfileStars`) ; le compteur du Hub s'appuie sur FEAT-07.
 
 ### 4.2. Carte des Étoiles (`src/components/progression/StarMapScreen.tsx`)
 * **En-tête du jeu** : Bouton Retour vers le Hub, titre du jeu, compteur `earnedStars / totalStars ⭐`, et bouton **"Jouer l'Étoile #X"** (accès rapide au prochain niveau non résolu).
@@ -84,6 +89,8 @@ tests/
   * Chaque groupe (boutons de l'en-tête, tuiles de chaque palier, actions des `GameHubCard`) est une zone `useGridNavigation` ; une seule est active à la fois, l'écran les enchaîne avec `onEdge` (bascule de `isActive` + `setFocusedIndex` sur la zone cible, ex: conserver la colonne d'un palier à l'autre).
   * `initialIndex` place le curseur sur `nextPlayableLevel` ; avec `getItemRef`, focus DOM et défilement suivent le curseur en mode D-Pad. En mode tactile, rien ne défile automatiquement : le défilement initial vers cette étoile sur mobile est à la charge de `StarMapScreen`.
   * Le bouton Retour d'`AppShell` n'expose pas de `ref` : l'ajouter (ex: `backButtonRef`) pour l'inclure dans une zone avec focus DOM synchronisé, sinon se limiter à `isBackFocused`.
+* **Contrat FEAT-06** ([§5](./FEAT-06.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Grilles responsives (tuiles d'un palier, cartes de jeux) : `const [gridRef, cols] = useGridColumns(fallback)` (`@/core/navigation`) donne à `useGridNavigation` le nombre de colonnes réellement affiché par la feuille de style (`grid-cols-*`, `auto-fill`, `tv:`), sans navigation géométrique sur le DOM.
 
 ---
 
