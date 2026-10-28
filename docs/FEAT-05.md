@@ -102,6 +102,10 @@ Expose via le hook `useMiaStorage()` :
 * `exportBackup: () => string`
 * `importBackup: (json: string) => Promise<boolean>`
 
+### 3.4. Mode TV du Design System ([FEAT-03 §5](./FEAT-03.md#5-décisions-dimplémentation-session-de-cadrage))
+* Refléter `settings.tvModeOverride` sur `<html>` : `'always_tv'` → `data-tv="on"`, `'always_touch'` → `data-tv="off"`, `'auto'` → retirer l'attribut (détection CSS `(hover: none) and (pointer: none)`).
+* Le poser au plus tôt (idéalement avant l'hydratation, par exemple via un court script inline lisant le miroir `localStorage`) : le mode TV change les marges, l'écran sauterait sinon au démarrage.
+
 ---
 
 ## 4. Critères d'Acceptation (Definition of Done)

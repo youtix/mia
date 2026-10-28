@@ -116,6 +116,12 @@ Retourne :
 * `inputMode: InputMode`
 * `isItemFocused: (index: number) => boolean` (retourne `true` si la zone est active et `focusedIndex === index`)
 
+### 3.5. Contrat avec le Design System ([FEAT-03 §5](./FEAT-03.md#5-décisions-dimplémentation-session-de-cadrage))
+* **Focus visuel** : `isFocused` (`FocusableButton`, `FocusableCard`, `AppShell.isBackFocused`) ne fait qu'afficher l'anneau ; les composants ne déplacent jamais le focus DOM. Pour le synchroniser (annonces TalkBack, défilement), utiliser leur prop `ref`.
+* **`preventDefault()` sur chaque touche traitée** : flèches (sinon le `<main>` défilant d'`AppShell` défile aussi) et `OK` / `Entrée` / `Espace` (si le focus DOM est sur un bouton, après un clic par exemple, le navigateur déclencherait aussi un clic natif : double activation).
+* **Écoute en bouillonnement** sur `window` (pas `capture: true`) : `ModalDialog` stoppe la propagation de `Échap` quand elle se ferme elle-même (`onClose`) ; sans `onClose`, `Échap` remonte et le scope de la modale décide (ex. fin de partie → Carte des Étoiles).
+* **Mode TV** : ne pas basculer `data-tv` selon `inputMode` ; le mode TV modifie la mise en page (marges anti-overscan, cibles de 56 px) et l'écran sauterait à chaque changement de saisie. Le réglage relève de FEAT-05.
+
 ---
 
 ## 4. Critères d'Acceptation (Definition of Done)
