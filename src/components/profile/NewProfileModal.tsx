@@ -33,14 +33,18 @@ export interface NewProfileModalProps {
   onCreated: () => void;
 }
 
-/** Formulaire de création rapide, couche imbriquée au-dessus du choix du joueur. */
+/**
+ * Formulaire de création rapide, couche imbriquée au-dessus du choix du joueur. Espacements `tv:`
+ * resserrés (cibles de 56 px conservées) : le formulaire tient sans défiler sur l'écran Android
+ * TV de 960 × 540 px CSS.
+ */
 export function NewProfileModal({ isOpen, onClose, onCreated }: NewProfileModalProps) {
   return (
     <ModalDialog
       isOpen={isOpen}
       title="Nouveau joueur"
       onClose={onClose}
-      className="max-w-2xl tv:max-w-3xl"
+      className="max-w-2xl tv:max-w-3xl tv:gap-4 tv:p-6"
     >
       <NewProfileForm onCancel={onClose} onCreated={onCreated} />
     </ModalDialog>
@@ -55,7 +59,7 @@ interface NewProfileFormProps {
   onCreated: () => void;
 }
 
-const LEGEND_CLASSES = 'mb-2 text-fluid-base font-semibold text-slate-200';
+const LEGEND_CLASSES = 'mb-2 text-fluid-base font-semibold text-slate-200 tv:mb-1';
 
 /**
  * Prénom (champ libre ou prénom rapide en un clic), avatar, puis Créer. Le champ est en haut et le
@@ -151,11 +155,20 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
   };
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex flex-col gap-2">
-        <label htmlFor={nameId} className="text-fluid-base font-semibold text-slate-200">
-          Prénom
-        </label>
+    <div className="flex flex-col gap-5 tv:gap-3">
+      <div className="flex flex-col gap-2 tv:gap-1">
+        {/* Le message d'erreur partage la ligne de l'étiquette quand la largeur le permet (TV) :
+            le formulaire garde sa hauteur et ne défile pas. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <label htmlFor={nameId} className="text-fluid-base font-semibold text-slate-200">
+            Prénom
+          </label>
+          {error ? (
+            <p id={errorId} role="alert" className="text-fluid-sm font-semibold text-rose-300">
+              {error}
+            </p>
+          ) : null}
+        </div>
         <input
           ref={nameField.getItemRef(0)}
           id={nameId}
@@ -185,11 +198,6 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
           }}
           onKeyDown={handleNameKeyDown}
         />
-        {error ? (
-          <p id={errorId} role="alert" className="text-fluid-sm font-semibold text-rose-300">
-            {error}
-          </p>
-        ) : null}
       </div>
 
       {hasQuickNames ? (
@@ -197,7 +205,7 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
           <legend className={LEGEND_CLASSES}>Prénoms rapides</legend>
           <div
             ref={quickGridRef}
-            className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 md:gap-3"
+            className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-2 md:gap-3 tv:grid-cols-[repeat(auto-fill,minmax(6.5rem,1fr))] tv:gap-2"
           >
             {quickNames.map((quickName, index) => {
               const isChosen = getProfileNameKey(quickName) === nameKey;
@@ -208,6 +216,7 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
                   isFocused={quick.isItemFocused(index)}
                   variant={isChosen ? 'primary' : 'secondary'}
                   aria-pressed={isChosen}
+                  className="tv:px-3"
                   onClick={() => {
                     changeName(quickName);
                     // Étape suivante au D-Pad : l'avatar (déjà proposé), puis Bas → Créer.
@@ -239,7 +248,7 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
                 aria-label={avatar.label}
                 aria-pressed={isChosen}
                 className={cn(
-                  'h-auto rounded-2xl border-2 border-transparent p-1.5 md:p-2',
+                  'h-auto rounded-2xl border-2 border-transparent p-1.5 md:p-2 tv:p-1',
                   isChosen && 'border-emerald-400 bg-emerald-950/40 hover:bg-emerald-950/60',
                 )}
                 onClick={() => {

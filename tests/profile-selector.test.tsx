@@ -525,6 +525,15 @@ describe('ProfileSelectorModal : création rapide', () => {
     expect(screen.queryByRole('button', { name: /Zoé/ })).not.toBeInTheDocument();
   });
 
+  it('resserre ses espacements en mode TV pour tenir sur un écran de 960 × 540', async () => {
+    await renderScreen(familySave());
+    const form = await openNewProfileForm();
+
+    // Classes vérifiées par nom : jsdom ne calcule pas la mise en page (hauteur mesurée dans Chromium).
+    expect(form).toHaveClass('tv:max-w-3xl', 'tv:gap-4', 'tv:p-6');
+    expect(within(form).getByRole('textbox', { name: 'Prénom' })).toHaveClass('tv:min-h-14');
+  });
+
   it('refuse un prénom vide ou déjà pris, avec un message', async () => {
     await renderScreen(familySave());
     const form = await openNewProfileForm();
