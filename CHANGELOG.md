@@ -1,3 +1,9 @@
+## [0.4.0](https://github.com/youtix/mia/compare/v0.3.0...v0.4.0) (2026-10-28)
+
+### Features
+
+* **navigation:** add spatial dpad navigation engine ([#5](https://github.com/youtix/mia/issues/5)) ([beadf10](https://github.com/youtix/mia/commit/beadf1093df8b76a59512f62e44cd568beb75b6f))
+
 ## [0.3.0](https://github.com/youtix/mia/compare/v0.2.0...v0.3.0) (2026-10-28)
 
 ### Features
