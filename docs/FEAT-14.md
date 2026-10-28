@@ -63,6 +63,12 @@ Implémente `validateTrafficJamCatalog(catalog = TRAFFIC_JAM_CATALOG)` qui véri
 4. Correspondance exacte entre `level.config.optimalMoves` et le `result.optimalMoves` trouvé par le solveur BFS.
 5. Progression croissante : le `optimalMoves` moyen de chaque palier est strictement supérieur au palier précédent (`very_easy < easy < medium < hard < very_hard`).
 
+* **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `validateTrafficJamCatalog` commence par `validateLevelCatalog('traffic-jam', catalog)` (`@/core/progression` : identifiant `LEVEL_ID_PATTERN` unique, ce qui couvre la règle 1 ; `gameId`, palier, `order` fini et unique dans son palier), puis ajoute ses règles propres.
+  * Brancher `TRAFFIC_JAM_CATALOG` sur `GAME_REGISTRY['traffic-jam'].catalog` : le test du registre le valide alors par `validateLevelCatalog`.
+  * Un niveau publié n'est jamais retiré ni renommé : son `id` est la clé de la sauvegarde, et `countProfileStars` divergerait du Hub. Changer son palier ou son `order` ne touche pas à la sauvegarde (numéros d'étoile recalculés, niveaux réussis toujours débloqués).
+  * Le registre type les configurations en `unknown` : la page `/traffic-jam` appelle `getGameProgressSummary('traffic-jam', TRAFFIC_JAM_CATALOG, activeProfile)` pour obtenir des `TrafficJamLevelConfig`.
+
 ### 3.3. Outil CLI `scripts/validate-levels.ts`
 * Exécutable via `npm run validate:levels`.
 * Valide `MEMORY_CATALOG` et `TRAFFIC_JAM_CATALOG`.
