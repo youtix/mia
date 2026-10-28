@@ -99,6 +99,7 @@ Dans `android/app/src/main/AndroidManifest.xml`, applique impérativement ces 4 
 
 ### 3.5. Mode TV & Zones de Sécurité ([FEAT-03 §5](./FEAT-03.md#5-décisions-dimplémentation-session-de-cadrage))
 * Sur un vrai boîtier, vérifier que la détection CSS `(hover: none) and (pointer: none)` active la variante `tv:` (marges anti-overscan de 5 %, aides de la télécommande). Sinon (télécommandes à pointeur « air mouse »), détecter la TV côté natif (`UiModeManager` → `UI_MODE_TYPE_TELEVISION`) et poser `data-tv="on"` sur `<html>` lorsque `tvModeOverride` vaut `'auto'`.
+* **Contrat FEAT-05** ([§5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)) : en `'auto'`, le script inline du `<head>` ne pose rien et `StorageProvider` retire `data-tv` une fois la sauvegarde chargée. Une détection native ne doit donc pas écrire `data-tv` de son côté (elle serait effacée) : étendre la résolution de `'auto'` dans `applyTvModeOverride` **et** `TV_MODE_BOOTSTRAP_SCRIPT` (`src/core/storage/tv-mode.ts`). Sur l'APK, la sauvegarde vit dans les SharedPreferences (`@capacitor/preferences`) avec un miroir `localStorage` ; `navigator.storage.persist()` n'y est jamais appelé.
 * `.tv-safe-container` intègre déjà `env(safe-area-inset-*)`. Si l'APK passe en plein écran (edge-to-edge, imposé à partir d'Android 15 / API 35), activer `viewportFit: 'cover'` dans `layout.tsx` et vérifier que chaque écran passe par `AppShell`.
 
 ---

@@ -4,6 +4,60 @@ export type GameId = 'memory' | 'traffic-jam';
 
 export type InputMode = 'touch' | 'dpad';
 
+/** Mode TV de la variante `tv:` (FEAT-03 §5) : `auto` = détection CSS, sinon forcé. */
+export type TvModeOverride = 'auto' | 'always_tv' | 'always_touch';
+
+/** Paramètres globaux de l'appareil (partagés par tous les profils). */
+export interface DeviceSettings {
+  soundEnabled: boolean;
+  highContrastMode: boolean;
+  tvModeOverride: TvModeOverride;
+}
+
+export interface LevelCompletion {
+  levelId: string;
+  /** Niveau réussi (donne 1 Étoile) */
+  completed: boolean;
+  /** Résolu avec un score parfait (sans erreur ou en un minimum de coups) */
+  isPerfect: boolean;
+  /** Meilleur nombre de coups réalisés */
+  bestMoves: number;
+  /** Meilleur temps en secondes (indicatif uniquement, non pénalisant sur TV) */
+  bestTimeSeconds: number;
+  /** Nombre de fois où ce niveau a été terminé */
+  timesPlayed: number;
+  completedAt: string;
+}
+
+export interface GameProgress {
+  gameId: GameId;
+  /** Dictionnaire indexé par levelId immuable (ex: "mem-001", "tj-005") */
+  levels: Record<string, LevelCompletion>;
+  /** Dernier niveau joué pour proposer le bouton "Continuer" */
+  lastPlayedLevelId: string | null;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  /** ex: "fox", "owl", "robot" (catalogue d'avatars de FEAT-06) */
+  avatarId: string;
+  createdAt: string;
+  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam") */
+  gamesProgress: Record<string, GameProgress>;
+}
+
+/** Sauvegarde locale complète (FEAT-05) : une seule clé de stockage par appareil. */
+export interface MiaSaveState {
+  /** Version du schéma pour permettre des migrations transparentes */
+  schemaVersion: 1;
+  /** ID du profil actuellement actif */
+  activeProfileId: string | null;
+  /** Profils familiaux créés sur l'appareil */
+  profiles: UserProfile[];
+  settings: DeviceSettings;
+}
+
 export interface DifficultyTierMeta {
   id: DifficultyTier;
   order: number;

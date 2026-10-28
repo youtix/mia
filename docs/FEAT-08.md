@@ -59,6 +59,10 @@ tests/
     * La faculté cérébrale travaillée (*"Mémoire visuelle & spatiale"* / *"Planification & Logique séquentielle"*).
     * Une barre de progression visuelle et le score `earnedStars / totalStars ⭐` (ainsi que le nombre de couronnes `perfectCount 👑`).
     * Deux actions accessibles au tactile ou au D-Pad : **"Continuer (Étoile #X)"** (lance directement `nextPlayableLevel`) et **"Carte des Étoiles"** (ouvre `StarMapScreen`).
+* **Contrat FEAT-05** ([§5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `layout.tsx` monte `StorageProvider` (import depuis le barrel `@/core/storage`, compatible avec un composant serveur) et conserve le script inline du mode TV dans `<head>` ainsi que `suppressHydrationWarning` sur `<html>`.
+  * Tant que `isLoaded` vaut `false` (pré-rendu statique, premier rendu), `state` est l'état par défaut : afficher un état d'attente plutôt qu'un Hub vide, et n'ouvrir `ProfileSelectorModal` qu'une fois la sauvegarde chargée.
+  * Aucun écran de réglages ni de sauvegarde n'est prévu ici : voir [FEAT-18](./FEAT-18.md) (point d'entrée depuis le Hub).
 
 ### 4.2. Carte des Étoiles (`src/components/progression/StarMapScreen.tsx`)
 * **En-tête du jeu** : Bouton Retour vers le Hub, titre du jeu, compteur `earnedStars / totalStars ⭐`, et bouton **"Jouer l'Étoile #X"** (accès rapide au prochain niveau non résolu).
