@@ -1,3 +1,9 @@
+## [0.7.0](https://github.com/youtix/mia/compare/v0.6.0...v0.7.0) (2026-10-28)
+
+### Features
+
+* **progression:** add infinitely extensible star progression engine ([#8](https://github.com/youtix/mia/issues/8)) ([09aabb9](https://github.com/youtix/mia/commit/09aabb97ba22258d8fd8b88191c7c64d4a2ab42a))
+
 ## [0.6.0](https://github.com/youtix/mia/compare/v0.5.0...v0.6.0) (2026-10-28)
 
 ### Features
