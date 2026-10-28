@@ -31,6 +31,7 @@ src/
 │       ├── StarBadge.tsx              # Affichage du compteur d'étoiles et icône étoile/couronne
 │       ├── DifficultyPill.tsx         # Badge coloré des 5 paliers cognitifs
 │       ├── ModalDialog.tsx            # Modale centrée responsive (Fin de partie, Pause)
+│       ├── focus-styles.ts            # Classes de focus partagées (Button, Card), hors barrel
 │       └── index.ts                   # Barrel export de tous les composants UI
 └── app/
     └── globals.css                    # Variables CSS, safe-areas, animations de focus
@@ -41,6 +42,8 @@ tests/
 ---
 
 ## 3. Spécifications Détaillées des Composants
+
+> Les décisions de la session de cadrage ([§5](#5-décisions-dimplémentation-session-de-cadrage)) précisent ces spécifications : variante `tv:` (le seul `xl:` ne cible pas Android TV), encoches, typographie fluide, contrat de focus avec FEAT-04.
 
 ### 3.1. Styles Globaux & Ergonomie TV (`src/app/globals.css`)
 * Thème sombre reposant (fond `bg-slate-950` / `bg-slate-900`, texte `text-slate-50`) évitant l'éblouissement sur un écran TV de 55+ pouces.
@@ -101,3 +104,27 @@ export interface FocusableButtonProps extends React.ButtonHTMLAttributes<HTMLBut
 - [ ] Les tests unitaires dans `tests/ui-components.test.tsx` vérifient tous les composants et maintiennent la couverture globale `>= 80%`.
 - [ ] `npm run validate:all` (`format:check`, `lint` avec 0 warning `jsx-a11y`, `typecheck`, `test:coverage`, `build`) passe sans aucune erreur.
 - [ ] Si un commit est créé, il respecte le format **Conventional Commits** (`feat(ui): add adaptive design system for mobile and tv`).
+
+---
+
+## 5. Décisions d'implémentation (session de cadrage)
+
+Décisions prises avant l'implémentation ; elles complètent ou précisent les sections ci-dessus.
+
+| Sujet | Décision |
+| :--- | :--- |
+| **Mode TV (`tv:`)** | Variante Tailwind à **3 états** (`@custom-variant` dans `globals.css`), alignée sur `tvModeOverride` (FEAT-05) : `<html data-tv="on">` → toujours (`always_tv`), `data-tv="off"` → jamais (`always_touch`), sans attribut → auto via `@media (hover: none) and (pointer: none)` (appareil piloté uniquement au D-Pad), sans JavaScript dès le premier rendu. Le seul `xl:` ne suffit pas : les WebView Android TV exposent un viewport d'environ **960 × 540 px CSS** (`xl:` ≥ 1280 px ne s'y applique jamais, mais s'applique aux ordinateurs). `tv:` pilote la zone anti-overscan, `tvHint`, `footerHints` et les cibles de 56 px ; `xl:` garde les marges larges des grands écrans. Tailwind émet les variantes personnalisées après `md:` / `xl:` : `tv:` l'emporte. Pose de l'attribut : FEAT-05 (réglage), FEAT-15 (détection native de secours). |
+| **Zone de sécurité** | `@utility tv-safe-container` : `padding: max(var(--safe-area-*), env(safe-area-inset-*))`. Variables `--safe-area-x` / `--safe-area-y` : mobile `px-4 py-3`, `md:` `px-8 py-6`, `xl:` `5vw` / `4vh` (spec), `tv:` `5vw` / `5vh` (recommandation Android TV : 48 × 27 dp sur 960 × 540 dp). `viewport-fit=cover` **non activé** : les encarts `env()` valent 0 tant que FEAT-15/17 ne passent pas en plein écran (edge-to-edge). |
+| **Typographie fluide** | Jetons `text-fluid-xs` … `text-fluid-3xl` dans `@theme` (`clamp()` linéaire de 360 px à 1280 px de viewport, `rem + vw`), utilisés par les composants ; les tailles Tailwind par défaut restent inchangées. Déclarés dans `cn()` (`extendTailwindMerge`, `FLUID_TEXT_SIZES`) : sinon tailwind-merge les prend pour des couleurs (`cn('text-slate-50', 'text-fluid-lg')` perdrait la couleur). |
+| **Styles globaux** | `body` : `select-none` et `-webkit-tap-highlight-color: transparent`. `touch-action: manipulation` sur **chaque** élément (propriété non héritée, arrêtée par les conteneurs défilants ; le pincement reste possible). `input`, `textarea` et `contenteditable` restent sélectionnables (Safari iOS bloque la saisie sous `user-select: none`). Acquis FEAT-01 conservés. |
+| **Focus D-Pad** | `isFocused` est **purement visuel** : classes de §3.2 + `z-10` (passe devant les voisins) + attribut `data-focused`, identiques sur `:focus-visible` (`outline-hidden` : contour conservé en mode contraste forcé). Aucun appel à `focus()` / `scrollIntoView()` : `FocusableButton` et `FocusableCard` acceptent `ref` (prop React 19) pour que FEAT-04 synchronise le focus DOM s'il le souhaite. Transitions sous `motion-safe:` ; aucune animation en boucle (réservée à l'état « à conquérir » de FEAT-08). |
+| **`FocusableButton`** | Interface de §3.2 + `ref`, `type="button"` par défaut. Variantes pleines en fond clair et texte `slate-950` (contraste WCAG AA), `secondary` / `ghost` sombres. Cible `min-h-12 min-w-12` (48 px), `tv:min-h-14` (56 px) ; la taille `tv` (64 px) reste la plus grande en mode TV. `tvHint` : `<kbd aria-hidden>` visible en mode TV uniquement. |
+| **`FocusableCard`** | `<button type="button">` natif (`Entrée` / `Espace` gérés par le navigateur ; contenu « phrasé » uniquement, sans élément interactif imbriqué) ; `onClick` remplacé par `onSelect`. `isLocked` → `aria-disabled="true"`, opacité réduite, badge cadenas (« , verrouillé » pour les lecteurs d'écran) ; reste focalisable (Tab / D-Pad) mais `onSelect` n'est jamais appelé. `isActive` → `aria-current="true"`, bordure émeraude et pastille ✓ (indice non coloré). |
+| **`StarBadge`** | `role="img"` + libellé français (`describeStars` : « 1 étoile sur 20 », « 12 étoiles, parfait » ; 0 et 1 au singulier via `Intl.PluralRules`). Couronne Lucide + halo doré si `isPerfect`. |
+| **`DifficultyPill`** | Barres croissantes (`aria-hidden`) + libellé du palier ; rang annoncé aux lecteurs d'écran (« Moyen, palier 3 sur 5 »). Props optionnelles `showSubtitle` et `size`. |
+| **`AppShell`** | Props : `title`, `onBack`, `isBackFocused`, `profile` (emplacement libre : bouton avatar de FEAT-06/08), `stars` (`earned` / `total` / `isPerfect`), `footerHints` (`RemoteHint[]` = `{ button, action }`), `className`. Racine `tv-safe-container h-dvh` ; **rend le `<main>`** (une page qui utilise `AppShell` n'en déclare pas d'autre), avec une marge interne compensée pour que l'anneau de focus zoomé ne soit pas rogné par le défilement. Bouton Retour : icône + « Retour » (texte visuellement masqué sous `sm:`). Pied de page en mode TV uniquement ; `DEFAULT_REMOTE_HINTS` en icônes Lucide (Atkinson Hyperlegible Next n'a ni `✛` ni `↩`). |
+| **`ModalDialog`** | Portail sur `document.body`, rendu côté client uniquement (`useSyncExternalStore` : rien au pré-rendu statique) ; `AnimatePresence` + `MotionConfig reducedMotion="user"`. À l'ouverture, focus sur la boîte de dialogue (`tabIndex={-1}`, pas un bouton : `Entrée` ne déclenche aucun clic natif concurrent du D-Pad) ou sur `initialFocusRef` (`autoFocus` interdit par `jsx-a11y/no-autofocus`) ; Tab / Maj+Tab bouclent ; un clic sur le fond ne fait pas sortir le focus ; focus rendu au déclencheur après l'animation de sortie. `Échap` → `onClose` + `preventDefault()` + `stopPropagation()`. **Sans `onClose`** : ni bouton ✕, ni fermeture par le fond, et `Échap` remonte au moteur D-Pad (le scope de la modale décide, ex. fin de partie). Écouteur clavier natif (`jsx-a11y/no-noninteractive-element-interactions` interdit `onKeyDown` sur `role="dialog"`). Prop `className` pour le panneau. |
+| **Périmètre** | `src/app/page.tsx` **inchangée** : FEAT-08 est le premier consommateur. `focus-styles.ts` ajouté à l'arborescence §2 ; `src/components/ui/.gitkeep` supprimé. |
+| **Tests** | `tests/ui-components.test.tsx` avec `fireEvent` (aucune nouvelle dépendance) et `MotionGlobalConfig.skipAnimations` pour les sorties `AnimatePresence`. Classes Tailwind vérifiées par nom (jsdom ne calcule pas la feuille de style) ; pré-rendu de `ModalDialog` vérifié (`renderToString` → chaîne vide). |
+| **Contrats aval** | Notes ajoutées dans [FEAT-04 §3.5](./FEAT-04.md) (focus visuel, `preventDefault()`, écoute en bouillonnement), [FEAT-05 §3.4](./FEAT-05.md) (`tvModeOverride` → `data-tv`) et [FEAT-15 §3.5](./FEAT-15.md) (détection TV de secours, plein écran). |
+| **Git** | Branche `feat/design-system` depuis `main`, commit `feat(ui): add adaptive design system for mobile and tv`. |

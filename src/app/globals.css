@@ -1,8 +1,103 @@
 /* source('../') : ne scanne que src/ (les docs/*.md citent de nombreuses classes Tailwind). */
 @import 'tailwindcss' source('../');
 
+/*
+ * Variante `tv:` — mode TV à 3 états, aligné sur DeviceSettings.tvModeOverride (FEAT-05) :
+ *   <html data-tv="on">  → toujours actif (always_tv) ;
+ *   <html data-tv="off"> → jamais actif (always_touch) ;
+ *   sans attribut         → auto : appareil piloté uniquement au D-Pad (ni écran tactile, ni souris).
+ * `xl:` ne suffit pas : les WebView Android TV exposent un viewport d'environ 960 × 540 px CSS.
+ */
+@custom-variant tv {
+  &:where([data-tv='on'], [data-tv='on'] *) {
+    @slot;
+  }
+
+  @media (hover: none) and (pointer: none) {
+    &:where(:root:not([data-tv='off']), :root:not([data-tv='off']) *) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   --font-sans:
     'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif,
     'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+
+  /*
+   * Typographie fluide : chaque taille croît linéairement entre 360 px et 1280 px de viewport ;
+   * la part en rem suit la taille de police de l'utilisateur. Liste synchronisée avec
+   * FLUID_TEXT_SIZES (src/lib/cn.ts).
+   */
+  --text-fluid-xs: clamp(0.75rem, 0.7011rem + 0.2174vw, 0.875rem);
+  --text-fluid-xs--line-height: 1.4;
+  --text-fluid-sm: clamp(0.875rem, 0.8261rem + 0.2174vw, 1rem);
+  --text-fluid-sm--line-height: 1.45;
+  --text-fluid-base: clamp(1rem, 0.9022rem + 0.4348vw, 1.25rem);
+  --text-fluid-base--line-height: 1.5;
+  --text-fluid-lg: clamp(1.125rem, 0.9783rem + 0.6522vw, 1.5rem);
+  --text-fluid-lg--line-height: 1.45;
+  --text-fluid-xl: clamp(1.25rem, 1.0054rem + 1.087vw, 1.875rem);
+  --text-fluid-xl--line-height: 1.35;
+  --text-fluid-2xl: clamp(1.5rem, 1.1087rem + 1.7391vw, 2.5rem);
+  --text-fluid-2xl--line-height: 1.25;
+  --text-fluid-3xl: clamp(1.875rem, 1.2391rem + 2.8261vw, 3.5rem);
+  --text-fluid-3xl--line-height: 1.15;
+}
+
+@layer base {
+  :root {
+    /* Marges de .tv-safe-container : mobile px-4 py-3, tablette px-8 py-6, grand écran 5vw / 4vh. */
+    --safe-area-x: --spacing(4);
+    --safe-area-y: --spacing(3);
+
+    @variant md {
+      --safe-area-x: --spacing(8);
+      --safe-area-y: --spacing(6);
+    }
+
+    @variant xl {
+      --safe-area-x: 5vw;
+      --safe-area-y: 4vh;
+    }
+
+    /* Overscan TV : 5 % sur chaque bord (48 × 27 dp sur l'écran Android TV de 960 × 540 dp). */
+    @variant tv {
+      --safe-area-x: 5vw;
+      --safe-area-y: 5vh;
+    }
+  }
+
+  body {
+    /* Ni sélection de texte parasite, ni flash gris au tap (Android). */
+    @apply select-none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /*
+   * Ni délai ni zoom au double tap (le pincement reste possible). Sur chaque élément : touch-action
+   * ne s'hérite pas et son effet s'arrête au premier conteneur défilant (le <main> d'AppShell).
+   */
+  * {
+    touch-action: manipulation;
+  }
+
+  /* Les champs restent sélectionnables (Safari iOS bloque la saisie sous user-select: none). */
+  input,
+  textarea,
+  [contenteditable]:not([contenteditable='false']) {
+    @apply select-text;
+  }
+}
+
+/*
+ * Conteneur global des écrans (AppShell, ModalDialog) : marges adaptatives, zone anti-overscan TV
+ * et encoches. env() vaut 0 tant que viewport-fit=cover n'est pas activé (FEAT-03 §5).
+ */
+@utility tv-safe-container {
+  padding-top: max(var(--safe-area-y), env(safe-area-inset-top));
+  padding-right: max(var(--safe-area-x), env(safe-area-inset-right));
+  padding-bottom: max(var(--safe-area-y), env(safe-area-inset-bottom));
+  padding-left: max(var(--safe-area-x), env(safe-area-inset-left));
 }

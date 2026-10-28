@@ -96,6 +96,10 @@ Dans `android/app/src/main/AndroidManifest.xml`, applique impérativement ces 4 
 * Vérifie dans `android/build.gradle` et `android/app/build.gradle` qu'aucune dépendance propriétaire (`com.google.android.gms`, `com.google.firebase`, etc.) n'est présente.
 * Crée les fichiers de description en français dans `metadata/fr-FR/` pour F-Droid.
 
+### 3.5. Mode TV & Zones de Sécurité ([FEAT-03 §5](./FEAT-03.md#5-décisions-dimplémentation-session-de-cadrage))
+* Sur un vrai boîtier, vérifier que la détection CSS `(hover: none) and (pointer: none)` active la variante `tv:` (marges anti-overscan de 5 %, aides de la télécommande). Sinon (télécommandes à pointeur « air mouse »), détecter la TV côté natif (`UiModeManager` → `UI_MODE_TYPE_TELEVISION`) et poser `data-tv="on"` sur `<html>` lorsque `tvModeOverride` vaut `'auto'`.
+* `.tv-safe-container` intègre déjà `env(safe-area-inset-*)`. Si l'APK passe en plein écran (edge-to-edge, imposé à partir d'Android 15 / API 35), activer `viewportFit: 'cover'` dans `layout.tsx` et vérifier que chaque écran passe par `AppShell`.
+
 ---
 
 ## 4. Critères d'Acceptation (Definition of Done)
@@ -103,5 +107,6 @@ Dans `android/app/src/main/AndroidManifest.xml`, applique impérativement ces 4 
 - [ ] `tests/android-manifest.test.ts` vérifie automatiquement la présence de `LEANBACK_LAUNCHER`, `LAUNCHER`, `touchscreen required="false"`, `android:banner`, et l'absence de `com.google.android.gms` / `firebase`.
 - [ ] Un test vérifie que `capacitor.config.ts` déclare `android.minWebViewVersion: 111` et que le fichier `server.errorPath` existe dans `public/`.
 - [ ] `npm run cap:sync` synchronise le dossier `out/` vers `android/app/src/main/assets/public` sans erreur.
+- [ ] Recette sur Android TV : le mode TV s'active (marges de 5 %, aides de la télécommande) et aucun bouton n'est rogné (§3.5).
 - [ ] `npm run validate:all` passe sans aucune erreur.
 - [ ] Si un commit est créé, il respecte le format **Conventional Commits** (`feat(android): add capacitor android and android tv packaging for f-droid`).
