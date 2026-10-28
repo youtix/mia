@@ -68,6 +68,12 @@ Implémente `validateMemoryCatalog(catalog = MEMORY_CATALOG): { valid: boolean; 
 3. Que le nombre de groupes `(cols * rows) / matchSize` ne dépasse pas le nombre de symboles disponibles dans `symbols.ts`.
 4. Que chaque niveau peut être instancié par `createMemoryGame(level.config)` sans erreur.
 
+* **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `validateMemoryCatalog` commence par `validateLevelCatalog('memory', catalog)` (`@/core/progression` : identifiant `LEVEL_ID_PATTERN` unique, ce qui couvre la règle 1 ; `gameId`, palier, `order` fini et unique dans son palier), puis ajoute ses règles propres.
+  * Brancher `MEMORY_CATALOG` sur `GAME_REGISTRY.memory.catalog` : le test du registre le valide alors par `validateLevelCatalog`.
+  * Un niveau publié n'est jamais retiré ni renommé : son `id` est la clé de la sauvegarde, et `countProfileStars` divergerait du Hub. Changer son palier ou son `order` ne touche pas à la sauvegarde (numéros d'étoile recalculés, niveaux réussis toujours débloqués).
+  * Le registre type les configurations en `unknown` : la page `/memory` appelle `getGameProgressSummary('memory', MEMORY_CATALOG, activeProfile)` pour obtenir des `MemoryLevelConfig`.
+
 ---
 
 ## 4. Critères d'Acceptation (Definition of Done)

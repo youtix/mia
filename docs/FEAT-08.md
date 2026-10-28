@@ -68,6 +68,11 @@ tests/
   * Monter `<ProfileSelectorModal isOpen={isSelectorOpen || mustChooseProfile} onClose={mustChooseProfile ? undefined : closeSelector} />` (`@/components/profile`) une fois `isLoaded` : sans `onClose`, le choix est imposé (ni ✕, ni Échap) ; `onClose` est aussi appelé après un choix ou une création. La modale gère seule création et suppression.
   * Bouton du profil actif : `AvatarBadge` (`size="sm"`, décoratif) et prénom dans un `FocusableButton`, placé dans l'emplacement `profile` d'`AppShell`.
   * Les cartes de profil comptent les étoiles sans catalogue (`countProfileStars`) ; le compteur du Hub s'appuie sur FEAT-07.
+* **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `getProfileProgressSummary(activeProfile)` (`@/core/progression`) donne le compteur du Hub (`earnedStars`, `totalStars`, `perfectCount`, tous jeux confondus) et, dans `games`, le résumé de chaque jeu dans l'ordre de `GAMES` (une `GameHubCard` par jeu). Fonctions pures, sans hook fourni : `useMemo` sur `activeProfile`.
+  * `GameManifest` fournit `title`, `skill` (faculté travaillée) et `path` (route à passer telle quelle à `next/link`, qui ajoute `basePath` et la barre finale). Icônes des jeux à déclarer dans `src/components/progression/` (table exhaustive sur `GameId`, comme `avatar-icons.tsx`).
+  * `nextPlayableLevel` vaut `null` quand toutes les étoiles du jeu sont gagnées : remplacer « Continuer » (ex: « Toutes les étoiles gagnées ! »). Les catalogues restent vides jusqu'à FEAT-11 et FEAT-14 : prévoir un jeu sans niveau (`totalStars === 0`, ex: « Bientôt disponible ») ; les tests injectent leurs catalogues (`getProfileProgressSummary(profile, games)`).
+  * Seuls les niveaux des catalogues comptent : le compteur du Hub peut être inférieur au total des cartes de profil si la sauvegarde contient des niveaux d'une version plus récente de Mia.
 
 ### 4.2. Carte des Étoiles (`src/components/progression/StarMapScreen.tsx`)
 * **En-tête du jeu** : Bouton Retour vers le Hub, titre du jeu, compteur `earnedStars / totalStars ⭐`, et bouton **"Jouer l'Étoile #X"** (accès rapide au prochain niveau non résolu).
@@ -84,6 +89,9 @@ tests/
     4. **Parfait (`isPerfect`)** : Grande étoile dorée ⭐ + badge Couronne 👑.
 * **Ergonomie Télécommande Android TV** :
   * À l'ouverture de `StarMapScreen`, le focus D-Pad (`focusedIndex`) se place **automatiquement sur la tuile du prochain niveau à jouer (`nextPlayableLevel`)** et fait défiler la vue (`scrollIntoView`) jusqu'à cette étoile.
+* **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Résumé : `getGameProgressSummary(gameId, GAME_REGISTRY[gameId].catalog, activeProfile)`. `tiers` contient toujours les 5 paliers, même vides (les masquer ou les annoncer). `starNumber` est recalculé à chaque publication de niveaux : seul `definition.id` est stable.
+  * `nextPlayableLevel` (niveau qui suit le niveau réussi le plus avancé, sinon le premier non réussi) est toujours débloqué. Il vaut `null` quand tout est réussi : curseur initial alors sur une autre tuile (ex: la première sans couronne, sinon la première) et bouton « Jouer l'Étoile #X » masqué ou remplacé. Après l'insertion de niveaux plus tôt dans un catalogue, plusieurs tuiles peuvent être « à conquérir ».
 * **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) :
   * `layout.tsx` monte `NavigationProvider` (import depuis le barrel `@/core/navigation`, compatible avec un composant serveur).
   * Chaque groupe (boutons de l'en-tête, tuiles de chaque palier, actions des `GameHubCard`) est une zone `useGridNavigation` ; une seule est active à la fois, l'écran les enchaîne avec `onEdge` (bascule de `isActive` + `setFocusedIndex` sur la zone cible, ex: conserver la colonne d'un palier à l'autre).

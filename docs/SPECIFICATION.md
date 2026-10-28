@@ -530,5 +530,5 @@ L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi ins
 Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.
-3. Enregistrer le jeu dans le registre central `GAME_REGISTRY` (`src/core/progression/registry.ts`).
+3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, FEAT-05), sans laquelle sa progression serait écartée au chargement.
 4. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !

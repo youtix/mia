@@ -74,6 +74,9 @@ Affiche de façon compacte au-dessus du plateau :
 * **Modale de Fin de Niveau (`ModalDialog`)** :
   * En cas de victoire (`phase === 'won'`) : appelle le callback `onVictory({ moves, mistakes, isPerfect })` et propose **"Étoile Suivante (#N+1) →"** (pré-focalisé), **"Rejouer"** et **"Carte des Étoiles"**.
   * En cas de défaite (`phase === 'lost'`) : propose **"Réessayer"** (pré-focalisé).
+* **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * La victoire est enregistrée par `updateState((state) => recordLevelVictory(state, { gameId: 'memory', levelId, moves, timeSeconds, isPerfect }))` (`isPerfect` : `isPerfectWin`). Mesurer `timeSeconds` avec `performance.now()` : `Date.now()` recule si l'horloge de la TV est réglée pendant la partie. Une valeur invalide ne devient jamais un meilleur score, mais l'étoile est toujours gagnée.
+  * « Étoile Suivante (#N+1) » : `allLevels[globalIndex + 1]` du résumé (`getGameProgressSummary`), débloqué par cette victoire ; absent après la dernière étoile du catalogue.
 
 ---
 
