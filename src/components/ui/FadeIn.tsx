@@ -3,12 +3,14 @@
 import { MotionConfig, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 
-interface FadeInProps {
+export interface FadeInProps {
   children: ReactNode;
+  /** Délai avant l'apparition, en secondes (ex: indicateur de chargement sans clignotement) */
   delay?: number;
   className?: string;
 }
 
+/** Apparition en fondu (et légère montée, sauf si le système demande de réduire les animations). */
 export function FadeIn({ children, delay = 0, className }: FadeInProps) {
   return (
     // reducedMotion="user" : respecte le réglage système « réduire les animations ».

@@ -73,6 +73,9 @@ Implémente `validateMemoryCatalog(catalog = MEMORY_CATALOG): { valid: boolean; 
   * Brancher `MEMORY_CATALOG` sur `GAME_REGISTRY.memory.catalog` : le test du registre le valide alors par `validateLevelCatalog`.
   * Un niveau publié n'est jamais retiré ni renommé : son `id` est la clé de la sauvegarde, et `countProfileStars` divergerait du Hub. Changer son palier ou son `order` ne touche pas à la sauvegarde (numéros d'étoile recalculés, niveaux réussis toujours débloqués).
   * Le registre type les configurations en `unknown` : la page `/memory` appelle `getGameProgressSummary('memory', MEMORY_CATALOG, activeProfile)` pour obtenir des `MemoryLevelConfig`.
+* **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) :
+  * `GameScreen` calcule déjà ce résumé : la page rend `<GameScreen gameId="memory" catalog={MEMORY_CATALOG} renderLevel={(level, controls) => <MemoryBoard … />} />` (`level.definition.config` typé en `MemoryLevelConfig`, `controls` : `recordVictory`, `playLevel`, `exitToMap`, `summary`).
+  * `renderLevel` est une fonction : non transmissible d'un composant serveur à un composant client. Déclarer ce rendu dans un composant client (ex: `src/games/memory/MemoryGameScreen.tsx`, `'use client'`) que `page.tsx` importe directement (pas un barrel), en gardant son export `metadata`.
 
 ---
 

@@ -92,6 +92,7 @@ Dans `android/app/src/main/AndroidManifest.xml`, applique impérativement ces 4 
 ### 3.3. Gestion du Bouton Physique `Retour` Android (`src/core/navigation/useAndroidBackButton.ts`)
 * Utilise `App.addListener('backButton', ...)` de `@capacitor/app` pour revenir à l'écran parent ou fermer une modale ouverte lorsqu'on appuie sur le bouton `Retour` de la télécommande Android TV.
 * **Contrat FEAT-04** ([§5](./FEAT-04.md#5-décisions-dimplémentation-session-de-cadrage)) : le bouton physique n'émet aucun `keydown`. Brancher l'écouteur sur `dispatchBack()` (`useNavigation`), qui applique le routage des touches (zone active de la couche du dessus, sinon `onClose` de la modale ouverte) et renvoie `false` si rien ne l'a géré : c'est alors à ce hook de décider (ex: `App.exitApp()` sur l'écran d'accueil).
+* **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) : les zones du Hub n'ont pas d'`onBack` (`dispatchBack()` → `false` : quitter l'application). Sur la Carte des Étoiles et un niveau, Retour revient à l'écran parent (historique dépilé quand il le précède, sinon remplacé) : Mia n'est quittée que depuis le Hub. Avec le choix du joueur imposé (modale sans `onClose`), `dispatchBack()` renvoie aussi `false`.
 
 ### 3.4. Conformité Stricte F-Droid
 * Vérifie dans `android/build.gradle` et `android/app/build.gradle` qu'aucune dépendance propriétaire (`com.google.android.gms`, `com.google.firebase`, etc.) n'est présente.

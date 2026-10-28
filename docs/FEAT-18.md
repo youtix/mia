@@ -59,6 +59,7 @@ tests/
 * **Import Web** : `<input type="file" accept="application/json,.json">` masqué derrière un `FocusableButton`, puis `File.text()` ; respecter `jsx-a11y` strict (`FEAT-02`) et la navigation D-Pad (`FEAT-04`).
 * **Contraste élevé** : aucune règle CSS n'existe encore ; tout l'effet est à concevoir ici.
 * **Commit** : ajouter un scope (ex: `settings`) à `commitlint.config.mjs` ([FEAT-02 §3.4](./FEAT-02.md)).
+* **Point d'entrée dans le Hub** ([FEAT-08 §6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) : bouton à côté de celui du profil actif (emplacement `profile` d'`AppShell`, `HubScreen`) ; élargir la zone D-Pad `hub-profile` à ces deux boutons. Une route `/settings/` suivrait les retours de FEAT-08 (`useGameNavigation` : historique dépilé quand le Hub précède, sinon remplacé) ; une modale garderait le Hub monté et son curseur.
 
 ---
 

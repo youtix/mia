@@ -77,6 +77,9 @@ Affiche de façon compacte au-dessus du plateau :
 * **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
   * La victoire est enregistrée par `updateState((state) => recordLevelVictory(state, { gameId: 'memory', levelId, moves, timeSeconds, isPerfect }))` (`isPerfect` : `isPerfectWin`). Mesurer `timeSeconds` avec `performance.now()` : `Date.now()` recule si l'horloge de la TV est réglée pendant la partie. Une valeur invalide ne devient jamais un meilleur score, mais l'étoile est toujours gagnée.
   * « Étoile Suivante (#N+1) » : `allLevels[globalIndex + 1]` du résumé (`getGameProgressSummary`), débloqué par cette victoire ; absent après la dernière étoile du catalogue.
+* **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) :
+  * Le plateau est rendu par `renderLevel(level, controls)` de `GameScreen` (branché par FEAT-11) et remonté à chaque changement de niveau ; « Rejouer » se gère dans le plateau. `controls.recordVictory({ moves, timeSeconds, isPerfect })` applique `recordLevelVictory` au profil actif ; `controls.playLevel(id)` lance « Étoile Suivante » (`controls.summary.allLevels[level.globalIndex + 1]`) en remplaçant l'entrée d'historique ; `controls.exitToMap()` répond à « Carte des Étoiles » et à Retour (historique dépilé ou remplacé, jamais de sortie de Mia).
+  * Le niveau n'est joué que débloqué et avec un profil actif (`ProfileGate` de `GameScreen`) : le plateau n'a pas à le vérifier.
 
 ---
 

@@ -72,6 +72,9 @@ tests/
   * Fournir `getFocusedElement` et `ownsElement` (refs des `VehiclePiece`) : sans eux, OK sur un véhicule ayant le focus DOM reste natif (bouton hors zone) et le premier appui après le tactile ne fait que révéler le curseur. `useNavigationScope` ne déplace pas le focus DOM : le plateau appelle `focus()` sur le véhicule ciblé au D-Pad s'il veut les annonces TalkBack.
 * **Contrat FEAT-07** ([§5](./FEAT-07.md#5-décisions-dimplémentation-session-de-cadrage)) :
   * À la victoire (`isWon`), la page enregistre `updateState((state) => recordLevelVictory(state, { gameId: 'traffic-jam', levelId, moves, timeSeconds, isPerfect }))` (`moves` : `state.moves` ; `isPerfect` : `isPerfectWin`). Mesurer `timeSeconds` avec `performance.now()` : `Date.now()` recule si l'horloge de la TV est réglée pendant la partie. Une valeur invalide ne devient jamais un meilleur score, mais l'étoile est toujours gagnée.
+* **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) :
+  * Le plateau est rendu par `renderLevel(level, controls)` de `GameScreen` (branché par FEAT-14) et remonté à chaque changement de niveau. `controls.recordVictory({ moves, timeSeconds, isPerfect })` réalise l'enregistrement ci-dessus ; `controls.playLevel(id)` passe à l'étoile suivante en remplaçant l'entrée d'historique ; `controls.exitToMap()` revient à la Carte des Étoiles (historique dépilé ou remplacé).
+  * Retour en État 2 (`isVehicleLocked`) coupe le moteur ; en État 1, le router vers `controls.exitToMap()` (ou une pause), comme le bouton Retour d'`AppShell` (`backButtonRef`, `onBackFocus` pour l'inclure dans une zone D-Pad).
 
 ---
 

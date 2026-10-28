@@ -1,5 +1,5 @@
-// Module direct, pas le barrel : il ferait entrer StorageContext et Capacitor dans le JS client.
-import { TV_MODE_BOOTSTRAP_SCRIPT } from '@/core/storage/tv-mode';
+import { NavigationProvider } from '@/core/navigation';
+import { StorageProvider, TV_MODE_BOOTSTRAP_SCRIPT } from '@/core/storage';
 import '@fontsource-variable/atkinson-hyperlegible-next';
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
@@ -8,7 +8,8 @@ import './globals.css';
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
 
 export const metadata: Metadata = {
-  title: 'Mia - Entraînement Cérébral',
+  // Les pages des jeux donnent leur titre (« Memory · Mia ») ; le Hub garde le titre par défaut.
+  title: { default: 'Mia - Entraînement Cérébral', template: '%s · Mia' },
   description:
     'Entraînement cérébral gratuit et open-source pour Smartphone, Tablette, Android TV et Web.',
   applicationName: 'Mia',
@@ -31,7 +32,12 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         {/* Mode TV (FEAT-05 §3.4) : posé avant le premier rendu, sinon les marges sauteraient. */}
         <script dangerouslySetInnerHTML={{ __html: TV_MODE_BOOTSTRAP_SCRIPT }} />
       </head>
-      <body className="min-h-dvh bg-slate-900 font-sans text-slate-50 antialiased">{children}</body>
+      <body className="min-h-dvh bg-slate-900 font-sans text-slate-50 antialiased">
+        {/* Sauvegarde locale (profils, étoiles) et moteur D-Pad, partagés par tous les écrans. */}
+        <StorageProvider>
+          <NavigationProvider>{children}</NavigationProvider>
+        </StorageProvider>
+      </body>
     </html>
   );
 }
