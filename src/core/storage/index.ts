@@ -1,4 +1,13 @@
 export {
+  AVATARS,
+  DEFAULT_AVATAR_ID,
+  QUICK_PROFILE_NAMES,
+  getAvatar,
+  isAvatarId,
+  type AvatarId,
+  type AvatarMeta,
+} from './avatars';
+export {
   BACKUP_STORAGE_KEY,
   CURRENT_SCHEMA_VERSION,
   DEFAULT_DEVICE_SETTINGS,
@@ -21,6 +30,29 @@ export {
   type SaveParseReport,
 } from './migrations';
 export {
+  DEFAULT_PROFILE_NAME,
+  MAX_PROFILES,
+  MAX_PROFILE_NAME_LENGTH,
+  PROFILE_LIMIT_MESSAGE,
+  PROFILE_NAME_ERROR_MESSAGES,
+  addProfile,
+  canAddProfile,
+  checkProfileName,
+  countProfileStars,
+  createProfileId,
+  deleteProfile,
+  ensureDefaultProfile,
+  getAvailableQuickNames,
+  getProfileNameKey,
+  needsProfileChoice,
+  normalizeProfileName,
+  setActiveProfile,
+  suggestAvatarId,
+  type NewProfileOptions,
+  type ProfileNameCheck,
+  type ProfileNameError,
+} from './profile-manager';
+export {
   SaveImportError,
   exportSaveJson,
   importSaveJson,
@@ -36,3 +68,4 @@ export {
   type StorageProviderProps,
 } from './StorageContext';
 export { TV_ATTRIBUTE_VALUES, TV_MODE_BOOTSTRAP_SCRIPT, applyTvModeOverride } from './tv-mode';
+export { useProfileGate, type ProfileGate } from './useProfileGate';

@@ -1,6 +1,7 @@
 import { FocusableButton, FocusableCard, ModalDialog } from '@/components/ui';
 import {
   coordToIndex,
+  countGridColumns,
   findNearestTarget,
   getGridItemCount,
   indexToCoord,
@@ -10,6 +11,7 @@ import {
   moveInGrid,
   NavigationLayer,
   NavigationProvider,
+  useGridColumns,
   useGridNavigation,
   useNavigation,
   useNavigationScope,
@@ -1057,5 +1059,88 @@ describe('useNavigationScope', () => {
 
     expect(press('Enter')).toBe(false);
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('useGridColumns', () => {
+  /** Grille dont le gabarit de colonnes est posé en style en ligne (jsdom ne lit pas Tailwind). */
+  function Columns({ fallback = 3, template }: { fallback?: number; template?: string }) {
+    const [gridRef, cols] = useGridColumns<HTMLDivElement>(fallback);
+    return (
+      <div
+        ref={gridRef}
+        data-testid="grille"
+        style={template === undefined ? undefined : { gridTemplateColumns: template }}
+      >
+        <output aria-label="Colonnes">{cols}</output>
+      </div>
+    );
+  }
+
+  function getColumns(): string {
+    return screen.getByRole('status', { name: 'Colonnes' }).textContent;
+  }
+
+  it('compte les colonnes calculées de la grille CSS', () => {
+    render(<Columns template="136px 136px 136px 136px" />);
+
+    expect(getColumns()).toBe('4');
+  });
+
+  it.each<[string, number]>([
+    ['[debut] 120px [milieu] 120px [fin]', 2],
+    ['repeat(3, 1fr)', 0],
+    ['minmax(8rem, 1fr) 100px', 0],
+    ['none', 0],
+    ['', 0],
+  ])('ignore noms de lignes et gabarits non résolus : « %s » → %i', (template, expected) => {
+    const element = document.createElement('div');
+    element.style.gridTemplateColumns = template;
+
+    expect(countGridColumns(element)).toBe(expected);
+  });
+
+  it('se replie sur la valeur par défaut tant que la grille n’est pas mesurable', () => {
+    const { rerender } = render(<Columns />);
+    expect(getColumns()).toBe('3');
+
+    rerender(<Columns fallback={0} />);
+    expect(getColumns()).toBe('1');
+
+    // Pré-rendu statique : rien à mesurer.
+    expect(renderToString(<Columns template="120px 120px" />)).toContain('>3</output>');
+  });
+
+  it('suit la largeur du conteneur (ResizeObserver) et se désabonne au démontage', () => {
+    const observers: FakeResizeObserver[] = [];
+    class FakeResizeObserver {
+      readonly observe = vi.fn();
+      readonly disconnect = vi.fn();
+      constructor(readonly notify: () => void) {
+        observers.push(this);
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    const { unmount } = render(<Columns template="100px 100px" />);
+    const grid = screen.getByTestId('grille');
+    const [observer] = observers;
+
+    expect(getColumns()).toBe('2');
+    expect(observers).toHaveLength(1);
+    expect(observer?.observe).toHaveBeenCalledExactlyOnceWith(grid);
+
+    grid.style.gridTemplateColumns = '100px 100px 100px';
+    act(() => {
+      observer?.notify();
+    });
+    expect(getColumns()).toBe('3');
+
+    act(() => {
+      observer?.notify();
+    });
+    expect(getColumns()).toBe('3');
+
+    unmount();
+    expect(observer?.disconnect).toHaveBeenCalledOnce();
   });
 });

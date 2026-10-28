@@ -29,6 +29,7 @@ export {
   type NavigationTarget,
   type Point2D,
 } from './types';
+export { countGridColumns, useGridColumns, type UseGridColumnsResult } from './useGridColumns';
 export {
   useGridNavigation,
   type UseGridNavigationOptions,

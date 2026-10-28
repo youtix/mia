@@ -110,6 +110,8 @@ export interface GameProgressSummary<TConfig = unknown> {
      * Enregistrer la victoire par `updateState((state) => recordLevelVictory(state, params))` (`useMiaStorage`).
      * Première victoire : initialiser `bestMoves` / `bestTimeSeconds` avec les valeurs de la partie, jamais `Infinity` (sérialisé en `null` par JSON, le niveau serait écarté au chargement suivant). Toutes les valeurs numériques doivent être finies et ≥ 0.
      * Indexer `levels` par `levelId` (le champ `levelId` est réaligné sur sa clé) et `gamesProgress` par un `GameId` connu : la progression d'un jeu hors `GameId` est écartée au chargement (ajouter le jeu au type `GameId` avant d'enregistrer sa progression).
+   * **Contrat FEAT-06** ([§5](./FEAT-06.md#5-décisions-dimplémentation-session-de-cadrage)) :
+     * Le sélecteur de profil compte les étoiles sans catalogue (`countProfileStars` : niveaux `completed` de la sauvegarde, tous jeux confondus). Ne jamais retirer un niveau publié d'un catalogue : ce total divergerait de `getGameProgressSummary`.
 
 ---
 
