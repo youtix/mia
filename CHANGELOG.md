@@ -1,3 +1,9 @@
+## [0.10.0](https://github.com/youtix/mia/compare/v0.9.0...v0.10.0) (2026-10-29)
+
+### Features
+
+* **memory:** add memory board ui with 3d flip and dpad controls ([#11](https://github.com/youtix/mia/issues/11)) ([51bb6a7](https://github.com/youtix/mia/commit/51bb6a7cf8d9a7aa6041266a00b3a6832321fd7b))
+
 ## [0.9.0](https://github.com/youtix/mia/compare/v0.8.0...v0.9.0) (2026-10-29)
 
 ### Features
