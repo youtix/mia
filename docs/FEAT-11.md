@@ -76,6 +76,10 @@ Implémente `validateMemoryCatalog(catalog = MEMORY_CATALOG): { valid: boolean; 
 * **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) :
   * `GameScreen` calcule déjà ce résumé : la page rend `<GameScreen gameId="memory" catalog={MEMORY_CATALOG} renderLevel={(level, controls) => <MemoryBoard … />} />` (`level.definition.config` typé en `MemoryLevelConfig`, `controls` : `recordVictory`, `playLevel`, `exitToMap`, `summary`).
   * `renderLevel` est une fonction : non transmissible d'un composant serveur à un composant client. Déclarer ce rendu dans un composant client (ex: `src/games/memory/MemoryGameScreen.tsx`, `'use client'`) que `page.tsx` importe directement (pas un barrel), en gardant son export `metadata`.
+* **Contrat FEAT-09** ([§5](./FEAT-09.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Les règles 2 à 4 sont celles de `getMemoryConfigErrors(level.config)` (`@/games/memory`), dont chaque message est préfixé du nom du niveau (comme `validateLevelCatalog`). Il couvre aussi les champs entiers et positifs, le mode visuel connu et la cohérence `perfectMaxMistakes ≤ maxMistakes`, `swapEveryNMistakes ≤ maxMistakes`. Une configuration sans anomalie est instanciée par `createMemoryGame` sans erreur.
+  * Règle 3 : le nombre de symboles disponibles dépend du mode (`getMemoryModeCapacity`) : 10 groupes en `distinct_color_shape` (une couleur unique par groupe), 36 en `thematic_palette` et `monochrome`, 32 en `abstract_orientation`.
+  * `catalog.ts` est couvert par le seuil de 90 % de `src/games/memory/*.ts`.
 
 ---
 

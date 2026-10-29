@@ -185,10 +185,10 @@ Chaque niveau de *Memory* est défini par une structure déclarative permettant 
 1. **Dimensions de la grille (`cols x rows`)** : de `2x2` (4 cartes) à `6x6` (36 cartes).
 2. **Taille des groupes à associer (`matchSize`)** : Paires (`2` cartes identiques) ou Triplets (`3` cartes identiques dans les niveaux *Difficile* / *Très Difficile*).
 3. **Mode de distinction visuelle (`visualMode`)** :
-   * `distinct_color_shape` : Chaque paire a une icône ET une couleur de fond uniques (ex: Soleil Jaune, Pomme Rouge).
+   * `distinct_color_shape` : Chaque groupe a une icône ET une couleur uniques (ex: Soleil Jaune, Pomme Rouge).
    * `thematic_palette` : Icônes d'un même thème avec une palette réduite à 3 couleurs.
    * `monochrome` : Toutes les cartes ont exactement la même couleur ; seule la forme du symbole permet de les différencier.
-   * `abstract_orientation` : Formes géométriques proches ou orientées différemment (ex: flèche haut, flèche droite, flèche diagonale).
+   * `abstract_orientation` : Formes géométriques proches ou orientées différemment (ex: flèche vers le haut, vers la droite, vers le bas).
 4. **Temps d'aperçu initial (`previewSeconds`)** : Au début du niveau, les cartes sont dévoilées pendant $X$ secondes avant de se retourner (`0` = aucun aperçu).
 5. **Nombre maximal d'erreurs autorisées (`maxMistakes`)** : `null` (illimité en *Très Facile* / *Facile*) ou limité (en *Difficile* / *Très Difficile*) pour encourager la mémorisation plutôt que le clic au hasard.
 6. **Mécanique spéciale (`swapEveryNMistakes`)** : Dans les niveaux *Très Difficile*, toutes les $N$ erreurs, deux cartes face cachée échangent visiblement leur position sur le plateau.
