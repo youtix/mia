@@ -1,4 +1,5 @@
 import {
+  applyHighContrastMode,
   applyTvModeOverride,
   BACKUP_STORAGE_KEY,
   createDefaultSaveState,
@@ -131,6 +132,13 @@ function withTvMode(tvModeOverride: TvModeOverride): MiaSaveState {
   return { ...createDefaultSaveState(), settings: { ...DEFAULT_DEVICE_SETTINGS, tvModeOverride } };
 }
 
+function withContrast(highContrastMode: boolean): MiaSaveState {
+  return {
+    ...createDefaultSaveState(),
+    settings: { ...DEFAULT_DEVICE_SETTINGS, highContrastMode },
+  };
+}
+
 function storeLocally(value: unknown, key = STORAGE_KEY): void {
   localStorage.setItem(key, typeof value === 'string' ? value : toJson(value));
 }
@@ -223,6 +231,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
   document.documentElement.removeAttribute('data-tv');
+  document.documentElement.removeAttribute('data-contrast');
   Reflect.deleteProperty(navigator, 'storage');
 });
 
@@ -865,11 +874,46 @@ describe('Mode TV (data-tv)', () => {
     window.removeEventListener('error', onError);
     expect(onError).not.toHaveBeenCalled();
     expect(document.documentElement.hasAttribute('data-tv')).toBe(false);
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
   });
 
   it('reste autonome et en ES5 (exécuté avant tout bundle)', () => {
     expect(TV_MODE_BOOTSTRAP_SCRIPT).toContain(JSON.stringify(STORAGE_KEY));
     expect(TV_MODE_BOOTSTRAP_SCRIPT).not.toMatch(/=>|\blet\b|\bconst\b|`/);
+  });
+});
+
+describe('Contraste élevé (data-contrast)', () => {
+  it('applyHighContrastMode pose puis retire data-contrast', () => {
+    applyHighContrastMode(true);
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+
+    applyHighContrastMode(false);
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+  });
+
+  it('le script inline pose data-contrast avant l’hydratation, avec data-tv', () => {
+    storeLocally({
+      ...createDefaultSaveState(),
+      settings: { ...DEFAULT_DEVICE_SETTINGS, tvModeOverride: 'always_tv', highContrastMode: true },
+    });
+
+    runBootstrapScript();
+
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+  });
+
+  it.each([
+    ['standard', withContrast(false)],
+    ['à la valeur « oui »', { settings: { highContrastMode: 'oui' } }],
+    ['à la valeur 1', { settings: { highContrastMode: 1 } }],
+  ])('le script inline ne pose rien en contraste %s', (_label, raw) => {
+    storeLocally(raw);
+
+    runBootstrapScript();
+
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
   });
 });
 
@@ -1014,6 +1058,24 @@ describe('StorageProvider & useMiaStorage', () => {
       expect(result.current.isLoaded).toBe(true);
     });
     expect(document.documentElement.getAttribute('data-tv')).toBe('off');
+  });
+
+  it('applique le contraste élevé une fois la sauvegarde chargée, puis à chaque changement', async () => {
+    storeLocally(withContrast(true));
+
+    const { result } = renderStorage();
+
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+    await waitFor(() => {
+      expect(result.current.isLoaded).toBe(true);
+    });
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+
+    await act(async () => {
+      await result.current.updateSettings({ highContrastMode: false });
+    });
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+    expect(readLocally()).toEqual(withContrast(false));
   });
 
   it('resetAllData efface profils et réglages', async () => {

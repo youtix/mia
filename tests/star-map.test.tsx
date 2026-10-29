@@ -642,6 +642,43 @@ describe('Hub', () => {
       expect(getCardButton('Traffic Jam', 'Continuer (Étoile #2)')).toHaveFocus();
     });
   });
+
+  it('ouvre les Réglages depuis l’en-tête, route préchargée', async () => {
+    await renderHub(familySave());
+
+    expect(router.prefetch).toHaveBeenCalledWith('/settings');
+    const settings = within(screen.getByRole('banner')).getByRole('button', { name: 'Réglages' });
+    expect(settings).toHaveTextContent('Réglages');
+    fireEvent.click(settings);
+
+    expect(router.push).toHaveBeenLastCalledWith('/settings');
+  });
+
+  it('place Réglages à droite du profil dans la zone de l’en-tête, à la télécommande', async () => {
+    await renderHub(forceTvMode(familySave()));
+    await waitFor(() => {
+      expect(getCardButton('Memory', 'Continuer (Étoile #5)')).toHaveFocus();
+    });
+
+    press('ArrowUp');
+    expect(getButton('Joueur : Léo')).toHaveFocus();
+    press('ArrowRight');
+    expect(getButton('Réglages')).toHaveFocus();
+    expect(getButton('Réglages')).toHaveAttribute('data-focused', 'true');
+    press('ArrowRight');
+    expect(getButton('Réglages')).toHaveFocus();
+    // Bas depuis Réglages : la dernière carte visitée, comme depuis le profil.
+    press('ArrowDown');
+    expect(getCardButton('Memory', 'Continuer (Étoile #5)')).toHaveFocus();
+    press('ArrowUp');
+    expect(getButton('Réglages')).toHaveFocus();
+    press('ArrowLeft');
+    expect(getButton('Joueur : Léo')).toHaveFocus();
+    press('ArrowRight');
+    expect(press('Enter')).toBe(true);
+
+    expect(router.push).toHaveBeenLastCalledWith('/settings');
+  });
 });
 
 describe('Carte des Étoiles', () => {

@@ -1,6 +1,8 @@
 'use client';
 
 import { AvatarBadge, ProfileGate } from '@/components/profile';
+// Module direct, pas le barrel des réglages : le Hub n'embarque pas l'écran Réglages.
+import { SETTINGS_PATH } from '@/components/settings/labels';
 import { AppShell, DEFAULT_REMOTE_HINTS, FadeIn, FocusableButton } from '@/components/ui';
 import {
   coordToIndex,
@@ -14,7 +16,7 @@ import {
 import { GAMES, getProfileProgressSummary, type GameManifest } from '@/core/progression';
 import { useMiaStorage } from '@/core/storage';
 import type { GameId } from '@/types/mia';
-import { UserRound } from 'lucide-react';
+import { Settings, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { GameHubCard } from './GameHubCard';
@@ -52,7 +54,7 @@ function getCardEntry(direction: Direction, coord: GridCoord): ZoneEntry {
   return { kind: 'index', index: coord.row };
 }
 
-/** Zones D-Pad du Hub : le bouton du profil actif, puis les actions de chaque carte de jeu. */
+/** Zones D-Pad du Hub : les boutons du profil actif et des Réglages, puis les actions de chaque carte. */
 type HubZone = 'profile' | GameId;
 
 export interface HubScreenProps {
@@ -124,10 +126,11 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
     focusGame(gameId);
   };
 
+  // Profil puis Réglages, côte à côte ; Bas depuis l'un ou l'autre descend vers la dernière carte.
   const profileZone = useGridNavigation({
     scopeId: 'hub-profile',
     rows: 1,
-    cols: 1,
+    cols: 2,
     isActive: activeZone === 'profile',
     onEdge: (direction) => {
       if (direction === 'down' && lastGameId) activateGame(lastGameId, { kind: 'first' });
@@ -159,33 +162,51 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
   // Routes préchargées : la Carte des Étoiles s'ouvre sans attente sur un boîtier TV modeste.
   useEffect(() => {
     for (const game of games) router.prefetch(game.path);
+    router.prefetch(SETTINGS_PATH);
   }, [games, router]);
 
   return (
     <AppShell
       title="Mia"
       profile={
-        <FocusableButton
-          ref={profileZone.getItemRef(0)}
-          isFocused={profileZone.isItemFocused(0)}
-          variant="secondary"
-          size="sm"
-          aria-haspopup="dialog"
-          className="max-w-[45vw] sm:max-w-xs"
-          leftIcon={
-            activeProfile ? (
-              <AvatarBadge avatarId={activeProfile.avatarId} size="sm" />
-            ) : (
-              <UserRound className="size-6" />
-            )
-          }
-          onClick={onOpenSelector}
-          onFocus={focusProfile}
-        >
-          {/* Espace hors des balises : séparateur du nom accessible (« Joueur : Léo »). */}
-          <span className="sr-only">Joueur :</span>{' '}
-          <span className="min-w-0 truncate">{activeProfile?.name ?? 'Choisir un joueur'}</span>
-        </FocusableButton>
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
+          <FocusableButton
+            ref={profileZone.getItemRef(0)}
+            isFocused={profileZone.isItemFocused(0)}
+            variant="secondary"
+            size="sm"
+            aria-haspopup="dialog"
+            className="max-w-[40vw] sm:max-w-xs"
+            leftIcon={
+              activeProfile ? (
+                <AvatarBadge avatarId={activeProfile.avatarId} size="sm" />
+              ) : (
+                <UserRound className="size-6" />
+              )
+            }
+            onClick={onOpenSelector}
+            onFocus={focusProfile}
+          >
+            {/* Espace hors des balises : séparateur du nom accessible (« Joueur : Léo »). */}
+            <span className="sr-only">Joueur :</span>{' '}
+            <span className="min-w-0 truncate">{activeProfile?.name ?? 'Choisir un joueur'}</span>
+          </FocusableButton>
+          {/* Réglages & Sauvegarde (FEAT-18) : texte masqué sur petit écran, comme Retour. */}
+          <FocusableButton
+            ref={profileZone.getItemRef(1)}
+            isFocused={profileZone.isItemFocused(1)}
+            variant="secondary"
+            size="sm"
+            aria-label="Réglages"
+            leftIcon={<Settings className="size-6" />}
+            onClick={() => {
+              router.push(SETTINGS_PATH);
+            }}
+            onFocus={focusProfile}
+          >
+            <span className="sr-only sm:not-sr-only">Réglages</span>
+          </FocusableButton>
+        </div>
       }
       stars={getStarCounter(progress)}
       footerHints={HUB_REMOTE_HINTS}

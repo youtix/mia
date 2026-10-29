@@ -1,4 +1,5 @@
 import type { TvModeOverride } from '@/types/mia';
+import { CONTRAST_ATTRIBUTE, HIGH_CONTRAST_VALUE } from './contrast-mode';
 import { STORAGE_KEY } from './default-state';
 
 /** Valeur de `<html data-tv>` lue par la variante `tv:` (FEAT-03 §5) ; `null` = attribut retiré. */
@@ -24,14 +25,18 @@ const FORCED_TV_VALUES = Object.fromEntries(
 
 /**
  * Script inline placé dans le `<head>` de `layout.tsx` : lit le miroir localStorage et pose
- * `data-tv` avant le premier rendu, sinon les marges TV sauteraient à l'hydratation. Autonome et
- * en ES5 ; une sauvegarde absente ou illisible, ou une valeur inconnue (même « toString »), ne
- * pose rien.
+ * `data-tv` avant le premier rendu, sinon les marges TV sauteraient à l'hydratation ; pose aussi
+ * `data-contrast="high"` (FEAT-18), sinon les couleurs changeraient sous les yeux du joueur.
+ * Autonome et en ES5 ; une sauvegarde absente ou illisible, ou une valeur inconnue (même
+ * « toString »), ne pose rien.
  */
 export const TV_MODE_BOOTSTRAP_SCRIPT = [
   '(function(){try{',
+  'var h=document.documentElement;',
   `var s=JSON.parse(localStorage.getItem(${JSON.stringify(STORAGE_KEY)}));`,
-  `var v=s&&s.settings&&${JSON.stringify(FORCED_TV_VALUES)}[s.settings.tvModeOverride];`,
-  "if(typeof v==='string')document.documentElement.setAttribute('data-tv',v)",
+  'var t=s&&s.settings;',
+  `var v=t&&${JSON.stringify(FORCED_TV_VALUES)}[t.tvModeOverride];`,
+  "if(typeof v==='string')h.setAttribute('data-tv',v);",
+  `if(t&&t.highContrastMode===true)h.setAttribute(${JSON.stringify(CONTRAST_ATTRIBUTE)},${JSON.stringify(HIGH_CONTRAST_VALUE)})`,
   '}catch(e){}})();',
 ].join('');

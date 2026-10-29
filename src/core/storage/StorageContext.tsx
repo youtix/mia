@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { applyHighContrastMode } from './contrast-mode';
 import { createDefaultSaveState, STORAGE_KEY } from './default-state';
 import { parseAndMigrateSaveState, parseBackupJson, type ImportFailure } from './migrations';
 import {
@@ -147,7 +148,8 @@ export interface StorageProviderProps {
 
 /**
  * Sauvegarde locale de l'appareil (profils, progression, réglages) : chargement au montage,
- * stockage persistant demandé (Web), synchronisation entre onglets et mode TV (`data-tv`).
+ * stockage persistant demandé (Web), synchronisation entre onglets, mode TV (`data-tv`) et
+ * contraste élevé (`data-contrast`).
  */
 export function StorageProvider({ children }: StorageProviderProps) {
   const [store] = useState(createStorageStore);
@@ -156,7 +158,7 @@ export function StorageProvider({ children }: StorageProviderProps) {
     store.getSnapshot,
     getServerSnapshot,
   );
-  const { tvModeOverride } = state.settings;
+  const { tvModeOverride, highContrastMode } = state.settings;
 
   useEffect(() => {
     void store.load();
@@ -174,6 +176,10 @@ export function StorageProvider({ children }: StorageProviderProps) {
   useEffect(() => {
     if (isLoaded) applyTvModeOverride(tvModeOverride);
   }, [isLoaded, tvModeOverride]);
+
+  useEffect(() => {
+    if (isLoaded) applyHighContrastMode(highContrastMode);
+  }, [isLoaded, highContrastMode]);
 
   const value = useMemo<StorageContextValue>(
     () => ({

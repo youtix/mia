@@ -20,6 +20,13 @@
   }
 }
 
+/*
+ * Variante `contrast:` — contraste élevé (FEAT-18), aligné sur DeviceSettings.highContrastMode :
+ * <html data-contrast="high"> est posé par StorageProvider (et par le script inline du <head>
+ * avant l'hydratation) ; en contraste standard, l'attribut est retiré.
+ */
+@custom-variant contrast (&:where([data-contrast='high'], [data-contrast='high'] *));
+
 @theme {
   --font-sans:
     'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif,
@@ -89,6 +96,44 @@
   [contenteditable]:not([contenteditable='false']) {
     @apply select-text;
   }
+
+  /*
+   * Contraste élevé (FEAT-18), effet global sans retoucher les composants : les utilitaires
+   * référencent les jetons (`text-slate-300` → `color: var(--color-slate-300)`), redéfinis ici sur
+   * <html data-contrast="high">. Texte secondaire et icônes plus clairs (300 → 100, 400 → 200),
+   * bordures et séparateurs plus marqués (500 → 300, 600 → 400, 700 → 500). Valeurs littérales de
+   * la palette Tailwind : des jetons chaînés (`--color-slate-700: var(--color-slate-500)`) se
+   * résoudraient en cascade jusqu'à slate-100.
+   */
+  [data-contrast='high'] {
+    --color-slate-300: oklch(96.8% 0.007 247.896); /* slate-100 */
+    --color-slate-400: oklch(92.9% 0.013 255.508); /* slate-200 */
+    --color-slate-500: oklch(86.9% 0.022 252.894); /* slate-300 */
+    --color-slate-600: oklch(70.4% 0.04 256.788); /* slate-400 */
+    --color-slate-700: oklch(55.4% 0.046 257.417); /* slate-500 */
+  }
+}
+
+/*
+ * Contraste élevé, suite : règles hors de tout @layer, car une règle non stratifiée l'emporte sur
+ * la couche `utilities` quelle que soit sa spécificité (`:where()` la laisse nulle).
+ * - Fonds translucides principaux (cartes du Hub et des réglages, pastilles, fond des modales) :
+ *   les variantes d'opacité sont figées en hexadécimal à la compilation, elles ne suivent pas les
+ *   jetons ; elles deviennent opaques par leur classe.
+ * - Anneau de focus (`ring-4`, `focus-visible:ring-4`) : 6 px au lieu de 4 en redéfinissant
+ *   l'ombre que les utilitaires `ring-*` composent dans `box-shadow`.
+ */
+[data-contrast='high'] :where(.bg-slate-800\/60, .bg-slate-800\/80, .bg-slate-900\/60) {
+  background-color: var(--color-slate-800);
+}
+
+[data-contrast='high'] :where(.bg-slate-950\/70, .bg-slate-950\/80) {
+  background-color: var(--color-slate-950);
+}
+
+[data-contrast='high'] :where([data-focused], :focus-visible) {
+  --tw-ring-shadow: var(--tw-ring-inset,) 0 0 0 calc(6px + var(--tw-ring-offset-width))
+    var(--tw-ring-color, currentcolor);
 }
 
 /*

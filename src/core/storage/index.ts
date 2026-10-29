@@ -7,6 +7,7 @@ export {
   type AvatarId,
   type AvatarMeta,
 } from './avatars';
+export { CONTRAST_ATTRIBUTE, HIGH_CONTRAST_VALUE, applyHighContrastMode } from './contrast-mode';
 export {
   BACKUP_STORAGE_KEY,
   CURRENT_SCHEMA_VERSION,
