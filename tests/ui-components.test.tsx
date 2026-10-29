@@ -186,6 +186,29 @@ describe('FocusableCard', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it('verrouillée : signale l’activation par onLockedSelect (ex: expliquer le déblocage)', () => {
+    const onSelect = vi.fn();
+    const onLockedSelect = vi.fn();
+    const { rerender } = render(
+      <FocusableCard isLocked onSelect={onSelect} onLockedSelect={onLockedSelect}>
+        Étoile #9
+      </FocusableCard>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Étoile #9, verrouillé' }));
+    expect(onLockedSelect).toHaveBeenCalledOnce();
+    expect(onSelect).not.toHaveBeenCalled();
+
+    rerender(
+      <FocusableCard onSelect={onSelect} onLockedSelect={onLockedSelect}>
+        Étoile #9
+      </FocusableCard>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Étoile #9' }));
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onLockedSelect).toHaveBeenCalledOnce();
+  });
+
   it('active : annoncée comme élément courant avec un indice non coloré', () => {
     render(<FocusableCard isActive>Joueur 1</FocusableCard>);
 
@@ -319,6 +342,21 @@ describe('AppShell', () => {
     expect(back).toHaveAttribute('data-focused', 'true');
     expect(within(header).getByText('Joueur 1')).toBeInTheDocument();
     expect(within(header).getByRole('img', { name: '5 étoiles sur 40' })).toBeInTheDocument();
+  });
+
+  it('expose le bouton Retour au moteur D-Pad : ref et activation au focus', () => {
+    const ref = createRef<HTMLButtonElement>();
+    const onBackFocus = vi.fn();
+    render(
+      <AppShell title="Memory" onBack={vi.fn()} backButtonRef={ref} onBackFocus={onBackFocus}>
+        <p>Carte</p>
+      </AppShell>,
+    );
+
+    const back = screen.getByRole('button', { name: 'Retour' });
+    expect(ref.current).toBe(back);
+    back.focus();
+    expect(onBackFocus).toHaveBeenCalledOnce();
   });
 
   it('affiche les aides de la télécommande en pied de page, en mode TV uniquement', () => {

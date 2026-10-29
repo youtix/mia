@@ -15,6 +15,8 @@ export interface FocusableCardProps extends Omit<
   isActive?: boolean;
   /** Activation au tap, au clic, à `Entrée` ou à `Espace` (bouton natif) */
   onSelect?: () => void;
+  /** Activation d'une carte verrouillée (ex: expliquer comment la débloquer), à la place d'`onSelect` */
+  onLockedSelect?: () => void;
   /** Prop React 19 : permet au moteur D-Pad (FEAT-04) de synchroniser le focus DOM. */
   ref?: Ref<HTMLButtonElement>;
 }
@@ -28,13 +30,15 @@ export function FocusableCard({
   isLocked = false,
   isActive = false,
   onSelect,
+  onLockedSelect,
   className,
   children,
   ref,
   ...rest
 }: FocusableCardProps) {
   const handleClick = () => {
-    if (!isLocked) onSelect?.();
+    if (isLocked) onLockedSelect?.();
+    else onSelect?.();
   };
 
   return (

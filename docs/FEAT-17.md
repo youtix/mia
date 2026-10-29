@@ -122,6 +122,7 @@ export function resolveAssetKey(pathname: string, scopePathname: string, knownUr
   * **Asset pré-caché** (`resolveAssetKey(...) !== null`) : **cache d'abord**, réseau en secours.
   * **Tout le reste** : réseau direct, sans mise en cache à l'exécution.
 * Le pré-cache est la **seule source de vérité** d'une version : HTML, chunks et payloads RSC d'un même build sont servis ensemble (aucun mélange de versions).
+* **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) : un niveau lancé est adressé par sa requête (`/memory/?level=mem-005`). Une navigation (rechargement, lien ouvert directement) se résout sur le seul `pathname` (`memory/index.html`), et les payloads RSC demandés par `router.push('/memory?level=…')` sans tenir compte de la requête (`resolveAssetKey`). Carte ↔ niveau passe par `history.pushState`, sans requête.
 
 ### 4.3. Génération de `out/sw.js` (`scripts/build-sw.ts`)
 * Exécuté après `next build` via `tsx` (déjà présent depuis FEAT-01).

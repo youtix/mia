@@ -1,6 +1,6 @@
 import { cn } from '@/lib/cn';
 import { ArrowLeft, Move, Undo2 } from 'lucide-react';
-import { type ReactNode } from 'react';
+import { type ReactNode, type Ref } from 'react';
 import { FocusableButton } from './FocusableButton';
 import { StarBadge, type StarBadgeProps } from './StarBadge';
 
@@ -28,6 +28,10 @@ export interface AppShellProps {
   onBack?: () => void;
   /** Indique si le moteur de navigation D-Pad cible le bouton Retour */
   isBackFocused?: boolean;
+  /** Prop React 19 du bouton Retour : l'inclure dans une zone D-Pad (focus DOM synchronisé, FEAT-04) */
+  backButtonRef?: Ref<HTMLButtonElement>;
+  /** Le bouton Retour reçoit le focus DOM (Tab, clic) : activer sa zone D-Pad */
+  onBackFocus?: () => void;
   /** Badge du profil actif (ex: bouton avatar de FEAT-06) */
   profile?: ReactNode;
   /** Compteur d'étoiles global */
@@ -46,6 +50,8 @@ export function AppShell({
   title,
   onBack,
   isBackFocused = false,
+  backButtonRef,
+  onBackFocus,
   profile,
   stars,
   footerHints,
@@ -57,11 +63,13 @@ export function AppShell({
       <header className="flex shrink-0 items-center gap-3">
         {onBack ? (
           <FocusableButton
+            ref={backButtonRef}
             variant="ghost"
             size="sm"
             isFocused={isBackFocused}
             leftIcon={<ArrowLeft className="size-6" />}
             onClick={onBack}
+            onFocus={onBackFocus}
           >
             <span className="sr-only sm:not-sr-only">Retour</span>
           </FocusableButton>

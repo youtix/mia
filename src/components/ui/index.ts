@@ -4,6 +4,7 @@ export {
   type DifficultyPillProps,
   type DifficultyPillSize,
 } from './DifficultyPill';
+export { FadeIn, type FadeInProps } from './FadeIn';
 export {
   FocusableButton,
   type FocusableButtonProps,
