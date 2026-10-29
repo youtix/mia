@@ -767,7 +767,10 @@ describe('Sauvegarde', () => {
     const first = await findDialog(RESET_TITLE);
     fireEvent.click(within(first).getByRole('button', { name: 'Annuler' }));
     await waitForClosed(RESET_TITLE);
-    expect(getButton('Tout effacer')).toHaveFocus();
+    // Le focus revient à l'ouvreur dans le nettoyage d'un effet passif, après le retrait du DOM.
+    await waitFor(() => {
+      expect(getButton('Tout effacer')).toHaveFocus();
+    });
 
     fireEvent.click(getButton('Tout effacer'));
     fireEvent.click(
