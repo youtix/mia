@@ -152,8 +152,17 @@ function getPasteField(): HTMLElement {
   return screen.getByLabelText('Coller une sauvegarde');
 }
 
-function findDialog(name: string): Promise<HTMLElement> {
-  return screen.findByRole('dialog', { name });
+/**
+ * Boîte de dialogue ouverte et prête : son focus initial et son écouteur clavier (Échap) sont
+ * posés dans un effet passif, après l'insertion dans le DOM ; attendre le focus évite de lui
+ * envoyer une touche avant qu'elle n'écoute.
+ */
+async function findDialog(name: string): Promise<HTMLElement> {
+  const dialog = await screen.findByRole('dialog', { name });
+  await waitFor(() => {
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+  return dialog;
 }
 
 async function waitForClosed(name: string): Promise<void> {
