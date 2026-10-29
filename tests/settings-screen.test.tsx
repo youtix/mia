@@ -152,8 +152,17 @@ function getPasteField(): HTMLElement {
   return screen.getByLabelText('Coller une sauvegarde');
 }
 
-function findDialog(name: string): Promise<HTMLElement> {
-  return screen.findByRole('dialog', { name });
+/**
+ * Boîte de dialogue ouverte et prête : son focus initial et son écouteur clavier (Échap) sont
+ * posés dans un effet passif, après l'insertion dans le DOM ; attendre le focus évite de lui
+ * envoyer une touche avant qu'elle n'écoute.
+ */
+async function findDialog(name: string): Promise<HTMLElement> {
+  const dialog = await screen.findByRole('dialog', { name });
+  await waitFor(() => {
+    expect(dialog.contains(document.activeElement)).toBe(true);
+  });
+  return dialog;
 }
 
 async function waitForClosed(name: string): Promise<void> {
@@ -767,7 +776,10 @@ describe('Sauvegarde', () => {
     const first = await findDialog(RESET_TITLE);
     fireEvent.click(within(first).getByRole('button', { name: 'Annuler' }));
     await waitForClosed(RESET_TITLE);
-    expect(getButton('Tout effacer')).toHaveFocus();
+    // Le focus revient à l'ouvreur dans le nettoyage d'un effet passif, après le retrait du DOM.
+    await waitFor(() => {
+      expect(getButton('Tout effacer')).toHaveFocus();
+    });
 
     fireEvent.click(getButton('Tout effacer'));
     fireEvent.click(
