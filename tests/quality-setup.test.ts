@@ -311,6 +311,14 @@ describe('Couverture Vitest', () => {
       },
     });
   });
+
+  it('impose 90 % de couverture au moteur pur de Traffic Jam (FEAT-12)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/traffic-jam/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
 });
 
 describe('semantic-release', () => {

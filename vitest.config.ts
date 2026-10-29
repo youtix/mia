@@ -30,6 +30,13 @@ export default defineConfig({
           branches: 90,
           statements: 90,
         },
+        // Moteur pur de Traffic Jam (FEAT-12) : 90 % exigés, hors composants d'interface (FEAT-13).
+        'src/games/traffic-jam/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },
