@@ -1,3 +1,4 @@
+export { MEMORY_CATALOG, validateMemoryCatalog } from './catalog';
 // Composants d'interface (FEAT-10) ; ceux qui ont un état sont marqués 'use client'. Une page
 // importe le module de son écran, pas ce barrel (FEAT-08).
 export {

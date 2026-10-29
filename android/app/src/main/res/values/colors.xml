@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fond de Mia (slate-900), partagé par l'écran de lancement. -->
+    <color name="splash_background">#0f172a</color>
+</resources>

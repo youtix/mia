@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mia - Mise à jour nécessaire</title>
+    <style>
+      /*
+       * Page autonome (ni script, ni police, ni image) : Capacitor l'affiche à la place de Mia quand
+       * la WebView Android est antérieure à la version 111 (capacitor.config.ts), donc sur un
+       * moteur ancien : CSS volontairement basique. Lisible à 3 m sur un téléviseur.
+       */
+      html {
+        background: #0f172a;
+        color: #f8fafc;
+        font-family:
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          Roboto,
+          Arial,
+          sans-serif;
+        font-size: 20px;
+        line-height: 1.5;
+      }
+      @media (min-width: 720px) {
+        html {
+          font-size: 28px;
+        }
+      }
+      body {
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        padding: 5vh 5vw;
+      }
+      main {
+        max-width: 34em;
+      }
+      h1 {
+        color: #38bdf8;
+        font-size: 1.8em;
+        line-height: 1.2;
+        margin: 0 0 0.6em;
+      }
+      p,
+      ol {
+        margin: 0 0 1em;
+      }
+      ol {
+        padding-left: 1.4em;
+      }
+      li {
+        margin-bottom: 0.5em;
+      }
+      strong {
+        color: #fde68a;
+      }
+      .note {
+        color: #cbd5e1;
+        font-size: 0.85em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Mia a besoin d'une mise à jour de ton appareil</h1>
+      <p>
+        Le composant <strong>Android System WebView</strong> de cet appareil est trop ancien pour
+        afficher Mia : la version 111 ou plus récente est nécessaire.
+      </p>
+      <p>Pour le mettre à jour :</p>
+      <ol>
+        <li>
+          Ouvre le <strong>Play Store</strong>, cherche « Android System WebView » et appuie sur
+          <strong>Mettre à jour</strong>.
+        </li>
+        <li>
+          Sans Play Store, ouvre <strong>Paramètres › Système › Mise à jour du système</strong>
+          (ou « À propos › Mise à jour ») et installe les mises à jour proposées.
+        </li>
+        <li>Redémarre l'appareil, puis rouvre Mia.</li>
+      </ol>
+      <p class="note">
+        Sur certains boîtiers TV, c'est Google Chrome qui fournit la WebView : mettre à jour Chrome
+        suffit. En attendant, Mia se joue aussi dans un navigateur récent, à l'adresse
+        youtix.github.io/mia.
+      </p>
+    </main>
+  </body>
+</html>

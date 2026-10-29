@@ -112,15 +112,19 @@ describe('Environnement', () => {
     const { scripts } = readJson('package.json') as PackageJson;
 
     expect(scripts).toMatchObject({
-      typecheck: 'tsc --noEmit',
+      build: 'next build && tsx scripts/build-sw.ts',
+      'cap:sync': 'npm run build && npx cap sync android',
+      icons: 'node scripts/generate-icons.mjs',
+      typecheck: 'tsc --noEmit && tsc --noEmit -p src/core/pwa/sw/tsconfig.json',
       lint: 'eslint . --max-warnings=0',
       'lint:fix': 'eslint . --fix',
       format: 'prettier --write .',
       'format:check': 'prettier --check .',
       test: 'vitest run',
       'test:coverage': 'vitest run --coverage',
+      'validate:levels': 'tsx scripts/validate-levels.ts',
       'validate:all':
-        'npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build',
+        'npm run format:check && npm run lint && npm run typecheck && npm run validate:levels && npm run test:coverage && npm run build',
       prepare: 'husky',
     });
   });
@@ -300,6 +304,13 @@ describe('Couverture Vitest', () => {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/**/index.ts',
+        'src/types/**',
+        'src/app/layout.tsx',
+        'src/core/pwa/sw/**',
+      ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     });
   });
@@ -311,10 +322,18 @@ describe('Couverture Vitest', () => {
       },
     });
   });
+
+  it('impose 90 % de couverture au moteur pur de Traffic Jam (FEAT-12)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/traffic-jam/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
 });
 
 describe('semantic-release', () => {
-  it('publie depuis main sans publication npm et commite changelog et version', () => {
+  it('publie depuis main sans publication npm, compile l’APK et commite version et changelog', () => {
     expect(readJson('.releaserc.json')).toEqual({
       branches: ['main'],
       plugins: [
@@ -323,13 +342,31 @@ describe('semantic-release', () => {
         ['@semantic-release/changelog', { changelogFile: 'CHANGELOG.md' }],
         ['@semantic-release/npm', { npmPublish: false }],
         [
+          '@semantic-release/exec',
+          {
+            prepareCmd:
+              'node scripts/sync-android-version.mjs ${nextRelease.version} && npm run cap:sync && node scripts/build-apk.mjs ${nextRelease.version}',
+          },
+        ],
+        [
           '@semantic-release/git',
           {
-            assets: ['CHANGELOG.md', 'package.json', 'package-lock.json'],
+            assets: [
+              'CHANGELOG.md',
+              'package.json',
+              'package-lock.json',
+              'android/app/build.gradle',
+              'fdroid/org.mia.braintraining.yml',
+            ],
             message: 'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}',
           },
         ],
-        '@semantic-release/github',
+        [
+          '@semantic-release/github',
+          {
+            assets: [{ path: 'dist-apk/*.apk', label: 'Mia Android / Android TV Universal APK' }],
+          },
+        ],
       ],
     });
   });
@@ -340,6 +377,7 @@ describe('semantic-release', () => {
     for (const dependency of [
       'semantic-release',
       '@semantic-release/changelog',
+      '@semantic-release/exec',
       '@semantic-release/git',
       '@semantic-release/github',
       '@semantic-release/npm',
@@ -376,7 +414,7 @@ describe('GitHub', () => {
     });
   });
 
-  it('vérifie chaque PR (format, lint, types, couverture, build)', () => {
+  it('vérifie chaque PR (format, lint, types, niveaux, couverture, build)', () => {
     const workflow = readYaml('.github/workflows/ci.yml') as Workflow;
 
     expect(Object.keys(workflow.on)).toEqual(['pull_request', 'workflow_call']);
@@ -385,6 +423,7 @@ describe('GitHub', () => {
       'npm run format:check',
       'npm run lint',
       'npm run typecheck',
+      'npm run validate:levels',
       'npm run test:coverage',
       'npm run build',
     ]);
@@ -417,6 +456,11 @@ describe('GitHub', () => {
     expect(release.needs).toBe('verify');
     expect(String(release.env?.HUSKY)).toBe('0');
     expect(findStep(release, 'actions/create-github-app-token').with).toHaveProperty('private-key');
+    expect(findStep(release, 'actions/setup-java').with).toMatchObject({
+      distribution: 'temurin',
+      'java-version': '21',
+      cache: 'gradle',
+    });
     expect(runsOf(release)).toContain('npx semantic-release');
 
     expect(deploy.needs).toBe('release');

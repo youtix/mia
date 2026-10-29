@@ -32,6 +32,7 @@ const config = {
         'profile',
         'progression',
         'hub',
+        'settings',
         'memory',
         'traffic-jam',
         'android',

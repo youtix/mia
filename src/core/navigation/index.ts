@@ -1,3 +1,4 @@
+export { AndroidBackButtonBridge } from './AndroidBackButtonBridge';
 export {
   coordToIndex,
   findNearestTarget,
@@ -29,6 +30,7 @@ export {
   type NavigationTarget,
   type Point2D,
 } from './types';
+export { isHubPathname, useAndroidBackButton } from './useAndroidBackButton';
 export { countGridColumns, useGridColumns, type UseGridColumnsResult } from './useGridColumns';
 export {
   useGridNavigation,

@@ -275,6 +275,8 @@ stateDiagram-v2
 | ⭐ 19 | `tj-019` | Très Difficile | `6x6` | **46 coups** | Grille avec 2 obstacles fixes asymétriques. |
 | ⭐ 20 | `tj-020` | Très Difficile | `6x6` | **50 coups** | Défi Maître (proche du maximum théorique de 51 coups en 6x6). |
 
+> **Valeurs cibles indicatives.** Les coups optimaux publiés sont ceux de `src/games/traffic-jam/catalog.ts` ([FEAT-14](./FEAT-14.md) §5), mesurés par le solveur BFS dans les plages de [FEAT-14 §3.1](./FEAT-14.md) (2, 3, 4, 5 / 7, 8, 10, 11 / 12, 14, 16, 18 / 19, 22, 25, 28 / 31, 36, 41, 45) ; `npm run validate:levels` les affiche.
+
 ---
 
 ## 5. Graphe de Dépendances des Features Atomiques

@@ -1,3 +1,5 @@
+import { MEMORY_CATALOG } from '@/games/memory/catalog';
+import { TRAFFIC_JAM_CATALOG } from '@/games/traffic-jam/catalog';
 import type { GameId, UserProfile } from '@/types/mia';
 import { getGameProgressSummary } from './progression-engine';
 import type { GameManifest, ProfileProgressSummary } from './types';
@@ -16,14 +18,14 @@ export const GAME_REGISTRY: GameRegistry = {
     title: 'Memory',
     skill: 'Mémoire visuelle & spatiale',
     path: '/memory',
-    catalog: [],
+    catalog: MEMORY_CATALOG,
   },
   'traffic-jam': {
     id: 'traffic-jam',
     title: 'Traffic Jam',
     skill: 'Planification & Logique séquentielle',
     path: '/traffic-jam',
-    catalog: [],
+    catalog: TRAFFIC_JAM_CATALOG,
   },
 };
 

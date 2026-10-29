@@ -1,4 +1,5 @@
 import {
+  applyHighContrastMode,
   applyTvModeOverride,
   BACKUP_STORAGE_KEY,
   createDefaultSaveState,
@@ -23,6 +24,12 @@ import {
   type ImportResult,
   type SaveMigration,
 } from '@/core/storage';
+import {
+  detectNativeTv,
+  hasNativeTvDetection,
+  TV_DETECTED_STORAGE_KEY,
+  type TvModePlugin,
+} from '@/core/storage/tv-mode';
 import type {
   DeviceSettings,
   LevelCompletion,
@@ -50,8 +57,30 @@ const preferences = vi.hoisted(() => {
   };
 });
 
+interface PluginRegistration {
+  name: string;
+  implementations?: { web?: () => Promise<TvModePlugin> };
+}
+
+/**
+ * Plugin natif `TvMode` simulé (FEAT-15) ; `isAvailable` : enregistré par l'APK. `registrations` :
+ * appels de `registerPlugin` sur toute la session (le module n'enregistre qu'une fois).
+ */
+const tvMode = vi.hoisted(() => ({
+  isAvailable: vi.fn((name: string) => name === 'TvMode'),
+  isTelevision: vi.fn(() => Promise.resolve({ value: false })),
+  registrations: [] as PluginRegistration[],
+}));
+
 vi.mock('@capacitor/core', () => ({
-  Capacitor: { isNativePlatform: () => platform.native },
+  Capacitor: {
+    isNativePlatform: () => platform.native,
+    isPluginAvailable: (name: string) => tvMode.isAvailable(name),
+  },
+  registerPlugin: (name: string, implementations?: PluginRegistration['implementations']) => {
+    tvMode.registrations.push({ name, implementations });
+    return { isTelevision: () => tvMode.isTelevision() };
+  },
 }));
 
 vi.mock('@capacitor/preferences', () => ({
@@ -129,6 +158,13 @@ function miaProfile(id: string): UserProfile {
 
 function withTvMode(tvModeOverride: TvModeOverride): MiaSaveState {
   return { ...createDefaultSaveState(), settings: { ...DEFAULT_DEVICE_SETTINGS, tvModeOverride } };
+}
+
+function withContrast(highContrastMode: boolean): MiaSaveState {
+  return {
+    ...createDefaultSaveState(),
+    settings: { ...DEFAULT_DEVICE_SETTINGS, highContrastMode },
+  };
 }
 
 function storeLocally(value: unknown, key = STORAGE_KEY): void {
@@ -216,6 +252,8 @@ beforeEach(() => {
   preferences.values.clear();
   preferences.get.mockReset();
   preferences.set.mockReset();
+  tvMode.isAvailable.mockReset();
+  tvMode.isTelevision.mockReset();
   warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 });
 
@@ -223,6 +261,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
   document.documentElement.removeAttribute('data-tv');
+  document.documentElement.removeAttribute('data-contrast');
   Reflect.deleteProperty(navigator, 'storage');
 });
 
@@ -865,11 +904,155 @@ describe('Mode TV (data-tv)', () => {
     window.removeEventListener('error', onError);
     expect(onError).not.toHaveBeenCalled();
     expect(document.documentElement.hasAttribute('data-tv')).toBe(false);
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
   });
 
   it('reste autonome et en ES5 (exécuté avant tout bundle)', () => {
     expect(TV_MODE_BOOTSTRAP_SCRIPT).toContain(JSON.stringify(STORAGE_KEY));
+    expect(TV_MODE_BOOTSTRAP_SCRIPT).toContain(JSON.stringify(TV_DETECTED_STORAGE_KEY));
     expect(TV_MODE_BOOTSTRAP_SCRIPT).not.toMatch(/=>|\blet\b|\bconst\b|`/);
+  });
+
+  it('applyTvModeOverride(auto) suit la détection native ; un réglage forcé l’ignore', () => {
+    applyTvModeOverride('auto', document.documentElement, { nativeTv: true });
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+
+    applyTvModeOverride('auto', document.documentElement, { nativeTv: false });
+    expect(document.documentElement.hasAttribute('data-tv')).toBe(false);
+
+    applyTvModeOverride('always_touch', document.documentElement, { nativeTv: true });
+    expect(document.documentElement.getAttribute('data-tv')).toBe('off');
+  });
+
+  it('le script inline pose data-tv="on" depuis le marqueur natif en auto, jamais en forcé', () => {
+    localStorage.setItem(TV_DETECTED_STORAGE_KEY, 'on');
+    storeLocally(withTvMode('auto'));
+
+    runBootstrapScript();
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+
+    document.documentElement.removeAttribute('data-tv');
+    storeLocally(withTvMode('always_touch'));
+
+    runBootstrapScript();
+    expect(document.documentElement.getAttribute('data-tv')).toBe('off');
+  });
+
+  it('le script inline lit le marqueur natif même sans sauvegarde lisible, et ignore « off »', () => {
+    localStorage.setItem(TV_DETECTED_STORAGE_KEY, 'on');
+    storeLocally('{"settings":');
+
+    runBootstrapScript();
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+
+    document.documentElement.removeAttribute('data-tv');
+    localStorage.setItem(TV_DETECTED_STORAGE_KEY, 'off');
+
+    runBootstrapScript();
+    expect(document.documentElement.hasAttribute('data-tv')).toBe(false);
+  });
+});
+
+describe('Détection native de la TV (APK)', () => {
+  it('ne fait rien sur le Web : ni appel au plugin, ni marqueur', async () => {
+    expect(hasNativeTvDetection()).toBe(false);
+    await expect(detectNativeTv()).resolves.toBe(false);
+    expect(tvMode.isTelevision).not.toHaveBeenCalled();
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBeNull();
+  });
+
+  it('interroge le plugin dans l’APK et mémorise le résultat pour le script inline', async () => {
+    platform.native = true;
+    tvMode.isTelevision.mockResolvedValue({ value: true });
+
+    expect(hasNativeTvDetection()).toBe(true);
+    await expect(detectNativeTv()).resolves.toBe(true);
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBe('on');
+
+    tvMode.isTelevision.mockResolvedValue({ value: false });
+    await expect(detectNativeTv()).resolves.toBe(false);
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBe('off');
+    expect(warnings()).toEqual([]);
+  });
+
+  it('enregistre le plugin une seule fois, avec une implémentation Web qui répond « non »', async () => {
+    platform.native = true;
+
+    await detectNativeTv();
+    await detectNativeTv();
+
+    const [registration] = tvMode.registrations;
+    expect(tvMode.registrations).toHaveLength(1);
+    expect(registration?.name).toBe('TvMode');
+    const web = await registration?.implementations?.web?.();
+    await expect(web?.isTelevision()).resolves.toEqual({ value: false });
+  });
+
+  it('reste inactive dans un APK sans le plugin, ou face à un pont partiel', async () => {
+    platform.native = true;
+    tvMode.isAvailable.mockReturnValue(false);
+    expect(hasNativeTvDetection()).toBe(false);
+    await expect(detectNativeTv()).resolves.toBe(false);
+
+    tvMode.isAvailable.mockImplementation(() => {
+      throw new TypeError('isPluginAvailable absent');
+    });
+    expect(hasNativeTvDetection()).toBe(false);
+    expect(tvMode.isTelevision).not.toHaveBeenCalled();
+  });
+
+  it('absorbe un échec du pont natif : journalisé, pas un téléviseur, aucun marqueur', async () => {
+    platform.native = true;
+    tvMode.isTelevision.mockRejectedValue(new Error('pont'));
+
+    await expect(detectNativeTv()).resolves.toBe(false);
+    expect(warnings()).toEqual([expect.stringContaining('Détection native du mode TV impossible')]);
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBeNull();
+  });
+
+  it('garde le résultat quand le marqueur ne peut pas être écrit', async () => {
+    platform.native = true;
+    tvMode.isTelevision.mockResolvedValue({ value: true });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('Quota dépassé');
+    });
+
+    await expect(detectNativeTv()).resolves.toBe(true);
+    expect(warnings()).toEqual([expect.stringContaining(TV_DETECTED_STORAGE_KEY)]);
+  });
+});
+
+describe('Contraste élevé (data-contrast)', () => {
+  it('applyHighContrastMode pose puis retire data-contrast', () => {
+    applyHighContrastMode(true);
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+
+    applyHighContrastMode(false);
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+  });
+
+  it('le script inline pose data-contrast avant l’hydratation, avec data-tv', () => {
+    storeLocally({
+      ...createDefaultSaveState(),
+      settings: { ...DEFAULT_DEVICE_SETTINGS, tvModeOverride: 'always_tv', highContrastMode: true },
+    });
+
+    runBootstrapScript();
+
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+  });
+
+  it.each([
+    ['standard', withContrast(false)],
+    ['à la valeur « oui »', { settings: { highContrastMode: 'oui' } }],
+    ['à la valeur 1', { settings: { highContrastMode: 1 } }],
+  ])('le script inline ne pose rien en contraste %s', (_label, raw) => {
+    storeLocally(raw);
+
+    runBootstrapScript();
+
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
   });
 });
 
@@ -1014,6 +1197,110 @@ describe('StorageProvider & useMiaStorage', () => {
       expect(result.current.isLoaded).toBe(true);
     });
     expect(document.documentElement.getAttribute('data-tv')).toBe('off');
+  });
+
+  it('dans l’APK, attend la détection native en auto, puis pose data-tv="on" sur un téléviseur', async () => {
+    platform.native = true;
+    storeLocally(withTvMode('auto'));
+    // Posé par le script inline (marqueur d'un lancement précédent).
+    document.documentElement.setAttribute('data-tv', 'on');
+    let answer: (value: boolean) => void = () => undefined;
+    tvMode.isTelevision.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = (value) => {
+            resolve({ value });
+          };
+        }),
+    );
+
+    const { result } = renderStorage();
+    await waitFor(() => {
+      expect(result.current.isLoaded).toBe(true);
+    });
+    // Détection en attente : l'attribut du script inline reste en place (pas de saut des marges).
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+
+    answer(true);
+    await flushAsync();
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBe('on');
+
+    await act(async () => {
+      await result.current.updateSettings({ tvModeOverride: 'always_touch' });
+    });
+    expect(document.documentElement.getAttribute('data-tv')).toBe('off');
+
+    await act(async () => {
+      await result.current.updateSettings({ tvModeOverride: 'auto' });
+    });
+    expect(document.documentElement.getAttribute('data-tv')).toBe('on');
+  });
+
+  it('dans l’APK, un réglage forcé n’attend pas la détection native', async () => {
+    platform.native = true;
+    storeLocally(withTvMode('always_touch'));
+    document.documentElement.setAttribute('data-tv', 'on');
+    tvMode.isTelevision.mockImplementation(() => new Promise(() => undefined));
+
+    const { result } = renderStorage();
+    await waitFor(() => {
+      expect(result.current.isLoaded).toBe(true);
+    });
+
+    expect(document.documentElement.getAttribute('data-tv')).toBe('off');
+  });
+
+  it('dans l’APK sans téléviseur, auto retire data-tv et mémorise « off »', async () => {
+    platform.native = true;
+    storeLocally(withTvMode('auto'));
+    document.documentElement.setAttribute('data-tv', 'on');
+
+    await renderLoadedStorage();
+    await flushAsync();
+
+    expect(document.documentElement.hasAttribute('data-tv')).toBe(false);
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBe('off');
+  });
+
+  it('ignore la réponse du plugin reçue après le démontage', async () => {
+    platform.native = true;
+    storeLocally(withTvMode('auto'));
+    let answer: (value: boolean) => void = () => undefined;
+    tvMode.isTelevision.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          answer = (value) => {
+            resolve({ value });
+          };
+        }),
+    );
+
+    const { unmount } = await renderLoadedStorage();
+    unmount();
+    answer(true);
+    await flushAsync();
+
+    expect(document.documentElement.hasAttribute('data-tv')).toBe(false);
+    expect(localStorage.getItem(TV_DETECTED_STORAGE_KEY)).toBe('on');
+  });
+
+  it('applique le contraste élevé une fois la sauvegarde chargée, puis à chaque changement', async () => {
+    storeLocally(withContrast(true));
+
+    const { result } = renderStorage();
+
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+    await waitFor(() => {
+      expect(result.current.isLoaded).toBe(true);
+    });
+    expect(document.documentElement.getAttribute('data-contrast')).toBe('high');
+
+    await act(async () => {
+      await result.current.updateSettings({ highContrastMode: false });
+    });
+    expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+    expect(readLocally()).toEqual(withContrast(false));
   });
 
   it('resetAllData efface profils et réglages', async () => {

@@ -17,7 +17,14 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.d.ts', 'src/**/index.ts', 'src/types/**', 'src/app/layout.tsx'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/**/index.ts',
+        'src/types/**',
+        'src/app/layout.tsx',
+        // Glue du service worker (FEAT-17), exécutée uniquement dans le contexte service worker.
+        'src/core/pwa/sw/**',
+      ],
       thresholds: {
         lines: 80,
         functions: 80,
@@ -25,6 +32,13 @@ export default defineConfig({
         statements: 80,
         // Moteur pur de Memory (FEAT-09) : 90 % exigés, hors composants d'interface (FEAT-10).
         'src/games/memory/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
+        // Moteur pur de Traffic Jam (FEAT-12) : 90 % exigés, hors composants d'interface (FEAT-13).
+        'src/games/traffic-jam/*.ts': {
           lines: 90,
           functions: 90,
           branches: 90,

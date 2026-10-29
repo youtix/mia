@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { applyHighContrastMode } from './contrast-mode';
 import { createDefaultSaveState, STORAGE_KEY } from './default-state';
 import { parseAndMigrateSaveState, parseBackupJson, type ImportFailure } from './migrations';
 import {
@@ -18,7 +19,7 @@ import {
   requestPersistentStorage,
   saveState,
 } from './storage-service';
-import { applyTvModeOverride } from './tv-mode';
+import { applyTvModeOverride, detectNativeTv, hasNativeTvDetection } from './tv-mode';
 
 /** Résultat d'`importBackup` : en cas d'échec, `message` est prêt à afficher. */
 export type ImportResult = { ok: true } | ImportFailure;
@@ -147,33 +148,49 @@ export interface StorageProviderProps {
 
 /**
  * Sauvegarde locale de l'appareil (profils, progression, réglages) : chargement au montage,
- * stockage persistant demandé (Web), synchronisation entre onglets et mode TV (`data-tv`).
+ * stockage persistant demandé (Web), synchronisation entre onglets, mode TV (`data-tv`, avec la
+ * détection native dans l'APK) et contraste élevé (`data-contrast`).
  */
 export function StorageProvider({ children }: StorageProviderProps) {
   const [store] = useState(createStorageStore);
+  // Détection native de la TV (APK, FEAT-15) : `null` tant que le plugin n'a pas répondu.
+  const [nativeTv, setNativeTv] = useState<boolean | null>(() =>
+    hasNativeTvDetection() ? null : false,
+  );
   const { state, isLoaded } = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
     getServerSnapshot,
   );
-  const { tvModeOverride } = state.settings;
+  const { tvModeOverride, highContrastMode } = state.settings;
 
   useEffect(() => {
     void store.load();
     void requestPersistentStorage();
+    let cancelled = false;
+    void detectNativeTv().then((value) => {
+      if (!cancelled) setNativeTv(value);
+    });
     const onStorage = (event: StorageEvent) => {
       if (isSaveStorageEvent(event)) store.receive(event.newValue);
     };
     window.addEventListener('storage', onStorage);
     return () => {
+      cancelled = true;
       window.removeEventListener('storage', onStorage);
     };
   }, [store]);
 
-  // Avant le chargement, l'attribut posé par le script inline du <head> reste en place.
+  // Avant le chargement, les attributs posés par le script inline du <head> restent en place ; en
+  // `auto`, aussi tant que la détection native n'a pas répondu (les marges TV ne sautent pas).
   useEffect(() => {
-    if (isLoaded) applyTvModeOverride(tvModeOverride);
-  }, [isLoaded, tvModeOverride]);
+    if (!isLoaded || (tvModeOverride === 'auto' && nativeTv === null)) return;
+    applyTvModeOverride(tvModeOverride, document.documentElement, { nativeTv: nativeTv === true });
+  }, [isLoaded, tvModeOverride, nativeTv]);
+
+  useEffect(() => {
+    if (isLoaded) applyHighContrastMode(highContrastMode);
+  }, [isLoaded, highContrastMode]);
 
   const value = useMemo<StorageContextValue>(
     () => ({

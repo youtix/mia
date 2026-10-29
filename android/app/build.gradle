@@ -1,0 +1,68 @@
+apply plugin: 'com.android.application'
+
+// Signature de l'APK de release (FEAT-16) : clé fournie par l'environnement (secrets facultatifs du
+// workflow de release), sinon clé de débogage du SDK pour que l'APK reste installable sans aucun
+// secret. La recette F-Droid retire la ligne `signingConfig` de `release` : F-Droid signe lui-même.
+def releaseKeystorePath = System.getenv("MIA_KEYSTORE_PATH")
+
+android {
+    namespace = "org.mia.braintraining"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "org.mia.braintraining"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // Alignés sur package.json (FEAT-16 : scripts/sync-android-version.mjs) :
+        // versionCode = major * 10000 + minor * 100 + patch.
+        versionCode 1000
+        versionName "0.10.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        release {
+            // Renseignée seulement quand la clé est fournie ; `buildTypes.release` choisit alors
+            // cette configuration, sinon `signingConfigs.debug` (créée par le plugin Android).
+            if (releaseKeystorePath) {
+                storeFile file(releaseKeystorePath)
+                storePassword System.getenv("MIA_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("MIA_KEY_ALIAS")
+                keyPassword System.getenv("MIA_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig = releaseKeystorePath ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+// Conformité F-Droid (FEAT-15 §3.4) : le bloc « services Google » du gabarit Capacitor est retiré,
+// aucune dépendance Google propriétaire n'est admise ici.

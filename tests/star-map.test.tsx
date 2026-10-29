@@ -514,8 +514,9 @@ describe('Hub', () => {
   });
 
   it('annonce « Bientôt disponible » pour un jeu sans niveau, Carte des Étoiles comprise', async () => {
-    // Registre réel : catalogues vides jusqu'à FEAT-11 et FEAT-14.
-    await renderLoaded(<HomePage />, familySave());
+    // Catalogues vides injectés : le registre réel publie les 20 étoiles de Memory (FEAT-11).
+    const emptyGames = TEST_GAMES.map((game) => ({ ...game, catalog: [] }));
+    await renderLoaded(<HubScreen games={emptyGames} />, familySave());
 
     for (const title of ['Memory', 'Traffic Jam']) {
       const card = getCard(title);
@@ -530,6 +531,14 @@ describe('Hub', () => {
     expect(
       within(screen.getByRole('banner')).getByRole('img', { name: '0 étoile' }),
     ).toBeInTheDocument();
+  });
+
+  it('rend le Hub du registre réel : les 20 étoiles de Memory (FEAT-11)', async () => {
+    await renderLoaded(<HomePage />, familySave());
+
+    const memory = getCard('Memory');
+    expect(within(memory).getByRole('img', { name: '4 étoiles sur 20' })).toBeInTheDocument();
+    expect(getCardButton('Memory', 'Continuer (Étoile #5)')).toBeInTheDocument();
   });
 
   it('lance l’objectif ou ouvre la Carte des Étoiles d’un jeu', async () => {
@@ -632,6 +641,43 @@ describe('Hub', () => {
     await waitFor(() => {
       expect(getCardButton('Traffic Jam', 'Continuer (Étoile #2)')).toHaveFocus();
     });
+  });
+
+  it('ouvre les Réglages depuis l’en-tête, route préchargée', async () => {
+    await renderHub(familySave());
+
+    expect(router.prefetch).toHaveBeenCalledWith('/settings');
+    const settings = within(screen.getByRole('banner')).getByRole('button', { name: 'Réglages' });
+    expect(settings).toHaveTextContent('Réglages');
+    fireEvent.click(settings);
+
+    expect(router.push).toHaveBeenLastCalledWith('/settings');
+  });
+
+  it('place Réglages à droite du profil dans la zone de l’en-tête, à la télécommande', async () => {
+    await renderHub(forceTvMode(familySave()));
+    await waitFor(() => {
+      expect(getCardButton('Memory', 'Continuer (Étoile #5)')).toHaveFocus();
+    });
+
+    press('ArrowUp');
+    expect(getButton('Joueur : Léo')).toHaveFocus();
+    press('ArrowRight');
+    expect(getButton('Réglages')).toHaveFocus();
+    expect(getButton('Réglages')).toHaveAttribute('data-focused', 'true');
+    press('ArrowRight');
+    expect(getButton('Réglages')).toHaveFocus();
+    // Bas depuis Réglages : la dernière carte visitée, comme depuis le profil.
+    press('ArrowDown');
+    expect(getCardButton('Memory', 'Continuer (Étoile #5)')).toHaveFocus();
+    press('ArrowUp');
+    expect(getButton('Réglages')).toHaveFocus();
+    press('ArrowLeft');
+    expect(getButton('Joueur : Léo')).toHaveFocus();
+    press('ArrowRight');
+    expect(press('Enter')).toBe(true);
+
+    expect(router.push).toHaveBeenLastCalledWith('/settings');
   });
 });
 
@@ -975,8 +1021,9 @@ describe('Pages', () => {
   });
 
   it('annonce les 5 paliers d’un jeu encore sans niveau', async () => {
+    // Catalogue vide injecté : la page /memory publie ses 20 étoiles depuis FEAT-11.
     window.history.replaceState(null, '', '/memory/');
-    await renderLoaded(<MemoryPage />, forceTvMode(familySave()));
+    await renderLoaded(<GameScreen gameId="memory" catalog={[]} />, forceTvMode(familySave()));
 
     expect(screen.getByRole('heading', { level: 1, name: 'Memory' })).toBeInTheDocument();
     expect(screen.getAllByRole('region')).toHaveLength(5);
@@ -987,11 +1034,48 @@ describe('Pages', () => {
     });
   });
 
-  it('affiche la Carte des Étoiles de Traffic Jam', async () => {
+  it('joue le catalogue réel de Memory : 20 étoiles sur la carte, puis le plateau', async () => {
+    window.history.replaceState(null, '', '/memory/');
+    await renderLoaded(<MemoryPage />, familySave());
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Memory' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('banner')).getByRole('img', { name: '4 étoiles sur 20' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Étoile #/ })).toHaveLength(20);
+    expect(screen.queryByText('Bientôt de nouvelles étoiles')).not.toBeInTheDocument();
+
+    fireEvent.click(getButton('Jouer l’Étoile #5'));
+
+    expect(pushState).toHaveBeenLastCalledWith(null, '', '/memory/?level=mem-005');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Étoile #5' })).toBeInTheDocument();
+    // Plateau de Memory (4 × 2 cartes cachées, sans aperçu) : le niveau est jouable.
+    expect(screen.getAllByRole('button', { name: /^Carte cachée/ })).toHaveLength(8);
+  });
+
+  it('joue le catalogue réel de Traffic Jam : 20 étoiles sur la carte, puis le parking', async () => {
     window.history.replaceState(null, '', '/traffic-jam/');
     await renderLoaded(<TrafficJamPage />, familySave());
 
     expect(screen.getByRole('heading', { level: 1, name: 'Traffic Jam' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('banner')).getByRole('img', { name: '1 étoile sur 20' }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole('region')).toHaveLength(5);
+    expect(screen.getAllByRole('button', { name: /^Étoile #/ })).toHaveLength(20);
+    expect(screen.queryByText('Bientôt de nouvelles étoiles')).not.toBeInTheDocument();
+
+    fireEvent.click(getButton('Jouer l’Étoile #2'));
+
+    expect(pushState).toHaveBeenLastCalledWith(null, '', '/traffic-jam/?level=tj-002');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Étoile #2' })).toBeInTheDocument();
+    // Parking de FEAT-13 (tj-002 « Chaîne de deux », 3 coups) : ta voiture et 3 autres véhicules.
+    expect(
+      screen.getByRole('group', { name: 'Parking de 6 × 6 cases, sortie à droite sur la ligne 3' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Ta voiture, horizontale/ })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: /^(Ta voiture|Voiture [A-Z]|Camion [A-Z]), / }),
+    ).toHaveLength(4);
   });
 });
