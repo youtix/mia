@@ -162,6 +162,7 @@ function player(
       memory: progress('memory', memory),
       'traffic-jam': progress('traffic-jam', trafficJam),
     },
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
   };
 }
 

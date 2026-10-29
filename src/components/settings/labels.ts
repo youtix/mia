@@ -1,5 +1,5 @@
 import { DEFAULT_PROFILE_NAME } from '@/core/storage';
-import type { TvModeOverride } from '@/types/mia';
+import { TIME_FACTORS, type TimeFactor, type TvModeOverride } from '@/types/mia';
 
 /** Route de l'écran (`src/app/settings/page.tsx`), poussée par le bouton « Réglages » du Hub. */
 export const SETTINGS_PATH = '/settings';
@@ -23,6 +23,54 @@ export const SETTINGS_TEXTS = {
   soundNote: 'Aucun son pour l’instant : les futurs effets sonores respecteront ce réglage.',
   contrastNote: 'Texte plus clair, bordures et anneau de focus renforcés, fonds opaques.',
 } as const;
+
+/** Textes de la section « Jeux » (FEAT-19) : réglages de jeu propres au profil actif. */
+export const GAME_SETTINGS_TEXTS = {
+  profileNote: 'Ces réglages suivent le joueur : chaque profil a les siens.',
+  /**
+   * Nom affiché du jeu, identique à `GAME_REGISTRY.memory.title`. Le registre n'est pas importé :
+   * il embarquerait les catalogues de tous les jeux dans le JS de la route (voir `SettingsScreen`).
+   */
+  memoryTitle: 'Memory',
+  previewLabel: 'Temps de mémorisation',
+  previewNote:
+    'Multiplie l’aperçu des cartes au début d’une étoile : « Très long » le double. Les étoiles sans aperçu n’en gagnent pas.',
+  mismatchLabel: 'Temps d’affichage des erreurs',
+  mismatchNote:
+    'Multiplie le temps pendant lequel deux cartes différentes restent visibles avant de se cacher.',
+} as const;
+
+/** « Réglages de Léo » : en tête de la section « Jeux », le profil dont les réglages sont affichés. */
+export function describeProfileSettings(name: string): string {
+  return `Réglages de ${name}`;
+}
+
+export interface TimeFactorOption {
+  value: TimeFactor;
+  label: string;
+}
+
+/** Libellé de chaque facteur de temps : table exhaustive, le compilateur signale un pas oublié. */
+const TIME_FACTOR_LABELS: Readonly<Record<TimeFactor, string>> = {
+  0.5: 'Court',
+  1: 'Normal',
+  1.5: 'Long',
+  2: 'Très long',
+};
+
+/**
+ * Options des sélecteurs de temps de Memory (mémorisation, affichage des erreurs), dans l'ordre de
+ * `TIME_FACTORS` (du plus court au plus long) : le curseur D-Pad suit cet ordre.
+ */
+export const TIME_FACTOR_OPTIONS: readonly TimeFactorOption[] = TIME_FACTORS.map((value) => ({
+  value,
+  label: TIME_FACTOR_LABELS[value],
+}));
+
+/** Facteur affiché sous le libellé de l'option, à la française : « × 0,5 », « × 1 », « × 1,5 », « × 2 ». */
+export function formatTimeFactor(factor: TimeFactor): string {
+  return `× ${String(factor).replace('.', ',')}`;
+}
 
 /** Messages de la sauvegarde ; ceux d'`importBackup` (déjà en français) sont affichés tels quels. */
 export const BACKUP_MESSAGES = {

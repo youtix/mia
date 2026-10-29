@@ -130,18 +130,37 @@ function SecondsLeft({ value }: { value: number }) {
   );
 }
 
-/** Secondes d'aperçu restantes : « 3 », « 2 », « 1 » (remonté à chaque nouvelle partie). */
+/**
+ * Secondes d'aperçu restantes (`⌈restant⌉`), calées sur la fin de l'aperçu, dont la durée jouée
+ * peut être fractionnaire (FEAT-19 : 5 s × 0,5 = 2,5 s) : la première échéance tombe au reste
+ * fractionnaire (2,5 s : « 3 » pendant 0,5 s), les suivantes toutes les secondes (« 2 », « 1 » 1 s
+ * chacune), si bien que « 1 » s'achève à l'instant où le plateau cache les cartes ; une durée
+ * entière (5 s) défile 5, 4, 3, 2, 1 à la seconde. Jamais au-dessous de 1 ; remonté à chaque
+ * nouvelle partie.
+ */
 function PreviewCountdown({ seconds }: { seconds: number }) {
   const [left, setLeft] = useState(() => Math.max(1, Math.ceil(seconds)));
 
   useEffect(() => {
-    const timer = setInterval(() => {
+    // Première échéance : `seconds − (⌈seconds⌉ − 1)`, le reste fractionnaire, ou 1 s pour une
+    // durée entière ; puis une par seconde. Minuteurs posés d'un coup, sans attendre un rendu entre
+    // deux échéances : aucune dérive cumulée face au minuteur du plateau qui cache les cartes.
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const tick = () => {
       setLeft((value) => Math.max(1, value - 1));
-    }, 1000);
-    return () => {
-      clearInterval(timer);
     };
-  }, []);
+    const timeout = setTimeout(
+      () => {
+        tick();
+        interval = setInterval(tick, 1000);
+      },
+      (seconds - (Math.ceil(seconds) - 1)) * 1000,
+    );
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
+  }, [seconds]);
 
   return <SecondsLeft value={left} />;
 }
@@ -153,7 +172,10 @@ interface PreviewBannerProps {
   inputMode: InputMode;
 }
 
-/** « Mémorise les cartes ! » et compte à rebours ; un tap ou OK termine l'aperçu plus tôt. */
+/**
+ * « Mémorise les cartes ! » et compte à rebours de la durée jouée (réglages du profil compris) ; un
+ * tap ou OK termine l'aperçu plus tôt.
+ */
 function PreviewBanner({ seconds, isRunning, round, inputMode }: PreviewBannerProps) {
   return (
     <p className="flex items-center gap-3 rounded-2xl border-2 border-sky-400 bg-sky-950/60 px-3 py-2 text-slate-50">
@@ -195,7 +217,9 @@ export interface MemoryHudProps {
  * Informations de la partie, sans élément interactif (les boutons sont dans l'en-tête
  * d'`AppShell`) : palier, règles, puis compteurs ou aperçu. Bandeau au-dessus du plateau en
  * portrait, colonne à sa gauche en paysage. L'aperçu et les compteurs partagent la même cellule :
- * la hauteur ne change pas à la fin de l'aperçu, donc le plateau ne se redimensionne pas.
+ * la hauteur ne change pas à la fin de l'aperçu, donc le plateau ne se redimensionne pas. Durée
+ * d'aperçu affichée : celle de la partie (`game.config`, réglages du profil déjà appliqués par le
+ * plateau, FEAT-19).
  */
 export function MemoryHud({
   game,

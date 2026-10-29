@@ -1,16 +1,22 @@
-import type {
-  DeviceSettings,
-  GameId,
-  GameProgress,
-  LevelCompletion,
-  MiaSaveState,
-  TvModeOverride,
-  UserProfile,
+import {
+  TIME_FACTORS,
+  type DeviceSettings,
+  type GameId,
+  type GameProgress,
+  type LevelCompletion,
+  type MemoryGameSettings,
+  type MiaSaveState,
+  type ProfileGameSettings,
+  type TimeFactor,
+  type TvModeOverride,
+  type UserProfile,
 } from '@/types/mia';
 import {
+  createDefaultGameSettings,
   createDefaultSaveState,
   CURRENT_SCHEMA_VERSION,
   DEFAULT_DEVICE_SETTINGS,
+  DEFAULT_MEMORY_GAME_SETTINGS,
 } from './default-state';
 
 type UnknownRecord = Record<string, unknown>;
@@ -96,6 +102,10 @@ function isKnownGameId(value: string): value is GameId {
 
 function isTvModeOverride(value: unknown): value is TvModeOverride {
   return typeof value === 'string' && Object.hasOwn(TV_MODE_OVERRIDES, value);
+}
+
+function isTimeFactor(value: unknown): value is TimeFactor {
+  return typeof value === 'number' && (TIME_FACTORS as readonly number[]).includes(value);
 }
 
 /** Les fichiers enregistrés par certains éditeurs (Bloc-notes) commencent par un BOM. */
@@ -238,6 +248,53 @@ function sanitizeGamesProgress(
   return Object.fromEntries(games);
 }
 
+/**
+ * Réglages de Memory d'un profil (FEAT-19) : réparés champ par champ, comme ceux de l'appareil.
+ * Absents (sauvegarde d'une version antérieure), ils valent les défauts sans perte signalée.
+ */
+function sanitizeMemorySettings(
+  value: unknown,
+  profileId: string,
+  issues: string[],
+): MemoryGameSettings {
+  if (value === undefined) return { ...DEFAULT_MEMORY_GAME_SETTINGS };
+  if (!isRecord(value)) {
+    issues.push(`réglages Memory du profil « ${profileId} » illisibles, valeurs par défaut`);
+    return { ...DEFAULT_MEMORY_GAME_SETTINGS };
+  }
+  const { previewFactor, mismatchFactor } = value;
+  const settings: MemoryGameSettings = {
+    previewFactor: isTimeFactor(previewFactor)
+      ? previewFactor
+      : DEFAULT_MEMORY_GAME_SETTINGS.previewFactor,
+    mismatchFactor: isTimeFactor(mismatchFactor)
+      ? mismatchFactor
+      : DEFAULT_MEMORY_GAME_SETTINGS.mismatchFactor,
+  };
+  for (const key of Object.keys(settings) as (keyof MemoryGameSettings)[]) {
+    if (settings[key] !== value[key]) {
+      issues.push(
+        `réglage Memory « ${key} » du profil « ${profileId} » invalide, valeur par défaut`,
+      );
+    }
+  }
+  return settings;
+}
+
+/** Réglages de jeu d'un profil : absents, valeurs par défaut sans perte ; illisibles, avec perte. */
+function sanitizeGameSettings(
+  value: unknown,
+  profileId: string,
+  issues: string[],
+): ProfileGameSettings {
+  if (value === undefined) return createDefaultGameSettings();
+  if (!isRecord(value)) {
+    issues.push(`réglages de jeu du profil « ${profileId} » illisibles, valeurs par défaut`);
+    return createDefaultGameSettings();
+  }
+  return { memory: sanitizeMemorySettings(value.memory, profileId, issues) };
+}
+
 function sanitizeProfile(value: unknown, issues: string[]): UserProfile | null {
   if (!isRecord(value)) return null;
   const { id, name, avatarId, createdAt } = value;
@@ -255,6 +312,7 @@ function sanitizeProfile(value: unknown, issues: string[]): UserProfile | null {
     avatarId,
     createdAt,
     gamesProgress: sanitizeGamesProgress(value.gamesProgress, id, issues),
+    gameSettings: sanitizeGameSettings(value.gameSettings, id, issues),
   };
 }
 

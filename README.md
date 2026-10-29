@@ -25,13 +25,13 @@ Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqu
 
 ## Fonctionnalités
 
-| Domaine         | Ce que Mia propose                                                                                                                                                                                                                                                                                                          |
-| :-------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Memory**      | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu initial, quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs. |
-| **Traffic Jam** | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                      |
-| **Progression** | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne. Le catalogue s'étend sans jamais casser les sauvegardes.                                                           |
-| **Profils**     | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                |
-| **Réglages**    | Mode TV forcé ou automatique, son, contraste élevé ; export et import de la sauvegarde au format JSON, réinitialisation.                                                                                                                                                                                                    |
+| Domaine         | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                      |
+| :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Memory**      | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu initial (5 s, ajustable par joueur), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs. |
+| **Traffic Jam** | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                  |
+| **Progression** | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne. Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                       |
+| **Profils**     | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                            |
+| **Réglages**    | Mode TV forcé ou automatique, son, contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation.                                                                                                                                      |
 
 ## Architecture
 
@@ -266,7 +266,7 @@ npm run validate:levels   # résumé par jeu + anomalies (code de sortie 1 si un
     rows: 3,
     matchSize: 2,
     visualMode: 'thematic_palette',
-    previewSeconds: 1,
+    previewSeconds: 5,
     maxMistakes: 12,
     swapEveryNMistakes: null,
     perfectMaxMistakes: 5,
@@ -279,7 +279,7 @@ npm run validate:levels   # résumé par jeu + anomalies (code de sortie 1 si un
 | `cols`, `rows`       | Entiers positifs                                                                 | `cols × rows` divisible par `matchSize`, au moins 2 groupes ; garde `cols >= rows` (le plateau tourne de lui-même en portrait). |
 | `matchSize`          | `2` (paires) ou `3` (triplets)                                                   |                                                                                                                                 |
 | `visualMode`         | `distinct_color_shape`, `thematic_palette`, `monochrome`, `abstract_orientation` | Nombre maximal de groupes par mode : 10, 36, 36 et 32.                                                                          |
-| `previewSeconds`     | Entier ≥ 0                                                                       | `0` = aucun aperçu.                                                                                                             |
+| `previewSeconds`     | Entier ≥ 0                                                                       | Multiplié par le facteur du joueur (FEAT-19) ; `0` = aucun aperçu, quel que soit le réglage.                                    |
 | `maxMistakes`        | Entier ≥ 0 ou `null`                                                             | `null` = erreurs illimitées ; sinon la partie est perdue au-delà.                                                               |
 | `swapEveryNMistakes` | Entier ≥ 1 ou `null`                                                             | Deux cartes cachées échangent leur place toutes les N erreurs ; `<= maxMistakes` quand les deux sont définis.                   |
 | `perfectMaxMistakes` | Entier ≥ 0                                                                       | Nombre d'erreurs maximal pour la couronne ; `<= maxMistakes` quand il est défini.                                               |
@@ -346,7 +346,7 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 .
 ├── .github/workflows/       # ci.yml, pr-title.yml, release-and-deploy.yml
 ├── android/                 # Projet Android Gradle (Capacitor) : manifeste TV, plugin natif TvMode, signature
-├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-18 (spécifications et décisions)
+├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-19 (spécifications et décisions)
 ├── fdroid/                  # Recette fdroiddata (org.mia.braintraining.yml)
 ├── metadata/fr-FR/          # Descriptions F-Droid (format Fastlane)
 ├── public/                  # manifest.json, icônes, page WebView obsolète

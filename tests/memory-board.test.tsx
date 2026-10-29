@@ -1,5 +1,7 @@
 import { NavigationProvider } from '@/core/navigation';
 import { getGameProgressSummary, type BaseLevelDefinition } from '@/core/progression';
+import type * as MiaStorage from '@/core/storage';
+import { DEFAULT_MEMORY_GAME_SETTINGS, type StorageContextValue } from '@/core/storage';
 import {
   getMemoryCardLabel,
   MATCH_DELAY_MS,
@@ -19,10 +21,27 @@ import {
   getDefeatTitle,
   getSwapRuleLabel,
 } from '@/games/memory/components/labels';
-import type { UserProfile } from '@/types/mia';
+import type { MemoryGameSettings, TimeFactor, UserProfile } from '@/types/mia';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * Profil actif vu par le plateau (`useMiaStorage`, FEAT-19). Le `StorageProvider` réel charge la
+ * sauvegarde après le montage, puis rejoue le mode TV : le plateau est monté sur un contexte
+ * simulé, profil déjà connu, comme `GameScreen` le monte une fois la sauvegarde chargée. Le reste
+ * du module (`DEFAULT_MEMORY_GAME_SETTINGS`) est réel.
+ */
+const storage = vi.hoisted((): { activeProfile: UserProfile | null } => ({ activeProfile: null }));
+
+vi.mock('@/core/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof MiaStorage>();
+  // Nouvel objet de contexte à chaque rendu : le plateau ne doit pas dépendre de son identité.
+  const useMiaStorage = (): Pick<StorageContextValue, 'activeProfile'> => ({
+    activeProfile: storage.activeProfile,
+  });
+  return { ...actual, useMiaStorage };
+});
 
 /**
  * Configuration de base : 2 × 2 en paires, sans aperçu ni limite d'erreurs. Avec `Math.random`
@@ -74,6 +93,19 @@ function crownedPlayer(): UserProfile {
         lastPlayedLevelId: 'mem-001',
       },
     },
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
+  };
+}
+
+/** Mia : aucune progression, réglages de Memory donnés (FEAT-19), les autres par défaut. */
+function playerWithSettings(memory: Partial<MemoryGameSettings>): UserProfile {
+  return {
+    id: 'p2',
+    name: 'Mia',
+    avatarId: 'owl',
+    createdAt: CREATED_AT,
+    gamesProgress: {},
+    gameSettings: { memory: { ...DEFAULT_MEMORY_GAME_SETTINGS, ...memory } },
   };
 }
 
@@ -81,11 +113,13 @@ interface BoardOptions {
   config?: Partial<MemoryLevelConfig>;
   /** Niveau joué : 0 (Étoile #1, suivie de l'Étoile #2) ou 1 (dernière étoile du catalogue) */
   levelIndex?: number;
+  /** Profil actif : progression (`summary`) et réglages de Memory lus par le plateau (FEAT-19) */
   profile?: UserProfile | null;
 }
 
 /** Monte le plateau comme `GameScreen.renderLevel` : niveau du résumé et commandes simulées. */
 function renderBoard({ config = {}, levelIndex = 0, profile = null }: BoardOptions = {}) {
+  storage.activeProfile = profile;
   const catalog = [
     definition('mem-001', 10, { ...BASE_CONFIG, ...config }),
     definition('mem-002', 20, BASE_CONFIG),
@@ -97,10 +131,21 @@ function renderBoard({ config = {}, levelIndex = 0, profile = null }: BoardOptio
     summary,
     playLevel: vi.fn(),
     exitToMap: vi.fn(),
-    recordVictory: vi.fn(() => Promise.resolve()),
+    // Comme après `recordLevelVictory` : la sauvegarde remplace le profil actif par un nouvel objet
+    // (mêmes valeurs) ; la partie en cours et ses minuteurs ne doivent pas y réagir.
+    recordVictory: vi.fn(() => {
+      if (storage.activeProfile) storage.activeProfile = structuredClone(storage.activeProfile);
+      return Promise.resolve();
+    }),
   };
-  render(<MemoryBoard level={level} controls={controls} />, { wrapper: NavigationProvider });
-  return controls;
+  const view = render(<MemoryBoard level={level} controls={controls} />, {
+    wrapper: NavigationProvider,
+  });
+  /** Nouveau rendu du même plateau (ex: après un changement de `storage.activeProfile`). */
+  const rerender = () => {
+    view.rerender(<MemoryBoard level={level} controls={controls} />);
+  };
+  return { ...controls, rerender };
 }
 
 /** Mode TV forcé avant le montage : le moteur D-Pad démarre en mode `dpad`. */
@@ -188,6 +233,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  storage.activeProfile = null;
   delete document.documentElement.dataset.tv;
 });
 
@@ -515,6 +561,184 @@ describe('Aperçu', () => {
       timeSeconds: 10,
       isPerfect: true,
     });
+  });
+});
+
+describe('Réglages du profil (FEAT-19)', () => {
+  function getBanner(): HTMLElement | null {
+    return screen.getByText('Mémorise les cartes !').closest('p');
+  }
+
+  function expectAllCards(state: 'flipped' | 'hidden', count = 4): void {
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array<string>(count).fill(state));
+  }
+
+  it('réduit l’aperçu de moitié (5 s × 0,5) avec un compte à rebours calé sur sa fin', () => {
+    renderBoard({
+      config: { previewSeconds: 5 },
+      profile: playerWithSettings({ previewFactor: 0.5 }),
+    });
+    const banner = getBanner();
+
+    // 2,5 s : « 3 » pendant 0,5 s, puis « 2 » et « 1 » pendant 1 s chacun ; cartes cachées à 2,5 s.
+    expect(banner).toHaveTextContent('3 secondes');
+    advance(499);
+    expect(banner).toHaveTextContent('3 secondes');
+    advance(1);
+    expect(banner).toHaveTextContent('2 secondes');
+    advance(1000);
+    expect(banner).toHaveTextContent('1 seconde');
+    expect(banner).not.toHaveTextContent('secondes');
+    advance(999);
+    expectAllCards('flipped');
+    expect(banner).toHaveTextContent('1 seconde');
+    advance(1);
+    expectAllCards('hidden');
+  });
+
+  it('joue l’aperçu de la partie en cours même si le facteur change pendant l’aperçu', () => {
+    const { rerender } = renderBoard({
+      config: { previewSeconds: 5 },
+      profile: playerWithSettings({ previewFactor: 1 }),
+    });
+    expect(getBanner()).toHaveTextContent('5 secondes');
+
+    // Choix du joueur imposé (ou autre onglet) : le profil actif change pendant l'aperçu.
+    advance(1000);
+    storage.activeProfile = playerWithSettings({ previewFactor: 2 });
+    rerender();
+
+    // La partie garde ses 5 s, comme son compte à rebours : cartes cachées à 5 s, pas à 10 s.
+    advance(3999);
+    expectAllCards('flipped');
+    expect(getBanner()).toHaveTextContent('1 seconde');
+    advance(1);
+    expectAllCards('hidden');
+
+    // La partie suivante joue le nouveau facteur : 10 s.
+    fireEvent.click(screen.getByRole('button', { name: 'Recommencer' }));
+    expect(getBanner()).toHaveTextContent('10 secondes');
+    expectAllCards('flipped');
+  });
+
+  it('double l’aperçu (5 s × 2) : compte à rebours depuis 10, cartes cachées à 10 s', () => {
+    renderBoard({
+      config: { previewSeconds: 5 },
+      profile: playerWithSettings({ previewFactor: 2 }),
+    });
+    const banner = getBanner();
+
+    expect(banner).toHaveTextContent('10 secondes');
+    advance(1000);
+    expect(banner).toHaveTextContent('9 secondes');
+    advance(8999);
+    expectAllCards('flipped');
+    expect(banner).toHaveTextContent('1 seconde');
+    advance(1);
+    expectAllCards('hidden');
+  });
+
+  it('ne donne jamais d’aperçu à une étoile qui n’en a pas, quel que soit le facteur', () => {
+    renderBoard({
+      config: { previewSeconds: 0 },
+      profile: playerWithSettings({ previewFactor: 2 }),
+    });
+
+    expect(screen.queryByText('Mémorise les cartes !')).not.toBeInTheDocument();
+    expectAllCards('hidden');
+    expect(getHud()).toHaveTextContent('Paires : 0 / 2');
+  });
+
+  it.each<[TimeFactor, number]>([
+    [2, 1800],
+    [0.5, 450],
+  ])(
+    'laisse une erreur visible 900 ms × %s = %i ms, sans toucher aux 350 ms d’un groupe',
+    (mismatchFactor, delay) => {
+      renderBoard({ config: { cols: 3 }, profile: playerWithSettings({ mismatchFactor }) });
+
+      clickCards(0, 2);
+      advance(delay - 1);
+      expect(getCard(0)).toHaveAttribute('data-state', 'flipped');
+      expect(getCard(2)).toHaveAttribute('data-state', 'flipped');
+      advance(1);
+      expectAllCards('hidden', 6);
+
+      clickCards(0, 1);
+      advance(MATCH_DELAY_MS - 1);
+      expect(getCard(1)).toHaveAttribute('data-state', 'flipped');
+      advance(1);
+      expect(getCard(0)).toHaveAttribute('data-state', 'matched');
+      expect(getCard(1)).toHaveAttribute('data-state', 'matched');
+    },
+  );
+
+  it('garde les temps du niveau sans profil actif', () => {
+    renderBoard({ config: { cols: 3, previewSeconds: 2 }, profile: null });
+    const banner = getBanner();
+
+    expect(banner).toHaveTextContent('2 secondes');
+    advance(1999);
+    expectAllCards('flipped', 6);
+    advance(1);
+    expectAllCards('hidden', 6);
+
+    clickCards(0, 2);
+    advance(MISMATCH_DELAY_MS - 1);
+    expect(getCard(0)).toHaveAttribute('data-state', 'flipped');
+    advance(1);
+    expectAllCards('hidden', 6);
+  });
+
+  it('termine un aperçu fractionnaire au premier tap, sans retourner la carte touchée', () => {
+    renderBoard({
+      config: { previewSeconds: 5 },
+      profile: playerWithSettings({ previewFactor: 0.5 }),
+    });
+    advance(700);
+
+    clickCards(2);
+    expectAllCards('hidden');
+
+    // Le minuteur de l'aperçu est annulé : la partie suit son cours au-delà des 2,5 s.
+    clickCards(2);
+    expect(getCard(2)).toHaveAttribute('data-state', 'flipped');
+    advance(1800);
+    expect(getCard(2)).toHaveAttribute('data-state', 'flipped');
+    expect(getHud()).toHaveTextContent('Paires : 0 / 2');
+  });
+
+  it('termine un aperçu fractionnaire avec OK à la télécommande', () => {
+    forceTvMode();
+    renderBoard({
+      config: { previewSeconds: 5 },
+      profile: playerWithSettings({ previewFactor: 1.5 }),
+    });
+
+    expect(getBanner()).toHaveTextContent('8 secondes');
+    advance(500);
+    expect(getBanner()).toHaveTextContent('7 secondes');
+    press('Enter');
+    expectAllCards('hidden');
+  });
+
+  it('garde la partie et ses réglages quand la sauvegarde remplace le profil actif', () => {
+    renderBoard({
+      config: { previewSeconds: 5 },
+      profile: playerWithSettings({ previewFactor: 2 }),
+    });
+    clickCards(0);
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+    advance(MATCH_DELAY_MS);
+
+    // `recordVictory` a remplacé le profil (nouvel objet) : rien n'est recréé.
+    expect(screen.getByRole('dialog', { name: 'Étoile #1 gagnée !' })).toBeInTheDocument();
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('matched'));
+
+    fireEvent.click(getButton('Rejouer'));
+    expect(getBanner()).toHaveTextContent('10 secondes');
   });
 });
 

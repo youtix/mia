@@ -11,7 +11,7 @@
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
 4. [Conception Détaillée des Jeux (Memory & Traffic Jam)](#4-conception-détaillée-des-jeux-memory--traffic-jam)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-18`)](#6-découpage-en-features-atomiques-feat-01-à-feat-18)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-19`)](#6-découpage-en-features-atomiques-feat-01-à-feat-19)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -29,7 +29,8 @@
    - [FEAT-15.md](./FEAT-15.md) — Empaquetage Android & Android TV via Capacitor (Conformité F-Droid)
    - [FEAT-16.md](./FEAT-16.md) — Intégration APK dans la Release Automatique, Recette F-Droid & Documentation
    - [FEAT-17.md](./FEAT-17.md) — PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes
-   - [FEAT-18.md](./FEAT-18.md) — Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import) *(brouillon)*
+   - [FEAT-18.md](./FEAT-18.md) — Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)
+   - [FEAT-19.md](./FEAT-19.md) — Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -136,6 +137,25 @@ export interface UserProfile {
   createdAt: string;
   /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", etc.) */
   gamesProgress: Record<string, GameProgress>;
+  /** Réglages de jeu du joueur (FEAT-19) : toujours complets, réparés aux valeurs par défaut à la lecture */
+  gameSettings: ProfileGameSettings;
+}
+
+/** Pas du facteur de temps (FEAT-19), dans l'ordre d'affichage : 1 = temps du niveau tel quel */
+export const TIME_FACTORS = [0.5, 1, 1.5, 2] as const;
+export type TimeFactor = (typeof TIME_FACTORS)[number];
+
+/** Réglages de Memory propres à un profil, appliqués aux temps de chaque niveau (FEAT-19) */
+export interface MemoryGameSettings {
+  /** Multiplie l'aperçu du niveau (`previewSeconds`) ; une étoile sans aperçu (0) n'en gagne pas */
+  previewFactor: TimeFactor;
+  /** Multiplie le temps pendant lequel les cartes d'une erreur restent visibles (900 ms) */
+  mismatchFactor: TimeFactor;
+}
+
+/** Un objet par jeu qui propose des réglages (Traffic Jam n'en a pas encore) */
+export interface ProfileGameSettings {
+  memory: MemoryGameSettings;
 }
 
 export interface GameProgress {
@@ -189,7 +209,7 @@ Chaque niveau de *Memory* est défini par une structure déclarative permettant 
    * `thematic_palette` : Icônes d'un même thème avec une palette réduite à 3 couleurs.
    * `monochrome` : Toutes les cartes ont exactement la même couleur ; seule la forme du symbole permet de les différencier.
    * `abstract_orientation` : Formes géométriques proches ou orientées différemment (ex: flèche vers le haut, vers la droite, vers le bas).
-4. **Temps d'aperçu initial (`previewSeconds`)** : Au début du niveau, les cartes sont dévoilées pendant $X$ secondes avant de se retourner (`0` = aucun aperçu).
+4. **Temps d'aperçu initial (`previewSeconds`)** : Au début du niveau, les cartes sont dévoilées pendant $X$ secondes avant de se retourner (`0` = aucun aperçu). Depuis `FEAT-19`, cette durée est multipliée par le facteur de temps du joueur (`previewFactor` du profil, × 0,5 à × 2) ; `0` reste `0`.
 5. **Nombre maximal d'erreurs autorisées (`maxMistakes`)** : `null` (illimité en *Très Facile* / *Facile*) ou limité (en *Difficile* / *Très Difficile*) pour encourager la mémorisation plutôt que le clic au hasard.
 6. **Mécanique spéciale (`swapEveryNMistakes`)** : Dans les niveaux *Très Difficile*, toutes les $N$ erreurs, deux cartes face cachée échangent visiblement leur position sur le plateau.
 
@@ -197,24 +217,24 @@ Chaque niveau de *Memory* est défini par une structure déclarative permettant 
 
 | Étoile | ID Niveau | Palier | Grille | Cartes | Association | Mode Visuel | Aperçu | Erreurs Max | Spécial |
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :---: | :--- |
-| ⭐ 1 | `mem-001` | Très Facile | `2x2` | 4 | Paires (2) | Couleurs + Formes | 3s | Illimité | — |
-| ⭐ 2 | `mem-002` | Très Facile | `3x2` | 6 | Paires (2) | Couleurs + Formes | 3s | Illimité | — |
+| ⭐ 1 | `mem-001` | Très Facile | `2x2` | 4 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
+| ⭐ 2 | `mem-002` | Très Facile | `3x2` | 6 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
 | ⭐ 3 | `mem-003` | Très Facile | `3x2` | 6 | Paires (2) | Couleurs + Formes | 0s | Illimité | — |
-| ⭐ 4 | `mem-004` | Très Facile | `4x2` | 8 | Paires (2) | Couleurs + Formes | 2s | Illimité | — |
+| ⭐ 4 | `mem-004` | Très Facile | `4x2` | 8 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
 | ⭐ 5 | `mem-005` | Facile | `4x2` | 8 | Paires (2) | Thématique | 0s | Illimité | — |
-| ⭐ 6 | `mem-006` | Facile | `5x2` | 10 | Paires (2) | Couleurs + Formes | 2s | Illimité | — |
+| ⭐ 6 | `mem-006` | Facile | `5x2` | 10 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
 | ⭐ 7 | `mem-007` | Facile | `5x2` | 10 | Paires (2) | Thématique | 0s | Illimité | — |
 | ⭐ 8 | `mem-008` | Facile | `4x3` | 12 | Paires (2) | Thématique | 0s | Illimité | — |
-| ⭐ 9 | `mem-009` | Moyen | `4x3` | 12 | Paires (2) | Monochrome | 2s | 10 | — |
-| ⭐ 10 | `mem-010` | Moyen | `4x4` | 16 | Paires (2) | Thématique | 2s | 12 | — |
+| ⭐ 9 | `mem-009` | Moyen | `4x3` | 12 | Paires (2) | Monochrome | 5s | 10 | — |
+| ⭐ 10 | `mem-010` | Moyen | `4x4` | 16 | Paires (2) | Thématique | 5s | 12 | — |
 | ⭐ 11 | `mem-011` | Moyen | `4x4` | 16 | Paires (2) | Monochrome | 0s | 12 | — |
 | ⭐ 12 | `mem-012` | Moyen | `5x4` | 20 | Paires (2) | Thématique | 0s | 14 | — |
 | ⭐ 13 | `mem-013` | Difficile | `5x4` | 20 | Paires (2) | Monochrome | 0s | 12 | — |
 | ⭐ 14 | `mem-014` | Difficile | `6x4` | 24 | Paires (2) | Thématique | 0s | 15 | — |
-| ⭐ 15 | `mem-015` | Difficile | `5x3` | 15 | **Triplets (3)** | Couleurs + Formes | 3s | 10 | — |
+| ⭐ 15 | `mem-015` | Difficile | `5x3` | 15 | **Triplets (3)** | Couleurs + Formes | 5s | 10 | — |
 | ⭐ 16 | `mem-016` | Difficile | `6x4` | 24 | Paires (2) | Abstrait | 0s | 14 | — |
 | ⭐ 17 | `mem-017` | Très Difficile | `6x5` | 30 | Paires (2) | Monochrome | 0s | 18 | — |
-| ⭐ 18 | `mem-018` | Très Difficile | `6x4` | 24 | **Triplets (3)** | Thématique | 3s | 14 | — |
+| ⭐ 18 | `mem-018` | Très Difficile | `6x4` | 24 | **Triplets (3)** | Thématique | 5s | 14 | — |
 | ⭐ 19 | `mem-019` | Très Difficile | `5x4` | 20 | Paires (2) | Monochrome | 0s | 12 | Permutation (4 err.) |
 | ⭐ 20 | `mem-020` | Très Difficile | `6x6` | 36 | Paires (2) | Abstrait | 0s | 20 | Permutation (5 err.) |
 
@@ -321,13 +341,17 @@ flowchart TD
 
     F05 --> F18["FEAT-18 : Réglages & Sauvegarde (Export / Import)"]
     F08 --> F18
+
+    F06 --> F19["FEAT-19 : Réglages de jeu par profil"]
+    F11 --> F19
+    F18 --> F19
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-18`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-19`)
 
-Chacune des 18 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 19 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -348,7 +372,8 @@ Chacune des 18 features possède sa spécification complète et autonome pour l'
 | **15** | [FEAT-15.md](./FEAT-15.md) | **Empaquetage Android & Android TV via Capacitor (Conformité F-Droid)** | `FEAT-08`, `FEAT-11`, `FEAT-14` |
 | **16** | [FEAT-16.md](./FEAT-16.md) | **Intégration APK dans la Release Automatique, Recette F-Droid & Documentation** | `FEAT-02`, `FEAT-15` |
 | **17** | [FEAT-17.md](./FEAT-17.md) | **PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes** | `FEAT-01`, `FEAT-02` |
-| **18** | [FEAT-18.md](./FEAT-18.md) | **Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)** *(brouillon)* | `FEAT-05`, `FEAT-08` |
+| **18** | [FEAT-18.md](./FEAT-18.md) | **Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)** | `FEAT-05`, `FEAT-08` |
+| **19** | [FEAT-19.md](./FEAT-19.md) | **Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)** | `FEAT-06`, `FEAT-11`, `FEAT-18` |
 
 ---
 
@@ -510,7 +535,15 @@ Chacune des 18 features possède sa spécification complète et autonome pour l'
 
 * **Objectif** : Donner accès, au doigt comme à la télécommande, aux réglages de l'appareil (mode TV forcé, son, contraste élevé) et à la sauvegarde de la progression (export / import JSON, réinitialisation) fournis par `FEAT-05`.
 * **Dépendances** : `FEAT-05`, `FEAT-08`.
-* **Statut** : brouillon issu de la session de cadrage de `FEAT-05`, à cadrer avant implémentation.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-18.md](./FEAT-18.md).
+
+---
+
+### `FEAT-19` : Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory) ([FEAT-19.md](./FEAT-19.md))
+
+* **Objectif** : Permettre à chaque profil d'ajuster, depuis une section « Jeux » de l'écran Réglages, deux facteurs de temps de *Memory* (× 0,5 à × 2 : temps de mémorisation appliqué au `previewSeconds` du niveau, temps d'affichage des cartes d'une erreur), enregistrés avec le profil (`UserProfile.gameSettings`, sans montée de version du schéma) et appliqués par le plateau sans modifier la progression ni la logique du catalogue, dont les huit étoiles avec aperçu passent à une base uniforme de 5 s.
+* **Dépendances** : `FEAT-06`, `FEAT-11`, `FEAT-18`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-19.md](./FEAT-19.md).
 
 ---
 
@@ -533,4 +566,5 @@ Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.
 3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, FEAT-05), sans laquelle sa progression serait écartée au chargement.
-4. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !
+4. Un jeu qui propose ses propres réglages (`FEAT-19`) ajoute son objet à `ProfileGameSettings` (`src/types/mia.ts`), ses valeurs par défaut à `createDefaultGameSettings` (`src/core/storage/default-state.ts`), son assainisseur dans `src/core/storage/migrations.ts` et son bloc dans la section « Jeux » de l'écran Réglages.
+5. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !

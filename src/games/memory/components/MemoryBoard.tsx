@@ -4,10 +4,11 @@ import type { LevelControls } from '@/components/progression';
 import { AppShell, DEFAULT_REMOTE_HINTS, FocusableButton } from '@/components/ui';
 import { useGridColumns, useGridNavigation, useNavigation } from '@/core/navigation';
 import type { EnrichedLevelItem } from '@/core/progression';
+import { DEFAULT_MEMORY_GAME_SETTINGS, useMiaStorage } from '@/core/storage';
 import { cn } from '@/lib/cn';
 import { MotionConfig, motion } from 'framer-motion';
 import { RotateCcw } from 'lucide-react';
-import { useEffect, useEffectEvent, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   createMemoryGame,
   endPreviewPhase,
@@ -16,6 +17,7 @@ import {
   resolveEvaluation,
   selectCard,
 } from '../engine';
+import { applyMemorySettings, getMismatchDelayMs } from '../settings';
 import type { MemoryGameState, MemoryLevelConfig } from '../types';
 import { MemoryCardView } from './MemoryCardView';
 import { MemoryEndModal, type MemoryGameResult } from './MemoryEndModal';
@@ -24,7 +26,10 @@ import { MemoryHud } from './MemoryHud';
 /** Groupe trouvé : affiché brièvement avant de passer à `matched` (`isEvaluationMatch`). */
 export const MATCH_DELAY_MS = 350;
 
-/** Erreur : cartes laissées visibles avant de se cacher. */
+/**
+ * Erreur : cartes laissées visibles avant de se cacher. Socle multiplié par le `mismatchFactor` du
+ * profil (FEAT-19, `getMismatchDelayMs`) ; le délai d'un groupe trouvé n'en dépend pas.
+ */
 export const MISMATCH_DELAY_MS = 900;
 
 /** Indicateur d'une permutation (`lastSwappedPair`) sur les deux cartes échangées. */
@@ -57,10 +62,24 @@ export interface MemoryBoardProps {
  * carrées dimensionnées par la feuille de style (`memory-grid`), grille tournée quand la zone du
  * plateau est en portrait. Orchestre le moteur (FEAT-09) : aperçu, évaluation, permutations, fin
  * de partie et enregistrement de la victoire. Remonté par `GameScreen` à chaque changement de niveau.
+ * Joue le niveau aux réglages de Memory du profil actif (FEAT-19) : aperçu multiplié par
+ * `previewFactor` (une étoile sans aperçu n'en gagne pas), erreur laissée visible
+ * `MISMATCH_DELAY_MS` × `mismatchFactor` ; étoiles et couronnes n'en dépendent pas.
  */
 export function MemoryBoard({ level, controls }: MemoryBoardProps) {
-  const { config, tier } = level.definition;
+  const { config: levelConfig, tier } = level.definition;
   const { inputMode } = useNavigation();
+  const { activeProfile } = useMiaStorage();
+  // Réglages du joueur (FEAT-19), suivis par leurs valeurs : `activeProfile` est un nouvel objet
+  // après chaque sauvegarde (`recordVictory`), et la configuration jouée ne doit changer qu'avec le
+  // niveau ou un facteur, jamais pour une identité (la partie et ses minuteurs y survivent).
+  const settings = activeProfile?.gameSettings.memory ?? DEFAULT_MEMORY_GAME_SETTINGS;
+  const { previewFactor, mismatchFactor } = settings;
+  const config = useMemo(
+    () => applyMemorySettings(levelConfig, { previewFactor, mismatchFactor }),
+    [levelConfig, previewFactor, mismatchFactor],
+  );
+  const mismatchDelayMs = getMismatchDelayMs(MISMATCH_DELAY_MS, settings);
   const [game, setGame] = useState(() => createMemoryGame(config));
   // Numéro de la partie : une nouvelle partie remonte la grille (aucune carte ne glisse de l'une à
   // l'autre) et le compte à rebours.
@@ -158,28 +177,32 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
     if (next.phase === 'won' || next.phase === 'lost') finish(next);
   });
 
-  // Aperçu : les cartes se cachent au bout de `previewSeconds` (ou plus tôt, par un tap ou OK).
+  // Aperçu : les cartes se cachent au bout du `previewSeconds` joué (déjà multiplié par
+  // `previewFactor`), ou plus tôt, par un tap ou OK. Lu dans `game.config`, comme le compte à
+  // rebours du HUD : une partie joue jusqu'au bout la configuration de sa création, même si le
+  // profil actif (donc le facteur) change pendant l'aperçu (choix du joueur imposé, autre onglet) ;
+  // le nouveau facteur vaut pour la partie suivante (Recommencer, étoile suivante).
   useEffect(() => {
     if (game.phase !== 'preview') return;
     const timer = setTimeout(() => {
       setGame(endPreviewPhase);
-    }, config.previewSeconds * 1000);
+    }, game.config.previewSeconds * 1000);
     return () => {
       clearTimeout(timer);
     };
-  }, [game, config.previewSeconds]);
+  }, [game]);
 
-  // Évaluation : 350 ms pour un groupe, 900 ms pour une erreur, puis résolution du coup.
+  // Évaluation : 350 ms (groupe) ou 900 ms × `mismatchFactor` (erreur), puis résolution du coup.
   useEffect(() => {
     if (game.phase !== 'evaluating') return;
-    const delay = isEvaluationMatch(game) ? MATCH_DELAY_MS : MISMATCH_DELAY_MS;
+    const delay = isEvaluationMatch(game) ? MATCH_DELAY_MS : mismatchDelayMs;
     const timer = setTimeout(() => {
       settle(game);
     }, delay);
     return () => {
       clearTimeout(timer);
     };
-  }, [game]);
+  }, [game, mismatchDelayMs]);
 
   useEffect(() => {
     if (game.phase === 'playing') startedAtRef.current ??= performance.now();

@@ -1,4 +1,4 @@
-import type { MiaSaveState, UserProfile } from '@/types/mia';
+import type { MemoryGameSettings, MiaSaveState, UserProfile } from '@/types/mia';
 import {
   AVATARS,
   DEFAULT_AVATAR_ID,
@@ -6,6 +6,7 @@ import {
   QUICK_PROFILE_NAMES,
   type AvatarId,
 } from './avatars';
+import { createDefaultGameSettings } from './default-state';
 
 /**
  * Gestion des profils familiaux (FEAT-06) : fonctions sans effet de bord sur `state`, à appliquer
@@ -161,6 +162,7 @@ export function addProfile(
     avatarId,
     createdAt: (options.now ?? new Date()).toISOString(),
     gamesProgress: {},
+    gameSettings: createDefaultGameSettings(),
   };
   return { ...state, activeProfileId: id, profiles: [...state.profiles, profile] };
 }
@@ -196,4 +198,33 @@ export function deleteProfile(
   const activeProfileId =
     state.activeProfileId === profileId ? (profiles[0]?.id ?? null) : state.activeProfileId;
   return ensureDefaultProfile({ ...state, activeProfileId, profiles }, options);
+}
+
+/**
+ * Modifie les réglages de Memory d'un profil (FEAT-19) ; les champs absents de `partial` sont
+ * conservés. Inchangé si le profil est introuvable ou si aucune valeur ne change.
+ */
+export function updateMemorySettings(
+  state: MiaSaveState,
+  profileId: string,
+  partial: Partial<MemoryGameSettings>,
+): MiaSaveState {
+  const profile = state.profiles.find((candidate) => candidate.id === profileId);
+  if (!profile) return state;
+  const current = profile.gameSettings.memory;
+  const memory: MemoryGameSettings = {
+    previewFactor: partial.previewFactor ?? current.previewFactor,
+    mismatchFactor: partial.mismatchFactor ?? current.mismatchFactor,
+  };
+  if (
+    memory.previewFactor === current.previewFactor &&
+    memory.mismatchFactor === current.mismatchFactor
+  ) {
+    return state;
+  }
+  const updated: UserProfile = { ...profile, gameSettings: { ...profile.gameSettings, memory } };
+  return {
+    ...state,
+    profiles: state.profiles.map((candidate) => (candidate.id === profileId ? updated : candidate)),
+  };
 }

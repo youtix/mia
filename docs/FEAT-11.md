@@ -40,26 +40,28 @@ Crée le tableau `MEMORY_CATALOG: BaseLevelDefinition<MemoryLevelConfig>[]` cont
 
 | Étoile | `id` | `tier` | `order` | Grille (`cols x rows`) | `matchSize` | `visualMode` | `previewSeconds` | `maxMistakes` | `swapEveryNMistakes` | `perfectMaxMistakes` |
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :---: | :---: | :---: |
-| ⭐ 1 | `mem-001` | `very_easy` | 10 | `2 x 2` (4) | `2` | `distinct_color_shape` | `3` | `null` | `null` | `0` |
-| ⭐ 2 | `mem-002` | `very_easy` | 20 | `3 x 2` (6) | `2` | `distinct_color_shape` | `3` | `null` | `null` | `1` |
+| ⭐ 1 | `mem-001` | `very_easy` | 10 | `2 x 2` (4) | `2` | `distinct_color_shape` | `5` | `null` | `null` | `0` |
+| ⭐ 2 | `mem-002` | `very_easy` | 20 | `3 x 2` (6) | `2` | `distinct_color_shape` | `5` | `null` | `null` | `1` |
 | ⭐ 3 | `mem-003` | `very_easy` | 30 | `3 x 2` (6) | `2` | `distinct_color_shape` | `0` | `null` | `null` | `2` |
-| ⭐ 4 | `mem-004` | `very_easy` | 40 | `4 x 2` (8) | `2` | `distinct_color_shape` | `2` | `null` | `null` | `2` |
+| ⭐ 4 | `mem-004` | `very_easy` | 40 | `4 x 2` (8) | `2` | `distinct_color_shape` | `5` | `null` | `null` | `2` |
 | ⭐ 5 | `mem-005` | `easy` | 10 | `4 x 2` (8) | `2` | `thematic_palette` | `0` | `null` | `null` | `3` |
-| ⭐ 6 | `mem-006` | `easy` | 20 | `5 x 2` (10) | `2` | `distinct_color_shape` | `2` | `null` | `null` | `3` |
+| ⭐ 6 | `mem-006` | `easy` | 20 | `5 x 2` (10) | `2` | `distinct_color_shape` | `5` | `null` | `null` | `3` |
 | ⭐ 7 | `mem-007` | `easy` | 30 | `5 x 2` (10) | `2` | `thematic_palette` | `0` | `null` | `null` | `4` |
 | ⭐ 8 | `mem-008` | `easy` | 40 | `4 x 3` (12) | `2` | `thematic_palette` | `0` | `null` | `null` | `4` |
-| ⭐ 9 | `mem-009` | `medium` | 10 | `4 x 3` (12) | `2` | `monochrome` | `2` | `10` | `null` | `4` |
-| ⭐ 10 | `mem-010` | `medium` | 20 | `4 x 4` (16) | `2` | `thematic_palette` | `2` | `12` | `null` | `5` |
+| ⭐ 9 | `mem-009` | `medium` | 10 | `4 x 3` (12) | `2` | `monochrome` | `5` | `10` | `null` | `4` |
+| ⭐ 10 | `mem-010` | `medium` | 20 | `4 x 4` (16) | `2` | `thematic_palette` | `5` | `12` | `null` | `5` |
 | ⭐ 11 | `mem-011` | `medium` | 30 | `4 x 4` (16) | `2` | `monochrome` | `0` | `12` | `null` | `6` |
 | ⭐ 12 | `mem-012` | `medium` | 40 | `5 x 4` (20) | `2` | `thematic_palette` | `0` | `14` | `null` | `7` |
 | ⭐ 13 | `mem-013` | `hard` | 10 | `5 x 4` (20) | `2` | `monochrome` | `0` | `12` | `null` | `6` |
 | ⭐ 14 | `mem-014` | `hard` | 20 | `6 x 4` (24) | `2` | `thematic_palette` | `0` | `15` | `null` | `8` |
-| ⭐ 15 | `mem-015` | `hard` | 30 | `5 x 3` (15) | `3` (Triplets) | `distinct_color_shape` | `3` | `10` | `null` | `4` |
+| ⭐ 15 | `mem-015` | `hard` | 30 | `5 x 3` (15) | `3` (Triplets) | `distinct_color_shape` | `5` | `10` | `null` | `4` |
 | ⭐ 16 | `mem-016` | `hard` | 40 | `6 x 4` (24) | `2` | `abstract_orientation` | `0` | `14` | `null` | `8` |
 | ⭐ 17 | `mem-017` | `very_hard` | 10 | `6 x 5` (30) | `2` | `monochrome` | `0` | `18` | `null` | `10` |
-| ⭐ 18 | `mem-018` | `very_hard` | 20 | `6 x 4` (24) | `3` (Triplets) | `thematic_palette` | `3` | `14` | `null` | `6` |
+| ⭐ 18 | `mem-018` | `very_hard` | 20 | `6 x 4` (24) | `3` (Triplets) | `thematic_palette` | `5` | `14` | `null` | `6` |
 | ⭐ 19 | `mem-019` | `very_hard` | 30 | `5 x 4` (20) | `2` | `monochrome` | `0` | `12` | `4` | `6` |
 | ⭐ 20 | `mem-020` | `very_hard` | 40 | `6 x 6` (36) | `2` | `abstract_orientation` | `0` | `20` | `5` | `10` |
+
+> **Aperçu depuis [FEAT-19](./FEAT-19.md)** : `previewSeconds` est une **base uniforme de 5 s** sur les huit étoiles avec aperçu (`mem-001`, `mem-002`, `mem-004`, `mem-006`, `mem-009`, `mem-010`, `mem-015`, `mem-018` ; 3 s ou 2 s avant FEAT-19), multipliée au moment de jouer par le facteur du joueur (`previewFactor` du profil : × 0,5 à × 2, soit 2,5 s à 10 s). `0` reste `0` : une étoile sans aperçu n'en gagne jamais, quel que soit le réglage. Le catalogue reste la source de vérité : une étoile future peut avoir une autre base.
 
 ### 3.2. Fonction de Validation du Catalogue (`validateMemoryCatalog`)
 Implémente `validateMemoryCatalog(catalog = MEMORY_CATALOG): { valid: boolean; errors: string[] }` qui vérifie :
@@ -109,4 +111,5 @@ Décisions prises avant l'implémentation ; elles complètent ou précisent les 
 | **Registre** | `GAME_REGISTRY.memory.catalog = MEMORY_CATALOG` (import direct du module) ; `traffic-jam` reste à `[]` jusqu'à FEAT-14. Le test du registre (`validateLevelCatalog` sur chaque catalogue) et le résumé par défaut du Hub couvrent désormais les 20 étoiles réelles. |
 | **Tests** | `tests/memory-catalog.test.ts` (environnement `node`, modules importés directement) : tableau §3.1 colonne par colonne, titres, 5 paliers de 4 étoiles numérotées de 1 à 20 dans l'ordre déclaré, Étoile #1 seule débloquée, branchement sur le registre, grille divisible et capacité de chaque niveau (`getMemoryModeCapacity`), instanciation de chaque niveau, aucune grille plus haute que large (rotation de FEAT-10) ; `validateMemoryCatalog` par défaut, explicite et sur un catalogue vide, règles communes (doublon, `order`, jeu), chaque anomalie de configuration préfixée, ordre des messages, instanciation impossible (`Error` et valeur quelconque), niveaux en anomalie jamais instanciés. Couverture complète de `catalog.ts` (seuil de 90 % de `src/games/memory/*.ts`). |
 | **Tests impactés** | `tests/star-map.test.tsx` : les deux tests « jeu sans niveau » (Hub « Bientôt disponible », page « annonce les 5 paliers d'un jeu encore sans niveau ») rendaient le registre réel en supposant le catalogue Memory vide ; ils injectent désormais des catalogues vides (`HubScreen games`, `GameScreen catalog={[]}`), indépendants des catalogues publiés (FEAT-14 compris). Deux tests ajoutés sur le registre réel : la page d'accueil (`HomePage`) affiche « 4 étoiles sur 20 » et « Continuer (Étoile #5) » pour Léo ; `MemoryPage` affiche les 20 étoiles puis, après « Jouer l'Étoile #5 », le plateau de Memory (8 cartes cachées). |
+| **Aperçu (FEAT-19)** | Les huit étoiles avec aperçu passent de 3 s / 2 s à une base uniforme de **5 s** (`previewSeconds: 5`), multipliée par le `previewFactor` du profil ([FEAT-19 §6](./FEAT-19.md#6-décisions-dimplémentation-session-de-cadrage)) : avec 2 s, × 0,5 donnait 1 s, illisible. Les douze autres restent à `0` (jamais d'aperçu, quel que soit le réglage). `tests/memory-catalog.test.ts` vérifie la colonne. |
 | **Git** | Commit prévu à l'intégration : `feat(memory): add initial 20-star catalog and level validator` (§4). |

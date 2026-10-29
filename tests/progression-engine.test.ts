@@ -86,6 +86,7 @@ function player(memory: LevelCompletion[] = [], overrides: Partial<UserProfile> 
     avatarId: 'fox',
     createdAt: EARLIER,
     gamesProgress: memory.length > 0 ? { memory: progressOf('memory', memory) } : {},
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
     ...overrides,
   };
 }

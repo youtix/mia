@@ -6,21 +6,36 @@ import { WaitingScreen } from '@/components/progression/WaitingScreen';
 import { useZoneRegistry } from '@/components/progression/zone-chain';
 import { AppShell, DEFAULT_REMOTE_HINTS, FadeIn, FocusableButton } from '@/components/ui';
 import { useGridNavigation } from '@/core/navigation';
-import { useMiaStorage } from '@/core/storage';
+import { DEFAULT_MEMORY_GAME_SETTINGS, useMiaStorage } from '@/core/storage';
 import { cn } from '@/lib/cn';
+import type { TimeFactor } from '@/types/mia';
 import { Check, Contrast, Smartphone, Tv, Volume2, VolumeX } from 'lucide-react';
 import { useId, useState, type ReactNode, type Ref } from 'react';
 import { BackupPanel } from './BackupPanel';
-import { SETTINGS_TEXTS, TV_MODE_OPTIONS } from './labels';
+import { GameSettingsSection } from './GameSettingsSection';
+import { SETTINGS_TEXTS, TIME_FACTOR_OPTIONS, TV_MODE_OPTIONS } from './labels';
 import { SettingsSection } from './SettingsSection';
 
-/** Zones D-Pad de l'écran, de haut en bas : Retour, chaque réglage de l'appareil, la sauvegarde. */
-type SettingsZone = 'header' | 'tv' | 'sound' | 'contrast' | 'backup';
+/**
+ * Zones D-Pad de l'écran, de haut en bas : Retour, chaque réglage de l'appareil, les deux
+ * sélecteurs de temps de Memory (section « Jeux », présente avec un profil actif), la sauvegarde.
+ */
+type SettingsZone =
+  'header' | 'tv' | 'sound' | 'contrast' | 'memoryPreview' | 'memoryMismatch' | 'backup';
+
+/** Position d'un facteur dans les sélecteurs de temps (options dans l'ordre de `TIME_FACTORS`). */
+function indexOfTimeFactor(factor: TimeFactor): number {
+  return Math.max(
+    TIME_FACTOR_OPTIONS.findIndex((option) => option.value === factor),
+    0,
+  );
+}
 
 /**
- * Écran Réglages & Sauvegarde (FEAT-18) : réglages de l'appareil (mode TV, son, contraste élevé)
- * et sauvegarde (export, import, réinitialisation), au doigt comme à la télécommande ; Retour
- * ramène au Hub. Tant que la sauvegarde n'est pas chargée, un écran d'attente le remplace.
+ * Écran Réglages & Sauvegarde (FEAT-18) : réglages de l'appareil (mode TV, son, contraste élevé),
+ * réglages de jeu du profil actif (FEAT-19) et sauvegarde (export, import, réinitialisation), au
+ * doigt comme à la télécommande ; Retour ramène au Hub. Tant que la sauvegarde n'est pas chargée,
+ * un écran d'attente le remplace.
  */
 export function SettingsScreen() {
   const { isLoaded } = useMiaStorage();
@@ -28,15 +43,26 @@ export function SettingsScreen() {
 }
 
 function SettingsContent() {
-  const { state, updateSettings } = useMiaStorage();
+  const { state, activeProfile, updateSettings } = useMiaStorage();
   const { backToHub } = useGameNavigation();
   const { tvModeOverride, soundEnabled, highContrastMode } = state.settings;
   const chosenTvIndex = Math.max(
     TV_MODE_OPTIONS.findIndex((option) => option.value === tvModeOverride),
     0,
   );
+  // Sans profil actif (sauvegarde importée sans profil, profil supprimé), la section « Jeux » et
+  // ses zones sont absentes : Contraste et Sauvegarde se suivent directement.
+  const memorySettings = activeProfile?.gameSettings.memory ?? DEFAULT_MEMORY_GAME_SETTINGS;
+  const chosenPreviewIndex = indexOfTimeFactor(memorySettings.previewFactor);
+  const chosenMismatchIndex = indexOfTimeFactor(memorySettings.mismatchFactor);
   // Curseur initial : le mode TV en vigueur (premier réglage de l'écran).
   const [activeZone, setActiveZone] = useState<SettingsZone>('tv');
+  // Le profil actif peut disparaître pendant que le curseur est sur un sélecteur de temps (import
+  // d'une sauvegarde sans profil actif sans passer par le focus DOM, profil supprimé par un autre
+  // onglet) : la section « Jeux » se démonte et la zone active retombe sur Contraste, la dernière
+  // au-dessus de la sauvegarde. Dérivée au rendu plutôt que corrigée après coup par un effet.
+  const isGameZone = activeZone === 'memoryPreview' || activeZone === 'memoryMismatch';
+  const zone: SettingsZone = !activeProfile && isGameZone ? 'contrast' : activeZone;
   const zones = useZoneRegistry<'backup'>();
   const tvLabelId = useId();
   const tvNoteId = useId();
@@ -47,7 +73,7 @@ function SettingsContent() {
     scopeId: 'settings-header',
     rows: 1,
     cols: 1,
-    isActive: activeZone === 'header',
+    isActive: zone === 'header',
     onBack: backToHub,
     onEdge: (direction) => {
       if (direction === 'down') enterTvMode();
@@ -58,7 +84,7 @@ function SettingsContent() {
     rows: 1,
     cols: TV_MODE_OPTIONS.length,
     initialIndex: chosenTvIndex,
-    isActive: activeZone === 'tv',
+    isActive: zone === 'tv',
     onBack: backToHub,
     onEdge: (direction) => {
       if (direction === 'up') setActiveZone('header');
@@ -69,7 +95,7 @@ function SettingsContent() {
     scopeId: 'settings-sound',
     rows: 1,
     cols: 1,
-    isActive: activeZone === 'sound',
+    isActive: zone === 'sound',
     onBack: backToHub,
     onEdge: (direction) => {
       if (direction === 'up') enterTvMode();
@@ -80,14 +106,38 @@ function SettingsContent() {
     scopeId: 'settings-contrast',
     rows: 1,
     cols: 1,
-    isActive: activeZone === 'contrast',
+    isActive: zone === 'contrast',
     onBack: backToHub,
     onEdge: (direction) => {
       if (direction === 'up') setActiveZone('sound');
       else if (direction === 'down') {
-        zones.enter('backup', { kind: 'first' });
-        setActiveZone('backup');
+        if (activeProfile) enterMemoryPreview();
+        else enterBackup();
       }
+    },
+  });
+  const memoryPreview = useGridNavigation({
+    scopeId: 'settings-memory-preview',
+    rows: 1,
+    cols: TIME_FACTOR_OPTIONS.length,
+    initialIndex: chosenPreviewIndex,
+    isActive: zone === 'memoryPreview',
+    onBack: backToHub,
+    onEdge: (direction) => {
+      if (direction === 'up') setActiveZone('contrast');
+      else if (direction === 'down') enterMemoryMismatch();
+    },
+  });
+  const memoryMismatch = useGridNavigation({
+    scopeId: 'settings-memory-mismatch',
+    rows: 1,
+    cols: TIME_FACTOR_OPTIONS.length,
+    initialIndex: chosenMismatchIndex,
+    isActive: zone === 'memoryMismatch',
+    onBack: backToHub,
+    onEdge: (direction) => {
+      if (direction === 'up') enterMemoryPreview();
+      else if (direction === 'down') enterBackup();
     },
   });
 
@@ -95,6 +145,22 @@ function SettingsContent() {
   const enterTvMode = () => {
     tvMode.setFocusedIndex(chosenTvIndex);
     setActiveZone('tv');
+  };
+
+  /** Arrivée dans un sélecteur de temps de Memory, par le haut ou par le bas : sur l'option choisie. */
+  const enterMemoryPreview = () => {
+    memoryPreview.setFocusedIndex(chosenPreviewIndex);
+    setActiveZone('memoryPreview');
+  };
+  const enterMemoryMismatch = () => {
+    memoryMismatch.setFocusedIndex(chosenMismatchIndex);
+    setActiveZone('memoryMismatch');
+  };
+
+  /** Arrivée dans la sauvegarde, par le haut : sur son premier bouton (curseur posé par le panneau). */
+  const enterBackup = () => {
+    zones.enter('backup', { kind: 'first' });
+    setActiveZone('backup');
   };
 
   const focusZone = (zone: SettingsZone) => () => {
@@ -186,10 +252,20 @@ function SettingsContent() {
           />
         </SettingsSection>
 
+        {activeProfile ? (
+          <GameSettingsSection
+            profile={activeProfile}
+            previewZone={memoryPreview}
+            mismatchZone={memoryMismatch}
+            onFocusPreview={focusZone('memoryPreview')}
+            onFocusMismatch={focusZone('memoryMismatch')}
+          />
+        ) : null}
+
         <BackupPanel
-          isActive={activeZone === 'backup'}
+          isActive={zone === 'backup'}
           register={zones.register}
-          onExitUp={focusZone('contrast')}
+          onExitUp={activeProfile ? enterMemoryMismatch : focusZone('contrast')}
           onFocusZone={focusZone('backup')}
           onBack={backToHub}
           onReset={backToHub}

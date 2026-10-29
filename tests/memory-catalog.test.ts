@@ -37,26 +37,29 @@ type StarRow = [
   perfectMaxMistakes: number,
 ];
 
-/** Le tableau des 20 étoiles de FEAT-11 §3.1, colonne par colonne. */
+/**
+ * Le tableau des 20 étoiles de FEAT-11 §3.1, colonne par colonne. Aperçu : socle uniforme de 5 s
+ * pour les huit étoiles qui en ont un (FEAT-19), 0 pour les douze autres.
+ */
 const SPEC_ROWS: StarRow[] = [
-  ['mem-001', 'very_easy', 10, 2, 2, 2, 'distinct_color_shape', 3, null, null, 0],
-  ['mem-002', 'very_easy', 20, 3, 2, 2, 'distinct_color_shape', 3, null, null, 1],
+  ['mem-001', 'very_easy', 10, 2, 2, 2, 'distinct_color_shape', 5, null, null, 0],
+  ['mem-002', 'very_easy', 20, 3, 2, 2, 'distinct_color_shape', 5, null, null, 1],
   ['mem-003', 'very_easy', 30, 3, 2, 2, 'distinct_color_shape', 0, null, null, 2],
-  ['mem-004', 'very_easy', 40, 4, 2, 2, 'distinct_color_shape', 2, null, null, 2],
+  ['mem-004', 'very_easy', 40, 4, 2, 2, 'distinct_color_shape', 5, null, null, 2],
   ['mem-005', 'easy', 10, 4, 2, 2, 'thematic_palette', 0, null, null, 3],
-  ['mem-006', 'easy', 20, 5, 2, 2, 'distinct_color_shape', 2, null, null, 3],
+  ['mem-006', 'easy', 20, 5, 2, 2, 'distinct_color_shape', 5, null, null, 3],
   ['mem-007', 'easy', 30, 5, 2, 2, 'thematic_palette', 0, null, null, 4],
   ['mem-008', 'easy', 40, 4, 3, 2, 'thematic_palette', 0, null, null, 4],
-  ['mem-009', 'medium', 10, 4, 3, 2, 'monochrome', 2, 10, null, 4],
-  ['mem-010', 'medium', 20, 4, 4, 2, 'thematic_palette', 2, 12, null, 5],
+  ['mem-009', 'medium', 10, 4, 3, 2, 'monochrome', 5, 10, null, 4],
+  ['mem-010', 'medium', 20, 4, 4, 2, 'thematic_palette', 5, 12, null, 5],
   ['mem-011', 'medium', 30, 4, 4, 2, 'monochrome', 0, 12, null, 6],
   ['mem-012', 'medium', 40, 5, 4, 2, 'thematic_palette', 0, 14, null, 7],
   ['mem-013', 'hard', 10, 5, 4, 2, 'monochrome', 0, 12, null, 6],
   ['mem-014', 'hard', 20, 6, 4, 2, 'thematic_palette', 0, 15, null, 8],
-  ['mem-015', 'hard', 30, 5, 3, 3, 'distinct_color_shape', 3, 10, null, 4],
+  ['mem-015', 'hard', 30, 5, 3, 3, 'distinct_color_shape', 5, 10, null, 4],
   ['mem-016', 'hard', 40, 6, 4, 2, 'abstract_orientation', 0, 14, null, 8],
   ['mem-017', 'very_hard', 10, 6, 5, 2, 'monochrome', 0, 18, null, 10],
-  ['mem-018', 'very_hard', 20, 6, 4, 3, 'thematic_palette', 3, 14, null, 6],
+  ['mem-018', 'very_hard', 20, 6, 4, 3, 'thematic_palette', 5, 14, null, 6],
   ['mem-019', 'very_hard', 30, 5, 4, 2, 'monochrome', 0, 12, 4, 6],
   ['mem-020', 'very_hard', 40, 6, 6, 2, 'abstract_orientation', 0, 20, 5, 10],
 ];
@@ -118,6 +121,30 @@ describe('MEMORY_CATALOG', () => {
       Array.from({ length: 20 }, (_, index) => `mem-${String(index + 1).padStart(3, '0')}`),
     );
     expect(MEMORY_CATALOG.every((entry) => entry.gameId === 'memory')).toBe(true);
+  });
+
+  it('donne un aperçu uniforme de 5 s à huit étoiles, aucun aux douze autres (FEAT-19)', () => {
+    const idsWithPreview = (seconds: number) =>
+      MEMORY_CATALOG.filter((entry) => entry.config.previewSeconds === seconds).map(
+        (entry) => entry.id,
+      );
+
+    // Socle unique : la durée jouée est ce socle multiplié par le facteur du profil, jamais une
+    // valeur propre à l'étoile ; une étoile sans aperçu n'en gagne jamais.
+    expect(idsWithPreview(5)).toEqual([
+      'mem-001',
+      'mem-002',
+      'mem-004',
+      'mem-006',
+      'mem-009',
+      'mem-010',
+      'mem-015',
+      'mem-018',
+    ]);
+    expect(idsWithPreview(0)).toHaveLength(12);
+    expect(new Set(MEMORY_CATALOG.map((entry) => entry.config.previewSeconds))).toEqual(
+      new Set([0, 5]),
+    );
   });
 
   it('donne à chaque étoile un titre court, unique, jamais affiché', () => {

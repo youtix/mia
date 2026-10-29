@@ -51,6 +51,7 @@ function player(id: string, name: string, avatarId: string, stars = 0): UserProf
         lastPlayedLevelId: null,
       },
     },
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
   };
 }
 
