@@ -20,6 +20,9 @@
 # production
 /build
 
+# android (FEAT-16) : APK copié par scripts/build-apk.mjs puis attaché à la GitHub Release
+dist-apk/
+
 # misc
 .DS_Store
 *.pem

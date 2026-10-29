@@ -333,7 +333,7 @@ describe('Couverture Vitest', () => {
 });
 
 describe('semantic-release', () => {
-  it('publie depuis main sans publication npm et commite changelog et version', () => {
+  it('publie depuis main sans publication npm, compile l’APK et commite version et changelog', () => {
     expect(readJson('.releaserc.json')).toEqual({
       branches: ['main'],
       plugins: [
@@ -342,13 +342,31 @@ describe('semantic-release', () => {
         ['@semantic-release/changelog', { changelogFile: 'CHANGELOG.md' }],
         ['@semantic-release/npm', { npmPublish: false }],
         [
+          '@semantic-release/exec',
+          {
+            prepareCmd:
+              'node scripts/sync-android-version.mjs ${nextRelease.version} && npm run cap:sync && node scripts/build-apk.mjs ${nextRelease.version}',
+          },
+        ],
+        [
           '@semantic-release/git',
           {
-            assets: ['CHANGELOG.md', 'package.json', 'package-lock.json'],
+            assets: [
+              'CHANGELOG.md',
+              'package.json',
+              'package-lock.json',
+              'android/app/build.gradle',
+              'fdroid/org.mia.braintraining.yml',
+            ],
             message: 'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}',
           },
         ],
-        '@semantic-release/github',
+        [
+          '@semantic-release/github',
+          {
+            assets: [{ path: 'dist-apk/*.apk', label: 'Mia Android / Android TV Universal APK' }],
+          },
+        ],
       ],
     });
   });
@@ -359,6 +377,7 @@ describe('semantic-release', () => {
     for (const dependency of [
       'semantic-release',
       '@semantic-release/changelog',
+      '@semantic-release/exec',
       '@semantic-release/git',
       '@semantic-release/github',
       '@semantic-release/npm',
@@ -437,6 +456,11 @@ describe('GitHub', () => {
     expect(release.needs).toBe('verify');
     expect(String(release.env?.HUSKY)).toBe('0');
     expect(findStep(release, 'actions/create-github-app-token').with).toHaveProperty('private-key');
+    expect(findStep(release, 'actions/setup-java').with).toMatchObject({
+      distribution: 'temurin',
+      'java-version': '21',
+      cache: 'gradle',
+    });
     expect(runsOf(release)).toContain('npx semantic-release');
 
     expect(deploy.needs).toBe('release');

@@ -1,0 +1,64 @@
+# Recette F-Droid de Mia (FEAT-16), au format du dépôt fdroiddata (https://gitlab.com/fdroid/fdroiddata,
+# destination : metadata/org.mia.braintraining.yml). Le bloc de build et la version courante sont
+# synchronisés à chaque release par scripts/sync-android-version.mjs ; soumettre ce fichier à partir
+# de la première release dont le tag contient le projet android/ (README.md, « F-Droid »).
+Categories:
+  - Games
+  - Science & Education
+License: GPL-3.0-or-later
+AuthorName: youtix
+WebSite: https://youtix.github.io/mia/
+SourceCode: https://github.com/youtix/mia
+IssueTracker: https://github.com/youtix/mia/issues
+Changelog: https://github.com/youtix/mia/blob/HEAD/CHANGELOG.md
+
+AutoName: Mia
+
+RepoType: git
+Repo: https://github.com/youtix/mia.git
+
+Builds:
+  - versionName: 0.10.0
+    versionCode: 1000
+    commit: v0.10.0
+    subdir: android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y --no-install-recommends ca-certificates curl openjdk-21-jdk-headless xz-utils
+      - update-java-alternatives -s java-1.21.0-openjdk-amd64
+      - curl -Lo /tmp/node.tar.xz https://nodejs.org/dist/v22.23.4/node-v22.23.4-linux-x64.tar.xz
+      - echo "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce  /tmp/node.tar.xz" | sha256sum -c -
+      - tar -xJf /tmp/node.tar.xz --strip-components=1 -C /usr/local
+      - rm /tmp/node.tar.xz
+    init:
+      - cd ../..
+      - HUSKY=0 npm ci --no-audit --no-fund
+    gradle:
+      - yes
+    prebuild:
+      - sed -i -e '/signingConfig = /d' build.gradle
+      - cd ../..
+      - NEXT_TELEMETRY_DISABLED=1 npm run build
+      - npx cap sync android
+      - rm -rf node_modules/.bin/cap node_modules/.bin/capacitor node_modules/.bin/esbuild node_modules/@capacitor/cli node_modules/@esbuild node_modules/esbuild node_modules/@img node_modules/@pnpm
+
+MaintainerNotes: |-
+  Capacitor 8 app (requires JDK 21): the web bundle is a Next.js static export built with Node 22
+  in prebuild (`npm run build`), copied into android/app/src/main/assets/public by `cap sync`;
+  the Gradle project in android/ then only compiles the WebView shell and two Capacitor plugins
+  (@capacitor/app, @capacitor/preferences). Gradle needs node_modules/@capacitor/{android,app,preferences}.
+  - The release build type falls back to the debug signing key when no MIA_KEYSTORE_* environment
+    variable is set (installable GitHub Releases APK): the sed in prebuild removes that line so
+    Gradle produces an unsigned APK for F-Droid to sign.
+  - The rm in prebuild removes the development tooling the scanner would flag once the web
+    bundle is built: esbuild binaries, sharp/libvips shared libraries (@img), the Capacitor CLI
+    template archives (.tar.gz) and @pnpm test tarballs.
+  - No proprietary dependency: google-services / Play Services were removed from the Capacitor
+    template (checked by tests/android-manifest.test.ts on every pull request).
+  - versionCode = major * 10000 + minor * 100 + patch (scripts/sync-android-version.mjs), strictly
+    increasing with the SemVer tags vX.Y.Z created by semantic-release.
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9.]+$
+CurrentVersion: 0.10.0
+CurrentVersionCode: 1000

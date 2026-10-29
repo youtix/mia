@@ -1,5 +1,10 @@
 apply plugin: 'com.android.application'
 
+// Signature de l'APK de release (FEAT-16) : clé fournie par l'environnement (secrets facultatifs du
+// workflow de release), sinon clé de débogage du SDK pour que l'APK reste installable sans aucun
+// secret. La recette F-Droid retire la ligne `signingConfig` de `release` : F-Droid signe lui-même.
+def releaseKeystorePath = System.getenv("MIA_KEYSTORE_PATH")
+
 android {
     namespace = "org.mia.braintraining"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -18,10 +23,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // Renseignée seulement quand la clé est fournie ; `buildTypes.release` choisit alors
+            // cette configuration, sinon `signingConfigs.debug` (créée par le plugin Android).
+            if (releaseKeystorePath) {
+                storeFile file(releaseKeystorePath)
+                storePassword System.getenv("MIA_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("MIA_KEY_ALIAS")
+                keyPassword System.getenv("MIA_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig = releaseKeystorePath ? signingConfigs.release : signingConfigs.debug
         }
     }
 }
