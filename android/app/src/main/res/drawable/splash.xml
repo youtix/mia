@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Écran de lancement (Android < 12, et fond de la fenêtre pendant le chargement de la WebView) :
+     fond de Mia et symbole centré, à la place des PNG du gabarit Capacitor. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+    <item
+        android:drawable="@mipmap/ic_launcher_foreground"
+        android:gravity="center" />
+</layer-list>

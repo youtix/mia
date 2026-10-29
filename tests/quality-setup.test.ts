@@ -113,6 +113,7 @@ describe('Environnement', () => {
 
     expect(scripts).toMatchObject({
       build: 'next build && tsx scripts/build-sw.ts',
+      'cap:sync': 'npm run build && npx cap sync android',
       icons: 'node scripts/generate-icons.mjs',
       typecheck: 'tsc --noEmit && tsc --noEmit -p src/core/pwa/sw/tsconfig.json',
       lint: 'eslint . --max-warnings=0',

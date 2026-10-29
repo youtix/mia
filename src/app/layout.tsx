@@ -1,4 +1,4 @@
-import { NavigationProvider } from '@/core/navigation';
+import { AndroidBackButtonBridge, NavigationProvider } from '@/core/navigation';
 import { ServiceWorkerRegistrar } from '@/core/pwa';
 import { StorageProvider, TV_MODE_BOOTSTRAP_SCRIPT } from '@/core/storage';
 import '@fontsource-variable/atkinson-hyperlegible-next';
@@ -32,6 +32,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: '#38bdf8',
   colorScheme: 'dark',
+  // Plein écran dans l'APK (edge-to-edge, FEAT-15) : `.tv-safe-container` lit `env(safe-area-inset-*)`.
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
@@ -45,7 +47,11 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body className="min-h-dvh bg-slate-900 font-sans text-slate-50 antialiased">
         {/* Sauvegarde locale (profils, étoiles) et moteur D-Pad, partagés par tous les écrans. */}
         <StorageProvider>
-          <NavigationProvider>{children}</NavigationProvider>
+          <NavigationProvider>
+            {/* Bouton Retour physique d'Android (FEAT-15) : même routage que les touches. */}
+            <AndroidBackButtonBridge />
+            {children}
+          </NavigationProvider>
         </StorageProvider>
         {/* PWA hors-ligne (FEAT-17) : enregistré après `load`, en production Web seulement. */}
         <ServiceWorkerRegistrar />

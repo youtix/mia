@@ -68,5 +68,14 @@ export {
   type StorageContextValue,
   type StorageProviderProps,
 } from './StorageContext';
-export { TV_ATTRIBUTE_VALUES, TV_MODE_BOOTSTRAP_SCRIPT, applyTvModeOverride } from './tv-mode';
+export {
+  TV_ATTRIBUTE_VALUES,
+  TV_DETECTED_STORAGE_KEY,
+  TV_MODE_BOOTSTRAP_SCRIPT,
+  applyTvModeOverride,
+  detectNativeTv,
+  hasNativeTvDetection,
+  type ApplyTvModeOptions,
+  type TvModePlugin,
+} from './tv-mode';
 export { useProfileGate, type ProfileGate } from './useProfileGate';

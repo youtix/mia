@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Couche de fond de l'icône adaptative : fond de Mia (slate-900). -->
+    <color name="ic_launcher_background">#0f172a</color>
+</resources>

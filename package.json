@@ -20,6 +20,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && tsx scripts/build-sw.ts",
+    "cap:sync": "npm run build && npx cap sync android",
     "start": "npx serve@latest out",
     "icons": "node scripts/generate-icons.mjs",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/core/pwa/sw/tsconfig.json",
@@ -35,6 +36,7 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.5.3",
     "@capacitor/preferences": "^8.0.1",
@@ -48,6 +50,7 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.0",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
     "@commitlint/lint": "^21.2.4",
