@@ -1,3 +1,4 @@
+import { MEMORY_CATALOG } from '@/games/memory/catalog';
 import type { GameId, UserProfile } from '@/types/mia';
 import { getGameProgressSummary } from './progression-engine';
 import type { GameManifest, ProfileProgressSummary } from './types';
@@ -16,7 +17,7 @@ export const GAME_REGISTRY: GameRegistry = {
     title: 'Memory',
     skill: 'Mémoire visuelle & spatiale',
     path: '/memory',
-    catalog: [],
+    catalog: MEMORY_CATALOG,
   },
   'traffic-jam': {
     id: 'traffic-jam',

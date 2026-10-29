@@ -514,8 +514,9 @@ describe('Hub', () => {
   });
 
   it('annonce « Bientôt disponible » pour un jeu sans niveau, Carte des Étoiles comprise', async () => {
-    // Registre réel : catalogues vides jusqu'à FEAT-11 et FEAT-14.
-    await renderLoaded(<HomePage />, familySave());
+    // Catalogues vides injectés : le registre réel publie les 20 étoiles de Memory (FEAT-11).
+    const emptyGames = TEST_GAMES.map((game) => ({ ...game, catalog: [] }));
+    await renderLoaded(<HubScreen games={emptyGames} />, familySave());
 
     for (const title of ['Memory', 'Traffic Jam']) {
       const card = getCard(title);
@@ -530,6 +531,14 @@ describe('Hub', () => {
     expect(
       within(screen.getByRole('banner')).getByRole('img', { name: '0 étoile' }),
     ).toBeInTheDocument();
+  });
+
+  it('rend le Hub du registre réel : les 20 étoiles de Memory (FEAT-11)', async () => {
+    await renderLoaded(<HomePage />, familySave());
+
+    const memory = getCard('Memory');
+    expect(within(memory).getByRole('img', { name: '4 étoiles sur 20' })).toBeInTheDocument();
+    expect(getCardButton('Memory', 'Continuer (Étoile #5)')).toBeInTheDocument();
   });
 
   it('lance l’objectif ou ouvre la Carte des Étoiles d’un jeu', async () => {
@@ -975,8 +984,9 @@ describe('Pages', () => {
   });
 
   it('annonce les 5 paliers d’un jeu encore sans niveau', async () => {
+    // Catalogue vide injecté : la page /memory publie ses 20 étoiles depuis FEAT-11.
     window.history.replaceState(null, '', '/memory/');
-    await renderLoaded(<MemoryPage />, forceTvMode(familySave()));
+    await renderLoaded(<GameScreen gameId="memory" catalog={[]} />, forceTvMode(familySave()));
 
     expect(screen.getByRole('heading', { level: 1, name: 'Memory' })).toBeInTheDocument();
     expect(screen.getAllByRole('region')).toHaveLength(5);
@@ -985,6 +995,25 @@ describe('Pages', () => {
     await waitFor(() => {
       expect(getButton('Retour')).toHaveFocus();
     });
+  });
+
+  it('joue le catalogue réel de Memory : 20 étoiles sur la carte, puis le plateau', async () => {
+    window.history.replaceState(null, '', '/memory/');
+    await renderLoaded(<MemoryPage />, familySave());
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Memory' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('banner')).getByRole('img', { name: '4 étoiles sur 20' }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /^Étoile #/ })).toHaveLength(20);
+    expect(screen.queryByText('Bientôt de nouvelles étoiles')).not.toBeInTheDocument();
+
+    fireEvent.click(getButton('Jouer l’Étoile #5'));
+
+    expect(pushState).toHaveBeenLastCalledWith(null, '', '/memory/?level=mem-005');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Étoile #5' })).toBeInTheDocument();
+    // Plateau de Memory (4 × 2 cartes cachées, sans aperçu) : le niveau est jouable.
+    expect(screen.getAllByRole('button', { name: /^Carte cachée/ })).toHaveLength(8);
   });
 
   it('affiche la Carte des Étoiles de Traffic Jam', async () => {
