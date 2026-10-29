@@ -24,6 +24,7 @@ import {
   QUICK_PROFILE_NAMES,
   setActiveProfile,
   suggestAvatarId,
+  updateMemorySettings,
   type AvatarId,
   type NewProfileOptions,
 } from '@/core/storage';
@@ -61,13 +62,21 @@ function profile(id: string, overrides: Partial<UserProfile> = {}): UserProfile 
     avatarId: 'owl',
     createdAt: CREATED_AT,
     gamesProgress: {},
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
     ...overrides,
   };
 }
 
 /** Profil créé par `addProfile` avec les options `{ id, now: NOW }`. */
 function created(id: string, name: string, avatarId: AvatarId): UserProfile {
-  return { id, name, avatarId, createdAt: NOW.toISOString(), gamesProgress: {} };
+  return {
+    id,
+    name,
+    avatarId,
+    createdAt: NOW.toISOString(),
+    gamesProgress: {},
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
+  };
 }
 
 function saveWith(
@@ -265,6 +274,19 @@ describe('addProfile', () => {
     expect(report.issues).toEqual([]);
     expect(report.state).toEqual(state);
   });
+
+  it('donne à chaque profil créé ses propres réglages de jeu par défaut (FEAT-19)', () => {
+    const withDefault = ensureDefaultProfile(createDefaultSaveState(), { id: 'p1', now: NOW });
+    const [player1, player2] = addProfile(withDefault, 'Zoé', 'star', {
+      id: 'p2',
+      now: NOW,
+    }).profiles;
+
+    expect(player1?.gameSettings).toEqual({ memory: { previewFactor: 1, mismatchFactor: 1 } });
+    expect(player2?.gameSettings).toEqual({ memory: { previewFactor: 1, mismatchFactor: 1 } });
+    expect(player2?.gameSettings).not.toBe(player1?.gameSettings);
+    expect(player2?.gameSettings.memory).not.toBe(player1?.gameSettings.memory);
+  });
 });
 
 describe('setActiveProfile', () => {
@@ -315,6 +337,65 @@ describe('deleteProfile', () => {
 
   it('ignore un profil introuvable', () => {
     expect(deleteProfile(state, 'inconnu')).toBe(state);
+  });
+});
+
+describe('updateMemorySettings', () => {
+  const state = deepFreeze(
+    saveWith([
+      profile('p1'),
+      profile('p2', { gameSettings: { memory: { previewFactor: 1.5, mismatchFactor: 2 } } }),
+    ]),
+  );
+
+  it('ignore un profil introuvable', () => {
+    expect(updateMemorySettings(state, 'inconnu', { previewFactor: 2 })).toBe(state);
+  });
+
+  it('ne change rien sans nouvelle valeur', () => {
+    expect(updateMemorySettings(state, 'p1', {})).toBe(state);
+    expect(updateMemorySettings(state, 'p1', { previewFactor: 1, mismatchFactor: 1 })).toBe(state);
+    expect(updateMemorySettings(state, 'p2', { mismatchFactor: 2 })).toBe(state);
+  });
+
+  it('modifie le facteur d’aperçu du seul profil visé, sans modifier l’état reçu', () => {
+    const next = updateMemorySettings(state, 'p1', { previewFactor: 2 });
+
+    expect(next).toEqual({
+      ...state,
+      profiles: [
+        profile('p1', { gameSettings: { memory: { previewFactor: 2, mismatchFactor: 1 } } }),
+        state.profiles[1],
+      ],
+    });
+    expect(next.profiles[1]).toBe(state.profiles[1]);
+    expect(next.settings).toBe(state.settings);
+    expect(state.profiles[0]).toEqual(profile('p1'));
+  });
+
+  it('modifie le temps d’affichage d’une erreur en gardant l’aperçu', () => {
+    const next = updateMemorySettings(state, 'p2', { mismatchFactor: 0.5 });
+
+    expect(next.profiles.map((entry) => entry.gameSettings.memory)).toEqual([
+      { previewFactor: 1, mismatchFactor: 1 },
+      { previewFactor: 1.5, mismatchFactor: 0.5 },
+    ]);
+    expect(next.profiles[0]).toBe(state.profiles[0]);
+    expect(next.activeProfileId).toBe('p1');
+  });
+
+  it('modifie les deux facteurs d’un coup', () => {
+    const next = updateMemorySettings(state, 'p2', { previewFactor: 0.5, mismatchFactor: 1 });
+
+    expect(next.profiles[1]?.gameSettings).toEqual({
+      memory: { previewFactor: 0.5, mismatchFactor: 1 },
+    });
+  });
+
+  it('produit des réglages relus sans perte au chargement (FEAT-05)', () => {
+    const next = updateMemorySettings(state, 'p1', { previewFactor: 0.5, mismatchFactor: 2 });
+
+    expect(parseSaveStateReport(JSON.stringify(next))).toEqual({ state: next, issues: [] });
   });
 });
 

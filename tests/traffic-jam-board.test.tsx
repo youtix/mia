@@ -74,6 +74,7 @@ function crownedPlayer(): UserProfile {
         lastPlayedLevelId: 'tj-001',
       },
     },
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
   };
 }
 

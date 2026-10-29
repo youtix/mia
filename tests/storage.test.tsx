@@ -2,9 +2,11 @@ import {
   applyHighContrastMode,
   applyTvModeOverride,
   BACKUP_STORAGE_KEY,
+  createDefaultGameSettings,
   createDefaultSaveState,
   CURRENT_SCHEMA_VERSION,
   DEFAULT_DEVICE_SETTINGS,
+  DEFAULT_MEMORY_GAME_SETTINGS,
   exportSaveJson,
   IMPORT_FAILURE_MESSAGES,
   importSaveJson,
@@ -30,12 +32,13 @@ import {
   TV_DETECTED_STORAGE_KEY,
   type TvModePlugin,
 } from '@/core/storage/tv-mode';
-import type {
-  DeviceSettings,
-  LevelCompletion,
-  MiaSaveState,
-  TvModeOverride,
-  UserProfile,
+import {
+  TIME_FACTORS,
+  type DeviceSettings,
+  type LevelCompletion,
+  type MiaSaveState,
+  type TvModeOverride,
+  type UserProfile,
 } from '@/types/mia';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { renderToString } from 'react-dom/server';
@@ -116,6 +119,7 @@ function profile(id: string, overrides: Partial<UserProfile> = {}): UserProfile 
         lastPlayedLevelId: 'mem-001',
       },
     },
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
     ...overrides,
   };
 }
@@ -148,12 +152,27 @@ function rawProfile(
   gamesProgress: unknown = {},
   extra: Record<string, unknown> = {},
 ): Record<string, unknown> {
-  return { id, name: 'Mia', avatarId: 'fox', createdAt: CREATED_AT, gamesProgress, ...extra };
+  return {
+    id,
+    name: 'Mia',
+    avatarId: 'fox',
+    createdAt: CREATED_AT,
+    gamesProgress,
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
+    ...extra,
+  };
 }
 
 /** Profil produit par `rawProfile(id)` après lecture. */
 function miaProfile(id: string): UserProfile {
-  return { id, name: 'Mia', avatarId: 'fox', createdAt: CREATED_AT, gamesProgress: {} };
+  return {
+    id,
+    name: 'Mia',
+    avatarId: 'fox',
+    createdAt: CREATED_AT,
+    gamesProgress: {},
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
+  };
 }
 
 function withTvMode(tvModeOverride: TvModeOverride): MiaSaveState {
@@ -284,6 +303,17 @@ describe('État par défaut', () => {
     expect(createDefaultSaveState().settings.soundEnabled).toBe(true);
     expect(createDefaultSaveState().profiles).toEqual([]);
     expect(DEFAULT_DEVICE_SETTINGS.soundEnabled).toBe(true);
+  });
+
+  it('renvoie de nouveaux réglages de jeu à chaque appel (FEAT-19)', () => {
+    const first = createDefaultGameSettings();
+    first.memory.previewFactor = 2;
+
+    expect(createDefaultGameSettings()).toEqual({
+      memory: { previewFactor: 1, mismatchFactor: 1 },
+    });
+    expect(createDefaultGameSettings().memory).not.toBe(DEFAULT_MEMORY_GAME_SETTINGS);
+    expect(DEFAULT_MEMORY_GAME_SETTINGS).toEqual({ previewFactor: 1, mismatchFactor: 1 });
   });
 });
 
@@ -507,6 +537,186 @@ describe('Réparation granulaire', () => {
   });
 });
 
+describe('Réglages de jeu par profil (FEAT-19)', () => {
+  const DEFAULT_GAME_SETTINGS = { memory: { previewFactor: 1, mismatchFactor: 1 } };
+  const INVALID_PREVIEW =
+    'réglage Memory « previewFactor » du profil « p1 » invalide, valeur par défaut';
+  const INVALID_MISMATCH =
+    'réglage Memory « mismatchFactor » du profil « p1 » invalide, valeur par défaut';
+
+  /** Relit un profil « p1 » dont `gameSettings` vaut `gameSettings` (clé absente si `undefined`). */
+  function readGameSettings(gameSettings: unknown) {
+    const report = parseSaveStateReport(rawSave([rawProfile('p1', {}, { gameSettings })]));
+    return { settings: report.state.profiles[0]?.gameSettings, issues: report.issues };
+  }
+
+  it('propose quatre pas de temps, de la moitié au double', () => {
+    expect(TIME_FACTORS).toEqual([0.5, 1, 1.5, 2]);
+  });
+
+  it('donne les réglages par défaut, sans perte, à une sauvegarde d’avant FEAT-19', () => {
+    const legacy = rawSave([rawProfile('p1', {}, { gameSettings: undefined })], {
+      activeProfileId: 'p1',
+    });
+    expect(legacy).not.toContain('gameSettings');
+
+    const report = parseSaveStateReport(legacy);
+
+    expect(report).toEqual({
+      state: { ...createDefaultSaveState(), activeProfileId: 'p1', profiles: [miaProfile('p1')] },
+      issues: [],
+    });
+    expect(parseAndMigrateSaveState(legacy)).toEqual(report.state);
+  });
+
+  it.each<[number, number]>([
+    [0.5, 2],
+    [1, 1.5],
+    [1.5, 1],
+    [2, 0.5],
+  ])('garde les pas %s (aperçu) et %s (erreur) tels quels', (previewFactor, mismatchFactor) => {
+    expect(readGameSettings({ memory: { previewFactor, mismatchFactor } })).toEqual({
+      settings: { memory: { previewFactor, mismatchFactor } },
+      issues: [],
+    });
+  });
+
+  it('ne signale rien pour des réglages de jeu sans réglages Memory', () => {
+    expect(readGameSettings({})).toEqual({ settings: DEFAULT_GAME_SETTINGS, issues: [] });
+  });
+
+  it.each<[string, unknown]>([
+    ['du texte', 'x'],
+    ['null', null],
+    ['un tableau', []],
+  ])(
+    'remplace des réglages de jeu illisibles (%s) par les défauts, avec perte',
+    (_label, gameSettings) => {
+      expect(readGameSettings(gameSettings)).toEqual({
+        settings: DEFAULT_GAME_SETTINGS,
+        issues: ['réglages de jeu du profil « p1 » illisibles, valeurs par défaut'],
+      });
+    },
+  );
+
+  it.each<[string, unknown]>([
+    ['du texte', 'x'],
+    ['null', null],
+    ['un tableau', []],
+  ])(
+    'remplace des réglages Memory illisibles (%s) par les défauts, avec perte',
+    (_label, memory) => {
+      expect(readGameSettings({ memory })).toEqual({
+        settings: DEFAULT_GAME_SETTINGS,
+        issues: ['réglages Memory du profil « p1 » illisibles, valeurs par défaut'],
+      });
+    },
+  );
+
+  it('répare un facteur hors des pas sans toucher à l’autre', () => {
+    expect(readGameSettings({ memory: { previewFactor: 3, mismatchFactor: 2 } })).toEqual({
+      settings: { memory: { previewFactor: 1, mismatchFactor: 2 } },
+      issues: [INVALID_PREVIEW],
+    });
+  });
+
+  it.each<[string, unknown]>([
+    ['un nombre en texte', '1'],
+    // NaN et Infinity deviennent null une fois sérialisés en JSON.
+    ['null', null],
+    ['zéro', 0],
+    ['un booléen', true],
+    ['absent', undefined],
+  ])('refuse un facteur %s : valeur par défaut, perte signalée', (_label, mismatchFactor) => {
+    expect(readGameSettings({ memory: { previewFactor: 1.5, mismatchFactor } })).toEqual({
+      settings: { memory: { previewFactor: 1.5, mismatchFactor: 1 } },
+      issues: [INVALID_MISMATCH],
+    });
+  });
+
+  it('signale chaque facteur manquant, l’aperçu avant l’erreur', () => {
+    expect(readGameSettings({ memory: {} })).toEqual({
+      settings: DEFAULT_GAME_SETTINGS,
+      issues: [INVALID_PREVIEW, INVALID_MISMATCH],
+    });
+  });
+
+  it('retire les champs inconnus des réglages sans les signaler', () => {
+    expect(
+      readGameSettings({
+        memory: { previewFactor: 2, mismatchFactor: 0.5, hintFactor: 3 },
+        'traffic-jam': { movesFactor: 1 },
+      }),
+    ).toEqual({ settings: { memory: { previewFactor: 2, mismatchFactor: 0.5 } }, issues: [] });
+  });
+
+  it('relit le profil dans un ordre de clés fixe, les réglages après la progression', () => {
+    // Clés inversées dans la sauvegarde : l'ordre relu vient du lecteur, pas du fichier.
+    const reversed = Object.fromEntries(
+      Object.entries(
+        rawProfile(
+          'p1',
+          {},
+          { gameSettings: { memory: { mismatchFactor: 2, previewFactor: 0.5 } } },
+        ),
+      ).reverse(),
+    );
+
+    const [read] = parseSaveStateReport(rawSave([reversed])).state.profiles;
+
+    expect(Object.keys(read ?? {})).toEqual([
+      'id',
+      'name',
+      'avatarId',
+      'createdAt',
+      'gamesProgress',
+      'gameSettings',
+    ]);
+    expect(Object.keys(read?.gameSettings.memory ?? {})).toEqual([
+      'previewFactor',
+      'mismatchFactor',
+    ]);
+  });
+
+  it('parseBackupJson (import) applique les mêmes réparations et signale les mêmes pertes', () => {
+    const raw = rawSave(
+      [
+        rawProfile('p1', {}, { gameSettings: undefined }),
+        rawProfile(
+          'p2',
+          {},
+          { gameSettings: { memory: { previewFactor: '1', mismatchFactor: 0.5 } } },
+        ),
+        rawProfile('p3', {}, { gameSettings: 'x' }),
+      ],
+      { activeProfileId: 'p2' },
+    );
+
+    const imported = parseBackupJson(raw);
+
+    expect(imported).toEqual({ ok: true, ...parseSaveStateReport(raw) });
+    expect(imported).toEqual({
+      ok: true,
+      state: {
+        ...createDefaultSaveState(),
+        activeProfileId: 'p2',
+        profiles: [
+          miaProfile('p1'),
+          {
+            ...miaProfile('p2'),
+            gameSettings: { memory: { previewFactor: 1, mismatchFactor: 0.5 } },
+          },
+          miaProfile('p3'),
+        ],
+      },
+      issues: [
+        'réglage Memory « previewFactor » du profil « p2 » invalide, valeur par défaut',
+        'réglages de jeu du profil « p3 » illisibles, valeurs par défaut',
+      ],
+    });
+  });
+});
+
 describe('Versions de schéma et migrations', () => {
   it('lit une sauvegarde sans version comme une v1, avec perte signalée', () => {
     const report = parseSaveStateReport(toJson({ ...sampleSave(), schemaVersion: undefined }));
@@ -685,6 +895,20 @@ describe('StorageService (Web)', () => {
     expect(warnings()).toEqual([expect.stringContaining('profil n° 2 invalide, écarté')]);
   });
 
+  it('charge une sauvegarde d’avant FEAT-19 sans copie de secours ni avertissement', async () => {
+    const legacy = rawSave([rawProfile('p1', {}, { gameSettings: undefined })], {
+      activeProfileId: 'p1',
+    });
+    storeLocally(legacy);
+
+    const state = await loadSaveState();
+
+    expect(state.profiles).toEqual([miaProfile('p1')]);
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(legacy);
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBeNull();
+    expect(warnings()).toEqual([]);
+  });
+
   it('résiste à un JSON corrompu : état par défaut et copie de secours', async () => {
     const truncated = '{"schemaVersion":1,"profiles":[{"id":"p1"';
     storeLocally(truncated);
@@ -807,6 +1031,25 @@ describe('Export / import JSON', () => {
     const imported = await importSaveJson(exportSaveJson(tabletSave));
 
     expect(imported).toEqual({ ...tabletSave, settings: tvSettings });
+    expect(readLocally()).toEqual(imported);
+  });
+
+  it('exporte les réglages de jeu avec leur profil et les importe tels quels (FEAT-19)', async () => {
+    const tuned = sampleSave({
+      profiles: [
+        profile('p1', { gameSettings: { memory: { previewFactor: 2, mismatchFactor: 0.5 } } }),
+        profile('p2', { gameSettings: { memory: { previewFactor: 0.5, mismatchFactor: 1.5 } } }),
+      ],
+      settings: tabletSave.settings,
+    });
+    storeLocally(sampleSave({ settings: tvSettings }));
+
+    const json = exportSaveJson(tuned);
+    const imported = await importSaveJson(json);
+
+    expect(json).toContain('"gameSettings": {');
+    expect(JSON.parse(json)).toEqual(tuned);
+    expect(imported).toEqual({ ...tuned, settings: tvSettings });
     expect(readLocally()).toEqual(imported);
   });
 

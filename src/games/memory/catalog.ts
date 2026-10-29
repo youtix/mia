@@ -14,6 +14,11 @@ import type { MemoryLevelConfig } from './types';
  * joueurs (`countProfileStars` divergerait du Hub). Changer son palier ou son `order` est sans
  * risque (numéros d'étoile recalculés, niveaux réussis toujours débloqués) ; un nouveau niveau
  * s'intercale avec un `order` libre (15, 25…) et se vérifie par `validateMemoryCatalog`.
+ *
+ * Aperçu (`previewSeconds`) : 0 ou 5, jamais une autre valeur. Les étoiles qui en ont un partagent
+ * ce socle uniforme de 5 s, multiplié par le facteur du profil (FEAT-19, `applyMemorySettings`) ;
+ * une étoile sans aperçu n'en gagne jamais. La difficulté se règle par la grille, le mode visuel et
+ * les limites d'erreurs, jamais par la durée de l'aperçu.
  */
 
 type MemoryLevel = BaseLevelDefinition<MemoryLevelConfig>;
@@ -21,7 +26,7 @@ type MemoryLevel = BaseLevelDefinition<MemoryLevelConfig>;
 /** Les 20 étoiles initiales (FEAT-11 §3.1), déclarées dans l'ordre de la Carte des Étoiles. */
 export const MEMORY_CATALOG: readonly MemoryLevel[] = [
   // Très Facile (Éveil) : apprendre la règle sur 4 à 8 cartes. Chaque paire a sa couleur et son
-  // icône, l'aperçu montre les cartes puis se raccourcit ; les erreurs ne sont pas limitées.
+  // icône, l'aperçu de 5 s montre les cartes (sauf « Sans aperçu ») ; erreurs non limitées.
   {
     id: 'mem-001',
     gameId: 'memory',
@@ -33,7 +38,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 2,
       matchSize: 2,
       visualMode: 'distinct_color_shape',
-      previewSeconds: 3,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 0,
@@ -50,7 +55,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 2,
       matchSize: 2,
       visualMode: 'distinct_color_shape',
-      previewSeconds: 3,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 1,
@@ -84,7 +89,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 2,
       matchSize: 2,
       visualMode: 'distinct_color_shape',
-      previewSeconds: 2,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 2,
@@ -120,7 +125,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 2,
       matchSize: 2,
       visualMode: 'distinct_color_shape',
-      previewSeconds: 2,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 3,
@@ -173,7 +178,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 3,
       matchSize: 2,
       visualMode: 'monochrome',
-      previewSeconds: 2,
+      previewSeconds: 5,
       maxMistakes: 10,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 4,
@@ -190,7 +195,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'thematic_palette',
-      previewSeconds: 2,
+      previewSeconds: 5,
       maxMistakes: 12,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 5,
@@ -277,7 +282,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 3,
       matchSize: 3,
       visualMode: 'distinct_color_shape',
-      previewSeconds: 3,
+      previewSeconds: 5,
       maxMistakes: 10,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 4,
@@ -330,7 +335,7 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 3,
       visualMode: 'thematic_palette',
-      previewSeconds: 3,
+      previewSeconds: 5,
       maxMistakes: 14,
       swapEveryNMistakes: null,
       perfectMaxMistakes: 6,

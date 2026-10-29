@@ -2,13 +2,18 @@ import SettingsPage, { metadata } from '@/app/settings/page';
 import {
   BACKUP_MESSAGES,
   describeBackupProfiles,
+  describeProfileSettings,
   EXPORT_URL_REVOKE_DELAY_MS,
+  formatTimeFactor,
+  GAME_SETTINGS_TEXTS,
   getBackupFileName,
   SETTINGS_TEXTS,
   SettingsScreen,
   SettingsSection,
+  TIME_FACTOR_OPTIONS,
 } from '@/components/settings';
 import { NavigationProvider } from '@/core/navigation';
+import { GAME_REGISTRY } from '@/core/progression';
 import {
   createDefaultSaveState,
   DEFAULT_DEVICE_SETTINGS,
@@ -17,7 +22,14 @@ import {
   STORAGE_KEY,
   StorageProvider,
 } from '@/core/storage';
-import type { DeviceSettings, LevelCompletion, MiaSaveState, UserProfile } from '@/types/mia';
+import {
+  TIME_FACTORS,
+  type DeviceSettings,
+  type LevelCompletion,
+  type MemoryGameSettings,
+  type MiaSaveState,
+  type UserProfile,
+} from '@/types/mia';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import type { ReactNode } from 'react';
@@ -46,6 +58,15 @@ const ORIGIN = 'http://localhost:3000';
 const IMPORT_TITLE = 'Remplacer les profils actuels ?';
 const RESET_TITLE = 'Réinitialiser Mia ?';
 const FINAL_RESET_TITLE = 'Tout effacer définitivement ?';
+const PREVIEW_GROUP = 'Temps de mémorisation';
+const MISMATCH_GROUP = 'Temps d’affichage des erreurs';
+/** Réglages de Memory d'un profil qui n'a rien réglé (« Normal » dans les deux sélecteurs). */
+const DEFAULT_MEMORY: MemoryGameSettings = { previewFactor: 1, mismatchFactor: 1 };
+/**
+ * Appuis sur Bas pour atteindre la sauvegarde depuis le mode TV avec un profil actif : Son,
+ * Contraste, les deux sélecteurs de temps de Memory, puis la sauvegarde.
+ */
+const PRESSES_TO_BACKUP = 5;
 
 function won(levelId: string): LevelCompletion {
   return {
@@ -73,6 +94,7 @@ function player(id: string, name: string, avatarId: string, stars = 0): UserProf
         lastPlayedLevelId: null,
       },
     },
+    gameSettings: { memory: { previewFactor: 1, mismatchFactor: 1 } },
   };
 }
 
@@ -106,6 +128,17 @@ function withSettings(settings: Partial<DeviceSettings>): MiaSaveState {
   return familySave({ settings: { ...DEFAULT_DEVICE_SETTINGS, ...settings } });
 }
 
+/** Sauvegarde familiale où Léo (actif) a réglé Memory ; Mia garde les réglages par défaut. */
+function withMemorySettings(memory: MemoryGameSettings): MiaSaveState {
+  const save = familySave();
+  return {
+    ...save,
+    profiles: save.profiles.map((profile) =>
+      profile.id === 'p1' ? { ...profile, gameSettings: { memory } } : profile,
+    ),
+  };
+}
+
 function storeSave(save: MiaSaveState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(save));
 }
@@ -123,6 +156,10 @@ function forceTvMode(save: MiaSaveState): MiaSaveState {
 /** Appuie sur une touche (cible : élément focalisé) ; `true` si le moteur l'a consommée. */
 function press(key: string): boolean {
   return !fireEvent.keyDown(document.activeElement ?? document.body, { key });
+}
+
+function pressTimes(key: string, count: number): void {
+  for (let index = 0; index < count; index += 1) press(key);
 }
 
 /** Focus DOM (Tab, clic) ; `act` laisse React activer la zone de l'élément (`onFocus`) avant la suite. */
@@ -146,6 +183,24 @@ function getSwitch(name: string): HTMLElement {
 
 function getGroup(name: string): HTMLElement {
   return screen.getByRole('group', { name });
+}
+
+function getFactorGroup(name: string): HTMLElement {
+  return screen.getByRole('radiogroup', { name });
+}
+
+/** Option d'un sélecteur de temps, par son libellé ; le facteur (« × 1,5 ») complète son nom accessible. */
+function getFactorRadio(groupName: string, label: string): HTMLElement {
+  const option = TIME_FACTOR_OPTIONS.find((candidate) => candidate.label === label);
+  if (!option) throw new Error(`Option de temps inconnue : ${label}`);
+  return within(getFactorGroup(groupName)).getByRole('radio', {
+    name: `${label} ${formatTimeFactor(option.value)}`,
+  });
+}
+
+/** Réglages de Memory enregistrés, dans l'ordre des profils (Léo puis Mia). */
+function readMemorySettings(): MemoryGameSettings[] {
+  return readSave().profiles.map((profile) => profile.gameSettings.memory);
 }
 
 function getPasteField(): HTMLElement {
@@ -441,6 +496,220 @@ describe('Réglages de l’appareil', () => {
   });
 });
 
+describe('Réglages de jeu', () => {
+  it('affiche la section « Jeux » du profil actif, avec son avatar et ses réglages de Memory', async () => {
+    await renderSettings(withMemorySettings({ previewFactor: 1.5, mismatchFactor: 2 }));
+
+    // Entre l'appareil et la sauvegarde.
+    expect(
+      screen
+        .getAllByRole('region')
+        .map((region) => within(region).getByRole('heading', { level: 2 }).textContent),
+    ).toEqual(['Appareil', 'Jeux', 'Sauvegarde']);
+    const section = screen.getByRole('region', { name: 'Jeux' });
+    expect(within(section).getByText('Réglages de Léo')).toBeInTheDocument();
+    expect(section.querySelector('[data-avatar="cat"]')).toHaveAttribute('aria-hidden', 'true');
+    expect(within(section).getByText(GAME_SETTINGS_TEXTS.profileNote)).toBeInTheDocument();
+    expect(within(section).getByRole('group', { name: 'Memory' })).toBeInTheDocument();
+
+    const preview = getFactorGroup(PREVIEW_GROUP);
+    expect(preview).toHaveAccessibleDescription(GAME_SETTINGS_TEXTS.previewNote);
+    expect(
+      within(preview)
+        .getAllByRole('radio')
+        .map((radio) => radio.textContent),
+    ).toEqual(['Court × 0,5', 'Normal × 1', 'Long × 1,5', 'Très long × 2']);
+    expect(within(preview).getAllByRole('radio', { checked: true })).toEqual([
+      getFactorRadio(PREVIEW_GROUP, 'Long'),
+    ]);
+
+    const mismatch = getFactorGroup(MISMATCH_GROUP);
+    expect(mismatch).toHaveAccessibleDescription(GAME_SETTINGS_TEXTS.mismatchNote);
+    expect(within(mismatch).getAllByRole('radio')).toHaveLength(TIME_FACTORS.length);
+    expect(within(mismatch).getAllByRole('radio', { checked: true })).toEqual([
+      getFactorRadio(MISMATCH_GROUP, 'Très long'),
+    ]);
+  });
+
+  it('propose « Normal » par défaut dans les deux sélecteurs', async () => {
+    await renderSettings();
+
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).toBeChecked();
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toBeChecked();
+    expect(screen.getAllByRole('radio', { checked: true })).toHaveLength(3);
+  });
+
+  it.each([
+    ['sans profil actif', familySave({ activeProfileId: null })],
+    ['sans aucun profil', familySave({ activeProfileId: null, profiles: [] })],
+  ])('est absente %s, la sauvegarde restant proposée', async (_case, save) => {
+    await renderSettings(save);
+
+    expect(screen.queryByRole('region', { name: 'Jeux' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radiogroup', { name: PREVIEW_GROUP })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Réglages de /)).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Appareil' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Sauvegarde' })).toBeInTheDocument();
+  });
+
+  it('change le temps de mémorisation au doigt, pour le profil actif seulement', async () => {
+    await renderSettings();
+
+    fireEvent.click(getFactorRadio(PREVIEW_GROUP, 'Très long'));
+
+    await waitFor(() => {
+      expect(getFactorRadio(PREVIEW_GROUP, 'Très long')).toBeChecked();
+    });
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).not.toBeChecked();
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toBeChecked();
+    await waitFor(() => {
+      expect(readMemorySettings()).toEqual([
+        { previewFactor: 2, mismatchFactor: 1 },
+        DEFAULT_MEMORY,
+      ]);
+    });
+    // Rien d'autre ne bouge : étoiles, profil actif, réglages de l'appareil.
+    expect(readSave()).toEqual(withMemorySettings({ previewFactor: 2, mismatchFactor: 1 }));
+  });
+
+  it('change le temps d’affichage des erreurs au doigt, sans toucher à la mémorisation', async () => {
+    await renderSettings(withMemorySettings({ previewFactor: 1.5, mismatchFactor: 1 }));
+
+    fireEvent.click(getFactorRadio(MISMATCH_GROUP, 'Court'));
+
+    await waitFor(() => {
+      expect(getFactorRadio(MISMATCH_GROUP, 'Court')).toBeChecked();
+    });
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toBeChecked();
+    await waitFor(() => {
+      expect(readMemorySettings()).toEqual([
+        { previewFactor: 1.5, mismatchFactor: 0.5 },
+        DEFAULT_MEMORY,
+      ]);
+    });
+  });
+
+  it('se pilote à la télécommande : arrivée sur l’option choisie, curseur conservé après un choix', async () => {
+    await renderSettingsOnTv();
+
+    pressTimes('ArrowDown', 2);
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+    press('ArrowDown');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).toHaveFocus();
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).toHaveAttribute('data-focused', 'true');
+    expect(getSwitch('Contraste élevé')).not.toHaveAttribute('data-focused');
+
+    press('ArrowRight');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toHaveFocus();
+    expect(press('Enter')).toBe(true);
+    await waitFor(() => {
+      expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toBeChecked();
+    });
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).not.toBeChecked();
+    // Le curseur reste sur l'option choisie.
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toHaveFocus();
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toHaveAttribute('data-focused', 'true');
+    // Bords de la ligne : Droite s'arrête à « Très long », Gauche à « Court ».
+    pressTimes('ArrowRight', 2);
+    expect(getFactorRadio(PREVIEW_GROUP, 'Très long')).toHaveFocus();
+    pressTimes('ArrowLeft', 4);
+    expect(getFactorRadio(PREVIEW_GROUP, 'Court')).toHaveFocus();
+
+    press('ArrowDown');
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
+    press('ArrowDown');
+    expect(getButton('Télécharger le fichier')).toHaveFocus();
+    press('ArrowUp');
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
+    // En remontant : sur l'option choisie (« Long »), pas sur la dernière visitée (« Court »).
+    press('ArrowUp');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toHaveFocus();
+    press('ArrowUp');
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+    press('ArrowDown');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toHaveFocus();
+
+    await waitFor(() => {
+      expect(readMemorySettings()).toEqual([
+        { previewFactor: 1.5, mismatchFactor: 1 },
+        DEFAULT_MEMORY,
+      ]);
+    });
+  });
+
+  it('ramène le curseur sur Contraste si le profil actif disparaît depuis un autre onglet', async () => {
+    await renderSettingsOnTv();
+    pressTimes('ArrowDown', 4);
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
+
+    // Autre onglet : sauvegarde réécrite sans profil actif (import) ; la section « Jeux » disparaît.
+    const raw = JSON.stringify(familySave({ activeProfileId: null }));
+    window.localStorage.setItem(STORAGE_KEY, raw);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: STORAGE_KEY,
+          newValue: raw,
+          storageArea: window.localStorage,
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('radiogroup', { name: MISMATCH_GROUP })).toBeNull();
+    });
+    // Le curseur n'est pas resté sur une zone démontée : Contraste reprend la main.
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+    press('ArrowDown');
+    expect(getButton('Télécharger le fichier')).toHaveFocus();
+    press('ArrowUp');
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+  });
+
+  it('enchaîne Contraste et Sauvegarde directement sans profil actif', async () => {
+    await renderSettingsOnTv(familySave({ activeProfileId: null }));
+
+    pressTimes('ArrowDown', 2);
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+    press('ArrowDown');
+    expect(getButton('Télécharger le fichier')).toHaveFocus();
+    press('ArrowUp');
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+  });
+
+  it('active la zone de l’option qui reçoit le focus DOM (Tab, clic)', async () => {
+    await renderSettings();
+
+    focusElement(getFactorRadio(MISMATCH_GROUP, 'Court'));
+    press('ArrowDown');
+    expect(getButton('Télécharger le fichier')).toHaveFocus();
+
+    focusElement(getFactorRadio(PREVIEW_GROUP, 'Très long'));
+    press('ArrowUp');
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+
+    focusElement(getSwitch('Contraste élevé'));
+    press('ArrowDown');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).toHaveFocus();
+  });
+
+  it('revient au Hub avec Retour / Échap depuis les sélecteurs de temps', async () => {
+    stubNavigationHistory(`${ORIGIN}/`, `${ORIGIN}/settings/`);
+    await renderSettingsOnTv();
+
+    pressTimes('ArrowDown', 3);
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).toHaveFocus();
+    expect(press('Escape')).toBe(true);
+    expect(router.back).toHaveBeenCalledOnce();
+
+    press('ArrowDown');
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
+    expect(press('Escape')).toBe(true);
+    expect(router.back).toHaveBeenCalledTimes(2);
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+});
+
 describe('Sauvegarde', () => {
   it('télécharge la sauvegarde du jour sur le Web, puis révoque l’URL', async () => {
     await renderSettings();
@@ -530,9 +799,7 @@ describe('Sauvegarde', () => {
     expect(
       screen.queryByRole('button', { name: 'Télécharger le fichier' }),
     ).not.toBeInTheDocument();
-    press('ArrowDown');
-    press('ArrowDown');
-    press('ArrowDown');
+    pressTimes('ArrowDown', PRESSES_TO_BACKUP);
     expect(getButton('Copier')).toHaveFocus();
     press('ArrowRight');
     expect(getButton('Copier')).toHaveFocus();
@@ -802,9 +1069,7 @@ describe('Sauvegarde', () => {
       expect(getRadio('Toujours TV')).toHaveFocus();
     });
 
-    press('ArrowDown');
-    press('ArrowDown');
-    press('ArrowDown');
+    pressTimes('ArrowDown', PRESSES_TO_BACKUP);
     expect(getButton('Télécharger le fichier')).toHaveFocus();
     press('ArrowRight');
     expect(getButton('Copier')).toHaveFocus();
@@ -829,8 +1094,9 @@ describe('Sauvegarde', () => {
     expect(getButton('Choisir un fichier')).toHaveFocus();
     press('ArrowUp');
     expect(getButton('Copier')).toHaveFocus();
+    // Au-dessus de la sauvegarde : le dernier sélecteur de temps de Memory, sur l'option choisie.
     press('ArrowUp');
-    expect(getSwitch('Contraste élevé')).toHaveFocus();
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     press('ArrowDown');
     expect(getButton('Télécharger le fichier')).toHaveFocus();
 
@@ -917,5 +1183,31 @@ describe('Libellés', () => {
     );
     expect(describeBackupProfiles(1)).toBe('Cette sauvegarde contient 1 profil.');
     expect(describeBackupProfiles(3)).toBe('Cette sauvegarde contient 3 profils.');
+  });
+
+  it('formate les facteurs de temps à la française, avec une virgule', () => {
+    expect(TIME_FACTORS.map((factor) => formatTimeFactor(factor))).toEqual([
+      '× 0,5',
+      '× 1',
+      '× 1,5',
+      '× 2',
+    ]);
+  });
+
+  it('liste les options de temps du plus court au plus long, dans l’ordre de TIME_FACTORS', () => {
+    expect(TIME_FACTOR_OPTIONS).toEqual([
+      { value: 0.5, label: 'Court' },
+      { value: 1, label: 'Normal' },
+      { value: 1.5, label: 'Long' },
+      { value: 2, label: 'Très long' },
+    ]);
+    expect(TIME_FACTOR_OPTIONS.map((option) => option.value)).toEqual([...TIME_FACTORS]);
+  });
+
+  it('titre les réglages du profil et reprend le nom du jeu du registre', () => {
+    expect(describeProfileSettings('Léo')).toBe('Réglages de Léo');
+    expect(GAME_SETTINGS_TEXTS.memoryTitle).toBe(GAME_REGISTRY.memory.title);
+    expect(GAME_SETTINGS_TEXTS.previewLabel).toBe(PREVIEW_GROUP);
+    expect(GAME_SETTINGS_TEXTS.mismatchLabel).toBe(MISMATCH_GROUP);
   });
 });

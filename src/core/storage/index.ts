@@ -12,7 +12,9 @@ export {
   BACKUP_STORAGE_KEY,
   CURRENT_SCHEMA_VERSION,
   DEFAULT_DEVICE_SETTINGS,
+  DEFAULT_MEMORY_GAME_SETTINGS,
   STORAGE_KEY,
+  createDefaultGameSettings,
   createDefaultSaveState,
 } from './default-state';
 export {
@@ -49,6 +51,7 @@ export {
   normalizeProfileName,
   setActiveProfile,
   suggestAvatarId,
+  updateMemorySettings,
   type NewProfileOptions,
   type ProfileNameCheck,
   type ProfileNameError,

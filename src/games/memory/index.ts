@@ -28,6 +28,7 @@ export {
   selectCard,
 } from './engine';
 export type { Rng } from './random';
+export { applyMemorySettings, getMismatchDelayMs } from './settings';
 export {
   DISTINCT_COLOR_CLASSES,
   MEMORY_ICONS,

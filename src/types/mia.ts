@@ -37,6 +37,28 @@ export interface GameProgress {
   lastPlayedLevelId: string | null;
 }
 
+/**
+ * Pas du facteur de temps des réglages de jeu (FEAT-19), dans l'ordre d'affichage : `1` = temps du
+ * niveau tel quel, `0.5` le divise par deux, `2` le double.
+ */
+export const TIME_FACTORS = [0.5, 1, 1.5, 2] as const;
+
+/** Multiplicateur d'un temps de jeu (aperçu, affichage d'une erreur), parmi `TIME_FACTORS`. */
+export type TimeFactor = (typeof TIME_FACTORS)[number];
+
+/** Réglages de Memory propres à un profil (FEAT-19), appliqués aux temps de chaque niveau. */
+export interface MemoryGameSettings {
+  /** Multiplie l'aperçu du niveau (`previewSeconds`) ; une étoile sans aperçu (0) n'en gagne pas */
+  previewFactor: TimeFactor;
+  /** Multiplie le temps pendant lequel les cartes d'une erreur restent visibles (`MISMATCH_DELAY_MS`) */
+  mismatchFactor: TimeFactor;
+}
+
+/** Réglages de jeu d'un profil, un objet par jeu qui en propose (Traffic Jam n'en a pas encore). */
+export interface ProfileGameSettings {
+  memory: MemoryGameSettings;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -45,6 +67,8 @@ export interface UserProfile {
   createdAt: string;
   /** Progression indexée par identifiant de jeu ("memory", "traffic-jam") */
   gamesProgress: Record<string, GameProgress>;
+  /** Réglages de jeu du joueur (FEAT-19) : toujours complets, réparés aux valeurs par défaut à la lecture */
+  gameSettings: ProfileGameSettings;
 }
 
 /** Sauvegarde locale complète (FEAT-05) : une seule clé de stockage par appareil. */

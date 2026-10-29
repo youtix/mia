@@ -1,4 +1,9 @@
-import type { DeviceSettings, MiaSaveState } from '@/types/mia';
+import type {
+  DeviceSettings,
+  MemoryGameSettings,
+  MiaSaveState,
+  ProfileGameSettings,
+} from '@/types/mia';
 
 /**
  * Clé unique de la sauvegarde. Elle ne change jamais : le format évolue par `schemaVersion`
@@ -16,6 +21,17 @@ export const DEFAULT_DEVICE_SETTINGS: Readonly<DeviceSettings> = {
   highContrastMode: false,
   tvModeOverride: 'auto',
 };
+
+/** Réglages de Memory d'un nouveau profil (FEAT-19) : les temps du niveau, tels quels. */
+export const DEFAULT_MEMORY_GAME_SETTINGS: Readonly<MemoryGameSettings> = {
+  previewFactor: 1,
+  mismatchFactor: 1,
+};
+
+/** Réglages de jeu d'un nouveau profil (nouvel objet à chaque appel, jamais partagé entre profils). */
+export function createDefaultGameSettings(): ProfileGameSettings {
+  return { memory: { ...DEFAULT_MEMORY_GAME_SETTINGS } };
+}
 
 /** État initial (nouvel objet à chaque appel) : aucun profil, FEAT-06 crée le premier. */
 export function createDefaultSaveState(): MiaSaveState {
