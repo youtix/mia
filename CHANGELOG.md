@@ -1,3 +1,9 @@
+## [0.8.0](https://github.com/youtix/mia/compare/v0.7.0...v0.8.0) (2026-10-29)
+
+### Features
+
+* **hub:** add game hub and 5-tier star progression map ([#9](https://github.com/youtix/mia/issues/9)) ([9dedf60](https://github.com/youtix/mia/commit/9dedf60b3f89787c77f14603ae2b2b0bef2b8f30))
+
 ## [0.7.0](https://github.com/youtix/mia/compare/v0.6.0...v0.7.0) (2026-10-28)
 
 ### Features
