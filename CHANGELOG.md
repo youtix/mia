@@ -1,3 +1,9 @@
+## [0.9.0](https://github.com/youtix/mia/compare/v0.8.0...v0.9.0) (2026-10-29)
+
+### Features
+
+* **memory:** implement pure memory game engine ([#10](https://github.com/youtix/mia/issues/10)) ([4762722](https://github.com/youtix/mia/commit/4762722645c72b97f37c8c953b21e13008a92bbc))
+
 ## [0.8.0](https://github.com/youtix/mia/compare/v0.7.0...v0.8.0) (2026-10-29)
 
 ### Features
