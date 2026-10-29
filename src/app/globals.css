@@ -101,3 +101,44 @@
   padding-bottom: max(var(--safe-area-y), env(safe-area-inset-bottom));
   padding-left: max(var(--safe-area-x), env(safe-area-inset-left));
 }
+
+/*
+ * Plateau de Memory (FEAT-10) : cartes carrées aussi grandes que la zone du plateau le permet,
+ * sans défilement, de 2 × 2 à 6 × 6. La zone est un conteneur de taille (`@container-size`) ;
+ * --memory-cols / --memory-rows viennent de la configuration du niveau. Une grille large tourne
+ * quand la zone est en portrait, une grille haute quand elle est en paysage (data-shape) : lignes
+ * et colonnes s'échangent (grid-auto-flow: column), l'ordre des cartes du moteur ne change pas.
+ * Le D-Pad lit les colonnes affichées (useGridColumns).
+ */
+@utility memory-grid {
+  --memory-gap: clamp(0.25rem, 2cqmin, 0.75rem);
+  --memory-across: var(--memory-cols);
+  --memory-down: var(--memory-rows);
+  --memory-card: min(
+    (100cqw - (var(--memory-across) - 1) * var(--memory-gap)) / var(--memory-across),
+    (100cqh - (var(--memory-down) - 1) * var(--memory-gap)) / var(--memory-down)
+  );
+  display: grid;
+  grid-template-columns: repeat(var(--memory-across), var(--memory-card));
+  grid-template-rows: repeat(var(--memory-down), var(--memory-card));
+  gap: var(--memory-gap);
+  place-content: center;
+  width: 100%;
+  height: 100%;
+
+  @container (orientation: portrait) {
+    &[data-shape='wide'] {
+      --memory-across: var(--memory-rows);
+      --memory-down: var(--memory-cols);
+      grid-auto-flow: column;
+    }
+  }
+
+  @container (orientation: landscape) {
+    &[data-shape='tall'] {
+      --memory-across: var(--memory-rows);
+      --memory-down: var(--memory-cols);
+      grid-auto-flow: column;
+    }
+  }
+}

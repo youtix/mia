@@ -80,6 +80,10 @@ Implémente `validateMemoryCatalog(catalog = MEMORY_CATALOG): { valid: boolean; 
   * Les règles 2 à 4 sont celles de `getMemoryConfigErrors(level.config)` (`@/games/memory`), dont chaque message est préfixé du nom du niveau (comme `validateLevelCatalog`). Il couvre aussi les champs entiers et positifs, le mode visuel connu et la cohérence `perfectMaxMistakes ≤ maxMistakes`, `swapEveryNMistakes ≤ maxMistakes`. Une configuration sans anomalie est instanciée par `createMemoryGame` sans erreur.
   * Règle 3 : le nombre de symboles disponibles dépend du mode (`getMemoryModeCapacity`) : 10 groupes en `distinct_color_shape` (une couleur unique par groupe), 36 en `thematic_palette` et `monochrome`, 32 en `abstract_orientation`.
   * `catalog.ts` est couvert par le seuil de 90 % de `src/games/memory/*.ts`.
+* **Contrat FEAT-10** ([§5](./FEAT-10.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `renderLevel={(level, controls) => <MemoryBoard level={level} controls={controls} />}` : le plateau reçoit le niveau et les commandes de `GameScreen` tels quels (victoire par `recordVictory`, « Étoile Suivante » par `playLevel`, Carte des Étoiles et Retour par `exitToMap`). Importer le module `@/games/memory/components/MemoryBoard`, pas le barrel.
+  * Toute grille valide se joue sans défilement ; une grille large (ou haute) tourne d'elle-même quand la zone du plateau est en portrait (ou en paysage). Une configuration invalide lèverait une erreur au montage (`createMemoryGame`) : `validateMemoryCatalog` doit rester sans anomalie.
+  * Textes du plateau au tutoiement (« Trouve les paires (2) ») ; `title` d'un niveau n'est pas affiché (en-tête « Étoile #N »).
 
 ---
 

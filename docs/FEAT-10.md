@@ -23,6 +23,8 @@ L'interface doit respecter **3 impératifs UX** :
 
 ```text
 src/
+├── app/
+│   └── globals.css                    # + utilitaire memory-grid : cartes carrées sans défilement, rotation (voir §5)
 └── games/
     └── memory/
         ├── components/
@@ -30,6 +32,8 @@ src/
         │   ├── MemoryCardView.tsx     # Carte individuelle (face cachée / face visible, focus TV, état trouvé)
         │   ├── MemoryHud.tsx          # Barre d'état supérieure (Étoile #N, Paires/Triplets, Erreurs, Aperçu)
         │   ├── MemoryBoard.tsx        # Plateau complet avec gestion des timers (preview, evaluating) et D-Pad
+        │   ├── MemoryEndModal.tsx     # Modale de fin de niveau et sa zone D-Pad (voir §5)
+        │   ├── labels.ts              # Libellés français (erreurs, groupes, couronne, défaite) (voir §5)
         │   └── index.ts
         └── index.ts                   # Exporter les composants
 tests/
@@ -39,6 +43,8 @@ tests/
 ---
 
 ## 3. Spécifications Fonctionnelles & UX Détaillées
+
+> Les décisions de la session de cadrage ([§5](#5-décisions-dimplémentation-session-de-cadrage)) précisent ces spécifications : plateau `{ level, controls }`, en-tête d'`AppShell` et HUD sans bouton (bandeau en portrait, colonne en paysage), dimensionnement par la feuille de style et grille tournée en portrait, zone D-Pad active pendant l'aperçu, fin d'aperçu au premier tap, objectif de la couronne, modale dédiée, tutoiement.
 
 ### 3.1. `MemoryHud` (`src/games/memory/components/MemoryHud.tsx`)
 Affiche de façon compacte au-dessus du plateau :
@@ -98,3 +104,34 @@ Affiche de façon compacte au-dessus du plateau :
 - [ ] `tests/memory-board.test.tsx` vérifie le déroulement complet d'une partie au clic et au clavier D-Pad (`ArrowRight` + `Enter`) jusqu'à la modale de victoire, en maintenant la couverture globale `>= 80%`.
 - [ ] `npm run validate:all` (`format:check`, `lint`, `typecheck`, `test:coverage`, `build`) passe sans aucune erreur.
 - [ ] Si un commit est créé, il respecte le format **Conventional Commits** (`feat(memory): add memory board ui with 3d flip and dpad controls`).
+
+---
+
+## 5. Décisions d'implémentation (session de cadrage)
+
+Décisions prises avant l'implémentation ; elles complètent ou précisent les sections ci-dessus.
+
+| Sujet | Décision |
+| :--- | :--- |
+| **API du plateau** | `MemoryBoard({ level, controls })` : `EnrichedLevelItem<MemoryLevelConfig>` et `LevelControls` de `GameScreen` tels quels ; FEAT-11 rend `renderLevel={(level, controls) => <MemoryBoard level={level} controls={controls} />}`. Le callback `onVictory({ moves, mistakes, isPerfect })` de §3.3 devient `controls.recordVictory({ moves, timeSeconds, isPerfect })` ; les erreurs ne servent qu'à la modale. Plateau remonté à chaque changement de niveau (`key` de `GameScreen`). |
+| **Écran** | `AppShell` : titre « Étoile #N » (`h1`), Retour → Carte des Étoiles (`exitToMap`), « Recommencer » (↻, texte masqué sous `sm:`) dans l'emplacement de droite, comme « Jouer l'Étoile #X » sur la carte. `MemoryHud` ne contient aucun bouton : palier (`DifficultyPill`), règle, permutation (« Permutation toutes les N erreurs », « à chaque erreur » pour 1), compteurs, objectif de la couronne, bandeau d'aperçu. Pied de page TV : `DEFAULT_REMOTE_HINTS`. |
+| **Mise en page** | HUD en bandeau au-dessus du plateau en portrait, en colonne à sa gauche en paysage (`landscape:`, 13 rem, 15 rem dès `md:`) : la largeur libre d'un écran 16:9 sert au HUD, environ 20 % de taille de carte gagnée sur téléviseur (6 × 6 ≈ 51 px au lieu de 42 sur 960 × 540). Compteurs et bandeau d'aperçu superposés dans la même cellule (`invisible`) : la hauteur du HUD ne change pas à la fin de l'aperçu, le plateau ne se redimensionne jamais en cours de partie. |
+| **Zéro défilement** | Cartes carrées dimensionnées par la seule feuille de style : zone du plateau en conteneur de taille (`@container-size`), utilitaire `memory-grid` (`globals.css`) : côté d'une carte = minimum de la largeur et de la hauteur disponibles par colonne et par ligne (unités `cqw` / `cqh`), espacement `clamp(0.25rem, 2cqmin, 0.75rem)`, marge interne pour l'anneau de focus zoomé. Unités de conteneur : Chrome 105+, sous le plancher de Tailwind v4 (Chrome 111+). |
+| **Rotation** | Une grille large (`cols > rows`, tout le catalogue initial) tourne quand la zone du plateau est en portrait, une grille haute quand elle est en paysage (`data-shape`, requêtes `@container (orientation)`) ; une grille carrée jamais. Lignes et colonnes s'échangent par `grid-auto-flow: column` : l'ordre des cartes du moteur (et du DOM) ne change pas. Smartphone de 360 px : 6 × 4 ≈ 72 px au lieu de 45, 5 × 3 ≈ 98 px au lieu de 56. Le D-Pad lit les colonnes affichées (`useGridColumns`, contrat FEAT-06) : `useGridNavigation` reçoit les dimensions affichées (et non `config.rows` / `config.cols` de §3.3), chaque carte son index affiché (`ref`, anneau, position vocalisée) ; les flèches suivent toujours l'écran. |
+| **D-Pad** | Deux zones : en-tête (Retour, Recommencer) et grille. Haut depuis la première ligne → Retour au-dessus de la moitié gauche du plateau, Recommencer au-dessus de la moitié droite ; Bas depuis l'en-tête → dernière carte quittée. Zone de la grille active pendant `preview`, `playing` et `evaluating` (et non `phase === 'playing'` de §3.3) : Retour reste disponible (contrat FEAT-04), OK pendant l'aperçu le termine, le moteur ignore le reste. Focus DOM (Tab, clic) → zone de l'élément. Une nouvelle partie ramène le curseur sur la grille. |
+| **Aperçu** | Bandeau « Mémorise les cartes ! » et compte à rebours (3, 2, 1, « 3 secondes » vocalisé) ; aide « Touche une carte pour commencer » au doigt, « Appuie sur OK pour commencer » à la télécommande. Un tap ou OK termine seulement l'aperçu : toutes les cartes se cachent ensemble, la carte touchée n'est pas retournée (aucun premier coup involontaire). Pendant l'aperçu, les cartes visibles sont nommées par leur symbole : l'équivalent accessible de l'aperçu. |
+| **Évaluation** | Délai `isEvaluationMatch` (350 ms / 900 ms), puis `resolveEvaluation` calculé hors de `setGame` : une seule résolution, tirages de permutation compris. La victoire est enregistrée dans ce rappel, jamais par un effet (StrictMode rejoue les effets). Les taps pendant l'évaluation sont ignorés par le moteur. |
+| **Animations** | Retournement 3D en CSS (`perspective-midrange`, `transform-3d`, `backface-hidden`, `rotate-y-180`, 300 ms sous `motion-safe:`). Permutation : les deux cartes glissent vers leur nouvelle place (framer-motion `layout="position"`, clé `card.uid`, mesures limitées aux permutations par `layoutDependency={lastSwappedPair}`, coupé par `MotionConfig reducedMotion="user"`). Nouvelle partie : grille remontée (`key`), aucune carte ne glisse d'une partie à l'autre. |
+| **Permutation** | Indicateur de 1 000 ms déclenché par chaque nouvelle référence de `lastSwappedPair` : anneau violet intérieur pulsé (`ring-inset`, `motion-safe:animate-pulse`) dans un calque distinct (l'anneau de focus ambré reste visible), badge ⚡ de la règle illuminé, message vocalisé « Attention : deux cartes ont échangé leur place ! » (région `role="status"`). |
+| **Cartes** | `<button type="button">` avec `data-state`, `data-focused`, `data-swapping`. Dos `bg-slate-800 border-slate-700` (motif `Sparkles`), face `bg-slate-900 border-sky-400`, carte trouvée `bg-emerald-950/40 border-emerald-500/50` (symbole à 75 %) avec coche. Anneau D-Pad ambré de §3.2 (+ `ring-offset`, identique sur `:focus-visible`) : la face visible a déjà une bordure bleue. Nom vocalisé (`getMemoryCardLabel`) : « Carte cachée, ligne 1, colonne 2 », « Soleil, ligne 1, colonne 2 », « Soleil, trouvée, ligne 1, colonne 2 » ; la position affichée est le repère indispensable au lecteur d'écran, la couleur n'est jamais nommée. |
+| **Symboles** | `MemorySymbolIcon` : table exhaustive `Record<MemorySymbolId, …>`. 36 icônes Lucide (`bolt` → `Zap`, `diamond` → `Gem`, `tree` → `TreePine`, `flower` → `Flower`…) ; 8 formes pleines dessinées sur la grille 24 × 24 d'aires voisines (flèche, chevron, triangle, triangle rectangle, demi-disque, quart de disque en part de tarte pointe en haut pour ne jamais ressembler au triangle rectangle, L, T), pointe vers le haut à 0°. `colorClass` colore, `rotationDeg` tourne (propriété `rotate`, classes littérales). |
+| **Compteurs** | « Paires : 3 / 8 » ou « Triplets : 1 / 5 » (plutôt que « Groupes »), « 3 sur 8 » vocalisé. Erreurs : « Erreurs : 3 » sans limite, « 3 / 10 », « 10 / 10 · Dernier essai ! » (vocalisé une fois), « Aucune erreur permise » (`maxMistakes: 0`), « plus de 10 » après la défaite (jamais « 11 / 10 »). |
+| **Couronne** | Objectif affiché dans le HUD (couronne et « 4 erreurs max », « Sans erreur » ; barré une fois hors d'atteinte ; « Couronne déjà gagnée » sur un niveau couronné) et dans la modale : « Parfait ! Couronne gagnée », « Parfait ! » (déjà couronné), « Couronne : 4 erreurs max, tu en as fait 6. Rejoue pour la gagner ! », rien si elle était déjà gagnée. Couronne antérieure lue à la fin de la partie (le résumé est recalculé après l'enregistrement). |
+| **Fin de niveau** | `MemoryEndModal` (fichier dédié), sans `onClose` : ni ✕, ni fond ; Retour / Échap → `onBack` de sa zone → Carte des Étoiles. Zone déclarée dans un composant rendu dans `ModalDialog`, actions empilées, curseur sur la première. Victoire : « Étoile #N gagnée ! », « 12 coups · 3 erreurs », « Étoile Suivante (#N+1) » (flèche Lucide, absente après la dernière étoile), « Rejouer », « Carte des Étoiles ». Défaite : « Trop d'erreurs : plus de 10 » (« plus d'une », « aucune n'était permise »), « Tu avais trouvé 5 paires sur 8. », « Réessayer », « Carte des Étoiles ». Résultat figé à la fin de la partie. |
+| **Temps** | `performance.now()` de la première phase `playing` (après l'aperçu) jusqu'à la victoire, arrondi à la seconde, remis à zéro à chaque nouvelle partie. Non affiché (indicatif, [SPECIFICATION §3.2](./SPECIFICATION.md)). |
+| **Confirmation** | Aucune : Retour et « Recommencer » agissent immédiatement (contrat FEAT-08), un niveau dure au plus quelques minutes. |
+| **Voix** | Tutoiement de Mia (FEAT-08 : « gagne l'Étoile #5 pour avancer ») : « Mémorise les cartes ! » et « Trouve les paires (2) » / « Trouve les triplets (3) » au lieu de « Mémorisez… » et « Trouvez… » de §3. Libellés centralisés dans `components/labels.ts` (`Intl.PluralRules` : 0 et 1 au singulier). |
+| **Périmètre** | Ajouts à l'arborescence §2 : `MemoryEndModal.tsx`, `labels.ts`, utilitaire `memory-grid` dans `src/app/globals.css`. Composants exportés par `components/index.ts` et par le barrel `@/games/memory` (modules du moteur toujours sans React ; composants à état marqués `'use client'`). `/memory` reste branché par FEAT-11 (catalogue vide jusque-là) : `page.tsx` inchangée. |
+| **Tests** | `tests/memory-board.test.tsx` : partie complète au doigt et au D-Pad (`ArrowRight` + `Enter`) jusqu'à la modale, délais d'évaluation, couronne (gagnée, manquée, déjà gagnée), rejouer, dernière étoile, Retour (en-tête, modale, aperçu), en-tête au D-Pad, grille tournée (colonnes simulées), aperçu (compte à rebours, fin anticipée au tap et à OK, temps mesuré après l'aperçu), limite d'erreurs et défaite, permutation, HUD, symboles et libellés. `Math.random` simulé à 0 (cartes d'un groupe consécutives), minuteries simulées (`performance.now()` compris). |
+| **Contrats aval** | Note ajoutée dans [FEAT-11 §3.2](./FEAT-11.md) (branchement de `MemoryBoard`). |
+| **Git** | Branche `feat/memory-board` depuis `main`, commit `feat(memory): add memory board ui with 3d flip and dpad controls`. |
