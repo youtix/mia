@@ -1,4 +1,5 @@
 import { NavigationProvider } from '@/core/navigation';
+import { ServiceWorkerRegistrar } from '@/core/pwa';
 import { StorageProvider, TV_MODE_BOOTSTRAP_SCRIPT } from '@/core/storage';
 import '@fontsource-variable/atkinson-hyperlegible-next';
 import type { Metadata, Viewport } from 'next';
@@ -15,8 +16,17 @@ export const metadata: Metadata = {
   applicationName: 'Mia',
   manifest: `${basePath}/manifest.json`,
   icons: {
-    icon: [{ url: `${basePath}/icons/icon-192.svg`, type: 'image/svg+xml' }],
+    icon: [
+      // PNG d'abord (Safari n'affiche pas les favicons SVG), SVG en dernier : Chrome et Firefox
+      // retiennent la dernière icône compatible, sinon le PNG 32 px s'afficherait flou en HiDPI.
+      { url: `${basePath}/icons/favicon-32.png`, type: 'image/png', sizes: '32x32' },
+      { url: `${basePath}/icons/icon-192.svg`, type: 'image/svg+xml' },
+    ],
+    // iOS exige un PNG, sinon l'écran d'accueil affiche une capture de la page.
+    apple: [{ url: `${basePath}/icons/apple-touch-icon.png`, type: 'image/png', sizes: '180x180' }],
   },
+  // `black-translucent` exigerait la gestion des safe-areas.
+  appleWebApp: { capable: true, title: 'Mia', statusBarStyle: 'black' },
 };
 
 export const viewport: Viewport = {
@@ -37,6 +47,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <StorageProvider>
           <NavigationProvider>{children}</NavigationProvider>
         </StorageProvider>
+        {/* PWA hors-ligne (FEAT-17) : enregistré après `load`, en production Web seulement. */}
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

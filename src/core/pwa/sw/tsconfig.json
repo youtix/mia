@@ -1,0 +1,9 @@
+{
+  "extends": "../../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["esnext", "webworker"],
+    "incremental": false
+  },
+  "include": ["./*.ts", "../precache.ts"],
+  "exclude": ["node_modules"]
+}

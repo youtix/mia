@@ -112,7 +112,9 @@ describe('Environnement', () => {
     const { scripts } = readJson('package.json') as PackageJson;
 
     expect(scripts).toMatchObject({
-      typecheck: 'tsc --noEmit',
+      build: 'next build && tsx scripts/build-sw.ts',
+      icons: 'node scripts/generate-icons.mjs',
+      typecheck: 'tsc --noEmit && tsc --noEmit -p src/core/pwa/sw/tsconfig.json',
       lint: 'eslint . --max-warnings=0',
       'lint:fix': 'eslint . --fix',
       format: 'prettier --write .',
@@ -301,6 +303,13 @@ describe('Couverture Vitest', () => {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.d.ts',
+        'src/**/index.ts',
+        'src/types/**',
+        'src/app/layout.tsx',
+        'src/core/pwa/sw/**',
+      ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     });
   });
