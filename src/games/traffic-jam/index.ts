@@ -1,10 +1,12 @@
-// Moteur pur de Traffic Jam (FEAT-12) : aucune dépendance React ni DOM.
+// Moteur pur de Traffic Jam (FEAT-12) et catalogue (FEAT-14) : aucune dépendance React ni DOM.
+// Le script `validate:levels` et le registre importent leurs modules directement, pas ce barrel.
 export {
   DEFAULT_EXIT_ROW,
   formatTrafficJamAscii,
   parseTrafficJamAscii,
   type ParseTrafficJamOptions,
 } from './ascii-parser';
+export { TRAFFIC_JAM_CATALOG, getLaneSignature, validateTrafficJamCatalog } from './catalog';
 export {
   applyMove,
   buildOccupancyGrid,

@@ -119,8 +119,9 @@ describe('Environnement', () => {
       'format:check': 'prettier --check .',
       test: 'vitest run',
       'test:coverage': 'vitest run --coverage',
+      'validate:levels': 'tsx scripts/validate-levels.ts',
       'validate:all':
-        'npm run format:check && npm run lint && npm run typecheck && npm run test:coverage && npm run build',
+        'npm run format:check && npm run lint && npm run typecheck && npm run validate:levels && npm run test:coverage && npm run build',
       prepare: 'husky',
     });
   });
@@ -384,7 +385,7 @@ describe('GitHub', () => {
     });
   });
 
-  it('vérifie chaque PR (format, lint, types, couverture, build)', () => {
+  it('vérifie chaque PR (format, lint, types, niveaux, couverture, build)', () => {
     const workflow = readYaml('.github/workflows/ci.yml') as Workflow;
 
     expect(Object.keys(workflow.on)).toEqual(['pull_request', 'workflow_call']);
@@ -393,6 +394,7 @@ describe('GitHub', () => {
       'npm run format:check',
       'npm run lint',
       'npm run typecheck',
+      'npm run validate:levels',
       'npm run test:coverage',
       'npm run build',
     ]);

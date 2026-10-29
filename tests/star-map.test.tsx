@@ -1016,11 +1016,29 @@ describe('Pages', () => {
     expect(screen.getAllByRole('button', { name: /^Carte cachée/ })).toHaveLength(8);
   });
 
-  it('affiche la Carte des Étoiles de Traffic Jam', async () => {
+  it('joue le catalogue réel de Traffic Jam : 20 étoiles sur la carte, puis le parking', async () => {
     window.history.replaceState(null, '', '/traffic-jam/');
     await renderLoaded(<TrafficJamPage />, familySave());
 
     expect(screen.getByRole('heading', { level: 1, name: 'Traffic Jam' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('banner')).getByRole('img', { name: '1 étoile sur 20' }),
+    ).toBeInTheDocument();
     expect(screen.getAllByRole('region')).toHaveLength(5);
+    expect(screen.getAllByRole('button', { name: /^Étoile #/ })).toHaveLength(20);
+    expect(screen.queryByText('Bientôt de nouvelles étoiles')).not.toBeInTheDocument();
+
+    fireEvent.click(getButton('Jouer l’Étoile #2'));
+
+    expect(pushState).toHaveBeenLastCalledWith(null, '', '/traffic-jam/?level=tj-002');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Étoile #2' })).toBeInTheDocument();
+    // Parking de FEAT-13 (tj-002 « Chaîne de deux », 3 coups) : ta voiture et 3 autres véhicules.
+    expect(
+      screen.getByRole('group', { name: 'Parking de 6 × 6 cases, sortie à droite sur la ligne 3' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Ta voiture, horizontale/ })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole('button', { name: /^(Ta voiture|Voiture [A-Z]|Camion [A-Z]), / }),
+    ).toHaveLength(4);
   });
 });
