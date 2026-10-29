@@ -303,6 +303,14 @@ describe('Couverture Vitest', () => {
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     });
   });
+
+  it('impose 90 % de couverture au moteur pur de Memory (FEAT-09)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/memory/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
 });
 
 describe('semantic-release', () => {

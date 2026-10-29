@@ -49,6 +49,7 @@ Affiche de façon compacte au-dessus du plateau :
 * Le compteur de progression : `Groupes : matchedGroups / totalGroups`.
 * Le compteur d'erreurs : `Erreurs : X` (ou `X / maxMistakes`).
 * Un bouton **Recommencer** (`↻`) et un bouton **Carte des Étoiles** (`↩`).
+* **Contrat FEAT-09** ([§5](./FEAT-09.md#5-décisions-dimplémentation-session-de-cadrage)) : la limite d'erreurs est inclusive (`maxMistakes` erreurs tolérées, défaite à la suivante). « Erreurs : 10 / 10 » annonce le dernier essai ; la défaite (`mistakes === maxMistakes + 1`) ne s'affiche jamais « 11 / 10 » (ex: « Trop d'erreurs : plus de 10 »).
 
 ### 3.2. `MemoryCardView` (`src/games/memory/components/MemoryCardView.tsx`)
 * Utilise une balise `<button type="button">` accessible (`aria-label` explicite selon l'état de la carte pour respecter `jsx-a11y`).
@@ -60,6 +61,10 @@ Affiche de façon compacte au-dessus du plateau :
   * Applique un anneau très lumineux (`ring-4 ring-amber-400 scale-[1.05] z-10 shadow-xl shadow-amber-500/20`).
 * **Indicateur de Permutation (`isSwapping === true`)** :
   * Lorsqu'une carte fait partie de `lastSwappedPair`, applique une bordure violette animée (`ring-4 ring-purple-500 animate-pulse`) pendant `1000ms`.
+* **Contrat FEAT-09** ([§5](./FEAT-09.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * `MemorySymbolIcon` : table exhaustive sur `MemorySymbolId`. Icônes Lucide (ex: `bolt` → `Zap`, `diamond` → `Gem`, `tree` → `TreePine`) ; formes géométriques dessinées comme `avatar-icons.tsx`, pointe vers le haut à 0°. `colorClass` (`text-*`) colore le symbole ; `rotationDeg` le fait tourner (sens horaire).
+  * `aria-label` d'une carte visible : `getMemorySymbolLabel(symbolId, rotationDeg)` (noms uniques : « Soleil », « Flèche, vers la droite »). Le texte ne dépend jamais de la couleur, qui ne distingue jamais seule deux groupes.
+  * Clé React : `card.uid`, stable lors d'une permutation (les deux cartes échangent leur place dans `cards`, l'animation de position suit l'`uid`).
 
 ### 3.3. Orchestration dans `MemoryBoard` (`src/games/memory/components/MemoryBoard.tsx`)
 * **Timer de la phase `preview`** :
@@ -80,6 +85,11 @@ Affiche de façon compacte au-dessus du plateau :
 * **Contrat FEAT-08** ([§6](./FEAT-08.md#6-décisions-dimplémentation-session-de-cadrage)) :
   * Le plateau est rendu par `renderLevel(level, controls)` de `GameScreen` (branché par FEAT-11) et remonté à chaque changement de niveau ; « Rejouer » se gère dans le plateau. `controls.recordVictory({ moves, timeSeconds, isPerfect })` applique `recordLevelVictory` au profil actif ; `controls.playLevel(id)` lance « Étoile Suivante » (`controls.summary.allLevels[level.globalIndex + 1]`) en remplaçant l'entrée d'historique ; `controls.exitToMap()` répond à « Carte des Étoiles » et à Retour (historique dépilé ou remplacé, jamais de sortie de Mia).
   * Le niveau n'est joué que débloqué et avec un profil actif (`ProfileGate` de `GameScreen`) : le plateau n'a pas à le vérifier.
+* **Contrat FEAT-09** ([§5](./FEAT-09.md#5-décisions-dimplémentation-session-de-cadrage)) :
+  * Délai de la phase `evaluating` : `isEvaluationMatch(state)` (350 ms si vrai, 900 ms sinon), puis `resolveEvaluation(state)`.
+  * Une action ignorée renvoie l'état reçu lui-même (`selectCard` hors `playing` ou sur une carte non cachée, `endPreviewPhase` hors `preview`, `resolveEvaluation` hors `evaluating`) : aucune garde à dupliquer dans le plateau, aucun rendu inutile.
+  * `lastSwappedPair` n'est renseigné que par la résolution qui permute (nouveau tableau à chaque permutation, `null` dès la résolution suivante) : déclencher l'indicateur de 1000 ms sur son changement de référence.
+  * « Rejouer » et « Recommencer » : `createMemoryGame(config)`, qui tire de nouveaux symboles et de nouvelles positions.
 
 ---
 

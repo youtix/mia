@@ -23,6 +23,13 @@ export default defineConfig({
         functions: 80,
         branches: 80,
         statements: 80,
+        // Moteur pur de Memory (FEAT-09) : 90 % exigés, hors composants d'interface (FEAT-10).
+        'src/games/memory/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },

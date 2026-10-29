@@ -30,6 +30,7 @@ src/
         ├── types.ts                   # MemoryLevelConfig, MemoryCard, MemoryGameState, VisualSymbol
         ├── symbols.ts                 # Banque de 24+ symboles vectoriels et palettes par mode visuel
         ├── engine.ts                  # Fonctions pures (création, retournement, résolution, permutation)
+        ├── random.ts                  # Tirages injectables (rng) : mélange de Fisher-Yates, entier borné (voir §5)
         └── index.ts                   # Barrel export
 tests/
 └── memory-engine.test.ts              # Tests unitaires complets de toutes les règles de Memory
@@ -38,6 +39,8 @@ tests/
 ---
 
 ## 3. Spécifications Techniques Détaillées
+
+> Les décisions de la session de cadrage ([§5](#5-décisions-dimplémentation-session-de-cadrage)) précisent ces spécifications : banque de 36 icônes en 3 thèmes et 8 formes orientables, règles de chaque mode visuel et capacités, tirages par `rng`, carte « vue » (`seen`), triplets évalués à la 3e carte, limite d'erreurs inclusive, cible des permutations, validation complète des configurations, actions ignorées sans nouvel état.
 
 ### 3.1. Types du Jeu Memory (`src/games/memory/types.ts`)
 ```typescript
@@ -114,3 +117,27 @@ Fournis au moins **24 identifiants de symboles** associés à des icônes `lucid
 - [ ] `tests/memory-engine.test.ts` couvre paires, triplets, aperçu, limite d'erreurs, permutation et modes visuels avec une couverture `>= 90%` sur le moteur.
 - [ ] `npm run validate:all` (`format:check`, `lint`, `typecheck`, `test:coverage`, `build`) passe sans aucune erreur.
 - [ ] Si un commit est créé, il respecte le format **Conventional Commits** (`feat(memory): implement pure memory game engine`).
+
+---
+
+## 5. Décisions d'implémentation (session de cadrage)
+
+Décisions prises avant l'implémentation ; elles complètent ou précisent les sections ci-dessus.
+
+| Sujet | Décision |
+| :--- | :--- |
+| **Banque de symboles** | `symbols.ts` : données seules, comme `avatars.ts` ; FEAT-10 associe les icônes par une table exhaustive sur `MemorySymbolId` (Lucide, ou SVG dessiné comme `avatar-icons.tsx`). 36 icônes figuratives (`MEMORY_ICONS`, dont les 24 de §3.2) en 3 thèmes de 12 (`MEMORY_THEMES` : Nature & ciel, Animaux, Objets & trésors) ; 8 formes géométriques sans symétrie de rotation (`MEMORY_SHAPES` : flèche, chevron, triangle, triangle rectangle, demi-disque, quart de disque, formes en L et en T), dessinées pointe vers le haut à 0°, dans 4 orientations (`MEMORY_ROTATIONS` : 0, 90, 180, 270). Couleurs : classes Tailwind littérales `text-*`, couleur du symbole sur la face `bg-slate-900` de FEAT-10 (et non du fond : [SPECIFICATION §4.1](./SPECIFICATION.md) corrigée), contraste ≥ 4,5:1. Nom vocalisé unique par symbole et orientation (`getMemorySymbolLabel` : « Soleil », « Flèche, vers la droite »). |
+| **Modes visuels** | `buildCardGroups(config, totalGroups, rng = Math.random)` (3e paramètre optionnel). `distinct_color_shape` : une icône de chaque thème à tour de rôle (formes de familles différentes), une couleur unique par groupe parmi 10 très distinctes (`DISTINCT_COLOR_CLASSES`). `thematic_palette` : icônes d'un thème tiré, complétées par un autre thème au-delà de 12 groupes, sur les 3 couleurs bien distinctes du thème tiré, réparties à parts égales. `monochrome` : icônes tirées dans toute la banque, une seule couleur tirée. `abstract_orientation` : une seule couleur, chaque forme tirée utilisée dans ses 4 orientations (18 groupes = 4 formes complètes + 2 orientations d'une cinquième) : chaque forme a ses jumelles tournées sur le plateau, difficulté constante d'une partie à l'autre. Deux groupes ne diffèrent jamais par la seule couleur (`groupId` = `symbolId@rotationDeg`) : jouable sans distinguer les couleurs. |
+| **Capacités** | `getMemoryModeCapacity` : 10 groupes en `distinct_color_shape` (limite stricte : une couleur unique par groupe), 36 en `thematic_palette` et `monochrome`, 32 en `abstract_orientation`. Au-delà, `createMemoryGame` lève une erreur (validation) et `buildCardGroups` une `RangeError`. Une grille 6 × 6 en paires (18 groupes) tient dans tous les modes sauf `distinct_color_shape`. |
+| **Hasard** | Symboles, thème, couleurs, formes et mélange tirés par le même `rng` (`Math.random` par défaut) : chaque partie est différente (rejouer pour la couronne), reproductible avec un générateur à graine. Mélange de Fisher-Yates dans sa forme d'origine (`random.ts`) ; un générateur hors de [0, 1[ (1, négatif, `NaN`) reste dans les bornes. |
+| **Partie** | Plateau ligne par ligne (`index = row * cols + col`, comme `useGridNavigation`). `uid` = `groupId#n`, stable : il suit la carte lors d'une permutation (clé React et animation de FEAT-10). `MemoryCard.seen` : carte déjà montrée (aperçu ou retournement). Une action ignorée (phase inattendue, carte non cachée, index hors du plateau, coup déjà complet) renvoie l'état reçu lui-même ; aucune fonction ne modifie l'état reçu. `endPreviewPhase` hors `preview` et `resolveEvaluation` hors `evaluating` sont ignorées. Types précisés : `symbolId: MemorySymbolId`, `rotationDeg: MemoryRotation`. |
+| **Triplets** | Évalués à la 3e carte comme en §3.3, même si les deux premières diffèrent : chaque coup raté montre 3 cartes (plus d'information, limites de FEAT-11 inchangées). Une erreur recache toutes les cartes du coup. |
+| **Erreurs** | Limite inclusive : `maxMistakes` erreurs tolérées, la suivante fait perdre (`mistakes > maxMistakes`), comme la couronne (`mistakes <= perfectMaxMistakes`) ; `0` : la première erreur fait perdre. FEAT-10 annonce le dernier essai sans jamais afficher « 11 / 10 ». |
+| **Permutation** | Toutes les `swapEveryNMistakes` erreurs, si la partie n'est pas perdue, deux cartes cachées de groupes différents s'échangent : deux cartes déjà vues de préférence, à défaut une vue et une jamais vue, en dernier recours deux jamais vues. Les cartes de l'erreur étant toujours vues, la permutation touche en pratique des cartes que le joueur a pu mémoriser. `lastSwappedPair` (index croissants) ne décrit que la permutation de la dernière résolution : toute autre résolution le remet à `null`. |
+| **Évaluation** | `isEvaluationMatch(state)` : le coup en cours forme un groupe (toujours faux hors `evaluating`) ; FEAT-10 en déduit son délai (350 ms ou 900 ms) sans dupliquer la règle. |
+| **Validation** | `getMemoryConfigErrors(config)` : un message français par anomalie, sans anomalie déduite d'une valeur déjà signalée. `cols` et `rows` entiers ≥ 1 ; `matchSize` 2 ou 3 ; grille divisible en au moins 2 groupes ; mode connu (`isMemoryVisualMode`) et capacité ; `previewSeconds` fini ≥ 0 ; `maxMistakes` `null` ou entier ≥ 0 ; `swapEveryNMistakes` `null` ou entier ≥ 1 ; `perfectMaxMistakes` entier ≥ 0. Cohérence : `perfectMaxMistakes ≤ maxMistakes` (au-delà, chaque victoire serait couronnée ; égalité permise, ex. mort subite à 0 erreur) et `swapEveryNMistakes ≤ maxMistakes` (sinon aucune permutation avant la défaite). `createMemoryGame` lève une `Error` qui les liste ; reprise par `validateMemoryCatalog` (FEAT-11). |
+| **Couverture** | Seuil de 90 % sur `src/games/memory/*.ts` dans `vitest.config.ts` (moteur, symboles, tirages, puis catalogue de FEAT-11 ; pas les composants de FEAT-10), vérifié par `tests/quality-setup.test.ts`. |
+| **Tests** | `tests/memory-engine.test.ts` : banque de symboles, modes visuels et capacités, tirages reproductibles, validation, création (paires, triplets, aperçu, générateur défaillant), retournements, évaluation, erreurs et défaite, permutations (cartes vues, effacement, défaite prioritaire, états incohérents), couronne, 20 configurations du catalogue initial instanciées et gagnées, parties complètes de `mem-019` et `mem-020` ; couverture complète du moteur. |
+| **Périmètre** | TypeScript pur, sans React ni DOM. Ajout à l'arborescence §2 : `random.ts` ; `src/games/memory/.gitkeep` supprimé. |
+| **Contrats aval** | Notes ajoutées dans [FEAT-10 §3.1, §3.2 et §3.3](./FEAT-10.md) et [FEAT-11 §3.2](./FEAT-11.md) ; [SPECIFICATION §4.1](./SPECIFICATION.md) corrigée. |
+| **Git** | Branche `feat/memory-engine` depuis `main`, commit `feat(memory): implement pure memory game engine`. |
