@@ -1,3 +1,9 @@
+## [0.12.0](https://github.com/youtix/mia/compare/v0.11.0...v0.12.0) (2026-10-29)
+
+### Features
+
+* **settings:** add per-profile memory time settings ([#14](https://github.com/youtix/mia/issues/14)) ([015c828](https://github.com/youtix/mia/commit/015c828ea7cb2161c36d05a38ede7467a5074072))
+
 ## [0.11.0](https://github.com/youtix/mia/compare/v0.10.0...v0.11.0) (2026-10-29)
 
 ### Features
