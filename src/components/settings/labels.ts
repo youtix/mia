@@ -1,5 +1,7 @@
+import type { AppUpdateCheckResult, AppUpdateStatus } from '@/core/pwa';
 import { DEFAULT_PROFILE_NAME } from '@/core/storage';
 import { TIME_FACTORS, type TimeFactor, type TvModeOverride } from '@/types/mia';
+import type { SettingsFeedbackMessage } from './SettingsGroup';
 
 /** Route de l'écran (`src/app/settings/page.tsx`), poussée par le bouton « Réglages » du Hub. */
 export const SETTINGS_PATH = '/settings';
@@ -103,4 +105,59 @@ export function describeBackupProfiles(count: number): string {
   }
   const noun = frenchPlural.select(count) === 'one' ? 'profil' : 'profils';
   return `Cette sauvegarde contient ${String(count)} ${noun}.`;
+}
+
+/** Textes de la section « Application » (FEAT-20) : mises à jour et réparation. */
+export const APPLICATION_TEXTS = {
+  title: 'Application',
+  updateTitle: 'Mises à jour',
+  updateDescription:
+    'Mia cherche les nouvelles versions toute seule. Tu peux aussi lancer une recherche maintenant.',
+  checkAction: 'Rechercher une mise à jour',
+  applyAction: 'Mettre à jour',
+  updateReady: 'Une nouvelle version est prête. Tes profils et tes étoiles sont conservés.',
+  updateDownloading: 'Téléchargement de la nouvelle version…',
+  checkRunning: 'Recherche en cours…',
+  upToDate: 'Mia est à jour.',
+  checkUnreachable: 'Recherche impossible : vérifie ta connexion.',
+  downloadFailed: 'Le téléchargement a échoué. Réessaie plus tard.',
+  repairTitle: 'Réparer',
+  repairDescription:
+    'Retélécharge tous les fichiers de Mia si l’application se comporte mal. Les profils, les étoiles et les réglages sont conservés. Une connexion est nécessaire.',
+  repairAction: 'Réparer l’application',
+  repairDialogTitle: 'Réparer Mia ?',
+  repairDialogSubtitle:
+    'Mia va retélécharger ses fichiers depuis Internet, puis redémarrer. Les profils, les étoiles et les réglages sont conservés.',
+  repairConfirm: 'Réparer',
+  repairUnreachable: 'Réparation impossible : pas de connexion. Réessaie une fois connecté.',
+} as const;
+
+/** « Version 0.12.0 ». */
+export function describeAppVersion(version: string): string {
+  return `Version ${version}`;
+}
+
+/**
+ * Ligne d'état des mises à jour : ce qui se passe maintenant (version prête, téléchargement,
+ * recherche) l'emporte sur l'issue de la dernière recherche. `found` alors que l'état est retombé :
+ * le téléchargement a pris fin sans laisser de version prête.
+ */
+export function describeAppUpdate(
+  status: AppUpdateStatus,
+  lastCheck: AppUpdateCheckResult | null,
+  isChecking: boolean,
+): SettingsFeedbackMessage | null {
+  if (status === 'ready') return { tone: 'success', text: APPLICATION_TEXTS.updateReady };
+  if (status === 'downloading') return { tone: 'info', text: APPLICATION_TEXTS.updateDownloading };
+  if (isChecking) return { tone: 'info', text: APPLICATION_TEXTS.checkRunning };
+  switch (lastCheck) {
+    case 'up-to-date':
+      return { tone: 'success', text: APPLICATION_TEXTS.upToDate };
+    case 'unreachable':
+      return { tone: 'error', text: APPLICATION_TEXTS.checkUnreachable };
+    case 'found':
+      return { tone: 'error', text: APPLICATION_TEXTS.downloadFailed };
+    case null:
+      return null;
+  }
 }

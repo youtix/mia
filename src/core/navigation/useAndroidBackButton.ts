@@ -3,7 +3,7 @@
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useCallback, useEffect } from 'react';
 import { useNavigation } from './NavigationContext';
 
 /** Chemin sans barre finale : `/mia/` et `/mia` désignent le même écran. */
@@ -21,6 +21,21 @@ export function isHubPathname(pathname: string): boolean {
   return trimTrailingSlash(pathname) === trimTrailingSlash(basePath);
 }
 
+/** Écoute le bouton Retour physique, dans l'APK seulement. */
+function useBackButtonListener(onBackButton: () => void): void {
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const listener = App.addListener('backButton', onBackButton).catch((error: unknown) => {
+      console.warn('[Mia]', 'Bouton Retour Android non branché :', error);
+      return null;
+    });
+    return () => {
+      void listener.then((handle) => handle?.remove());
+    };
+  }, [onBackButton]);
+}
+
 /**
  * Bouton Retour physique d'Android (télécommande Android TV, geste ou bouton du téléphone) :
  * `@capacitor/app` l'émet sans aucun `keydown` (contrat FEAT-04 §5). Il suit le routage des touches
@@ -32,20 +47,24 @@ export function useAndroidBackButton(): void {
   const { dispatchBack } = useNavigation();
   const router = useRouter();
 
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-
-    const onBackButton = (): void => {
-      if (dispatchBack()) return;
-      if (isHubPathname(window.location.pathname)) void App.exitApp();
-      else router.replace('/');
-    };
-    const listener = App.addListener('backButton', onBackButton).catch((error: unknown) => {
-      console.warn('[Mia]', 'Bouton Retour Android non branché :', error);
-      return null;
-    });
-    return () => {
-      void listener.then((handle) => handle?.remove());
-    };
+  const onBackButton = useCallback(() => {
+    if (dispatchBack()) return;
+    if (isHubPathname(window.location.pathname)) void App.exitApp();
+    else router.replace('/');
   }, [dispatchBack, router]);
+
+  useBackButtonListener(onBackButton);
+}
+
+function exitApp(): void {
+  void App.exitApp();
+}
+
+/**
+ * Bouton Retour sur l'écran d'erreur (FEAT-20) : le plantage a démonté `useAndroidBackButton`, et
+ * sans écouteur Capacitor ne quitte jamais l'application. Quitter plutôt que revenir au Hub : le
+ * joueur ne reste pas piégé si le Hub lui-même plante.
+ */
+export function useAndroidBackExit(): void {
+  useBackButtonListener(exitApp);
 }

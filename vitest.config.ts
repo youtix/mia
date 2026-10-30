@@ -22,6 +22,8 @@ export default defineConfig({
         'src/**/index.ts',
         'src/types/**',
         'src/app/layout.tsx',
+        // Mince enveloppe qui rend <html>, impossible à imbriquer dans un conteneur de test jsdom.
+        'src/app/global-error.tsx',
         // Glue du service worker (FEAT-17), exécutée uniquement dans le contexte service worker.
         'src/core/pwa/sw/**',
       ],

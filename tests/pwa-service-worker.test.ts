@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { RESTORE_PRECACHE_MESSAGE, SKIP_WAITING_MESSAGE } from '@/core/pwa/precache';
 import { build } from 'esbuild';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,6 +85,7 @@ interface MemoryCache {
   requests: Request[];
   addAll(requests: Request[]): Promise<void>;
   match(url: string | Request): Promise<Response | undefined>;
+  keys(): Promise<string[]>;
 }
 
 /** Cache en mémoire : comme l'API Cache, `match` rend un clone et `addAll` est atomique. */
@@ -114,11 +116,13 @@ function createMemoryCache(fetchImpl: FetchMock): MemoryCache {
       const clone = stored.clone();
       return Promise.resolve(stored.redirected ? markRedirected(clone) : clone);
     },
+    keys: () => Promise.resolve([...responses.keys()]),
   };
 }
 
 interface MemoryCacheStorage {
   open(name: string): Promise<MemoryCache>;
+  has(name: string): Promise<boolean>;
   keys(): Promise<string[]>;
   delete(name: string): Promise<boolean>;
 }
@@ -131,6 +135,7 @@ function createCacheStorage(fetchImpl: FetchMock, log: string[]): MemoryCacheSto
       store.set(name, cache);
       return Promise.resolve(cache);
     },
+    has: (name) => Promise.resolve(store.has(name)),
     keys: () => Promise.resolve([...store.keys()]),
     delete(name) {
       log.push(`delete ${name}`);
@@ -143,14 +148,19 @@ interface ServiceWorkerHarness {
   fetchMock: FetchMock;
   cacheStorage: MemoryCacheStorage;
   claim: Mock<() => Promise<void>>;
+  skipWaiting: Mock<() => Promise<void>>;
   /** Suppressions de caches et `clients.claim()`, dans l'ordre. */
   log: string[];
   install(): Promise<void>;
   activate(): Promise<void>;
+  /** Soumet un message au gestionnaire `message` ; renvoie les promesses passées à `waitUntil`. */
+  dispatchMessage(data: unknown): Promise<unknown>[];
   /** Soumet une requête au gestionnaire `fetch` ; `null` si `respondWith` n'a pas été appelé. */
   dispatchFetch(request: Request): Promise<Response | null>;
   /** Le cache de la version courante. */
   precache(): Promise<MemoryCache>;
+  /** Un autre worker devient l'actif : celui-ci n'attend plus que son tour. */
+  becomeWaiting(): void;
 }
 
 let bundle = '';
@@ -186,9 +196,14 @@ function createHarness(): ServiceWorkerHarness {
     log.push('claim');
     return Promise.resolve();
   });
+  const skipWaiting = vi.fn(() => Promise.resolve());
+  const thisWorker = { name: 'ce worker' };
+  const registration = { scope: SCOPE, active: thisWorker as object };
   const workerGlobal = {
-    registration: { scope: SCOPE },
+    registration,
+    serviceWorker: thisWorker,
     clients: { claim },
+    skipWaiting,
     addEventListener(type: string, listener: Listener) {
       listeners.set(type, [...(listeners.get(type) ?? []), listener]);
     },
@@ -213,23 +228,31 @@ function createHarness(): ServiceWorkerHarness {
     for (const handler of handlers) handler(event);
   };
 
-  const dispatchExtendable = async (type: string): Promise<void> => {
+  /** Déclenche un événement prolongeable ; renvoie les promesses passées à `waitUntil`. */
+  const dispatchExtendable = (type: string, fields: object = {}): Promise<unknown>[] => {
     const pending: Promise<unknown>[] = [];
     dispatch(type, {
+      ...fields,
       waitUntil(promise: Promise<unknown>) {
         pending.push(promise);
       },
     });
-    await Promise.all(pending);
+    return pending;
+  };
+
+  const runExtendable = async (type: string): Promise<void> => {
+    await Promise.all(dispatchExtendable(type));
   };
 
   return {
     fetchMock,
     cacheStorage,
     claim,
+    skipWaiting,
     log,
-    install: () => dispatchExtendable('install'),
-    activate: () => dispatchExtendable('activate'),
+    install: () => runExtendable('install'),
+    activate: () => runExtendable('activate'),
+    dispatchMessage: (data) => dispatchExtendable('message', { data }),
     dispatchFetch(request) {
       const respondWith = vi.fn<(response: Promise<Response> | Response) => void>();
       dispatch('fetch', { request, respondWith });
@@ -238,6 +261,9 @@ function createHarness(): ServiceWorkerHarness {
       return call ? Promise.resolve(call[0]) : Promise.resolve(null);
     },
     precache: () => cacheStorage.open(CACHE_NAME),
+    becomeWaiting() {
+      registration.active = { name: 'un autre worker' };
+    },
   };
 }
 
@@ -282,6 +308,16 @@ describe('install', () => {
     await expect(worker.install()).rejects.toThrow('app.js a répondu 404');
     expect((await worker.precache()).responses.size).toBe(0);
   });
+
+  it('échoue si une version activée entre-temps a purgé son cache : il n’attendrait qu’un cache orphelin', async () => {
+    const worker = createHarness();
+    worker.fetchMock.mockImplementation(async (request) => {
+      await worker.cacheStorage.delete(CACHE_NAME);
+      return networkResponse(request);
+    });
+
+    await expect(worker.install()).rejects.toThrow('Pré-cache purgé pendant le téléchargement');
+  });
 });
 
 function cacheStorageKeys(worker: ServiceWorkerHarness): Promise<string[]> {
@@ -314,6 +350,106 @@ describe('activate', () => {
       'delete mia-precache-ffffffff',
       'claim',
     ]);
+  });
+});
+
+describe('message', () => {
+  it('SKIP_WAITING_MESSAGE appelle skipWaiting et passe sa promesse à waitUntil', () => {
+    const worker = createHarness();
+    const skipped = Promise.resolve();
+    worker.skipWaiting.mockReturnValue(skipped);
+
+    const pending = worker.dispatchMessage(SKIP_WAITING_MESSAGE);
+
+    expect(worker.skipWaiting).toHaveBeenCalledOnce();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toBe(skipped);
+  });
+
+  it.each([
+    ['une autre chaîne', 'skip-waiting'],
+    ['le message suivi d’un suffixe', `${SKIP_WAITING_MESSAGE}-2`],
+    ['une chaîne vide', ''],
+    ['un objet portant le message', { type: SKIP_WAITING_MESSAGE }],
+    ['un tableau contenant le message', [SKIP_WAITING_MESSAGE]],
+    ['null', null],
+    ['undefined', undefined],
+  ])('ignore %s : skipWaiting jamais appelé, waitUntil non plus', (_label, data) => {
+    const worker = createHarness();
+
+    expect(worker.dispatchMessage(data)).toEqual([]);
+    expect(worker.skipWaiting).not.toHaveBeenCalled();
+  });
+});
+
+describe('message RESTORE_PRECACHE_MESSAGE', () => {
+  const restore = async (worker: ServiceWorkerHarness): Promise<void> => {
+    await Promise.all(worker.dispatchMessage(RESTORE_PRECACHE_MESSAGE));
+  };
+
+  it('pré-cache intact : aucun téléchargement, aucune page réclamée', async () => {
+    const worker = await installedWorker();
+    worker.claim.mockClear();
+
+    await restore(worker);
+
+    expect(worker.fetchMock).not.toHaveBeenCalled();
+    expect(worker.claim).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['supprimé', false],
+    ['recréé vide par une requête entre-temps', true],
+  ])(
+    'pré-cache %s : le refait, en contournant le cache HTTP, puis réclame la page',
+    async (_label, recreated) => {
+      const worker = await installedWorker();
+      await worker.cacheStorage.delete(CACHE_NAME);
+      if (recreated) await worker.precache();
+      worker.claim.mockClear();
+      worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
+
+      await restore(worker);
+
+      const cache = await worker.precache();
+      expect(cache.responses.size).toBe(PRECACHE_ENTRIES.length);
+      expect(cache.requests.every((request) => request.cache === 'reload')).toBe(true);
+      expect(worker.claim).toHaveBeenCalledOnce();
+    },
+  );
+
+  it('téléchargement échoué : l’échec va à waitUntil, aucune page réclamée', async () => {
+    const worker = await installedWorker();
+    await worker.cacheStorage.delete(CACHE_NAME);
+    worker.claim.mockClear();
+
+    await expect(restore(worker)).rejects.toThrow('Failed to fetch');
+
+    expect(worker.claim).not.toHaveBeenCalled();
+  });
+
+  it('worker en attente : le refait sans réclamer de page, ce que seul l’actif peut faire', async () => {
+    const worker = createHarness();
+    worker.becomeWaiting();
+    worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
+
+    await restore(worker);
+
+    expect((await worker.precache()).responses.size).toBe(PRECACHE_ENTRIES.length);
+    expect(worker.claim).not.toHaveBeenCalled();
+  });
+});
+
+describe('activation d’une nouvelle version', () => {
+  it('ni install ni activate n’appellent skipWaiting : elle ne s’active jamais seule, une ancienne page peut être ouverte', async () => {
+    const worker = createHarness();
+    worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
+
+    await worker.install();
+    expect(worker.skipWaiting).not.toHaveBeenCalled();
+
+    await worker.activate();
+    expect(worker.skipWaiting).not.toHaveBeenCalled();
   });
 });
 

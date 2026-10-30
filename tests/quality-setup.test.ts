@@ -309,6 +309,7 @@ describe('Couverture Vitest', () => {
         'src/**/index.ts',
         'src/types/**',
         'src/app/layout.tsx',
+        'src/app/global-error.tsx',
         'src/core/pwa/sw/**',
       ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },

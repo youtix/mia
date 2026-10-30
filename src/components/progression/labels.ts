@@ -31,6 +31,13 @@ export function getHubGoalLabel(goal: NextGoal): string | null {
   }
 }
 
+/** Textes du bandeau de mise à jour du Hub (FEAT-20). */
+export const UPDATE_BANNER_TEXTS = {
+  title: 'Nouvelle version disponible',
+  note: 'Tes profils et tes étoiles sont conservés.',
+  button: 'Mettre à jour',
+} as const;
+
 /**
  * Compteur d'étoiles d'`AppShell` : le total est omis tant qu'aucun niveau n'est publié (« 0 »
  * plutôt que « 0 / 0 ») ; halo doré quand chaque étoile a sa couronne.

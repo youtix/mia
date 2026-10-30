@@ -31,7 +31,7 @@ Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqu
 | **Traffic Jam** | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                  |
 | **Progression** | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne. Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                       |
 | **Profils**     | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                            |
-| **Réglages**    | Mode TV forcé ou automatique, son, contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation.                                                                                                                                      |
+| **Réglages**    | Mode TV forcé ou automatique, son, contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation ; version de l'application et, dans la PWA, recherche de mise à jour et réparation.                                                   |
 
 ## Architecture
 
@@ -72,16 +72,16 @@ flowchart LR
 - **Tailwind CSS v4** avec la variante `tv:` (marges anti-overscan, tailles lisibles à 3 mètres) pilotée par `<html data-tv>`.
 - **Framer Motion** et transitions CSS accélérées pour rester fluide sur les boîtiers TV modestes.
 - **Capacitor 8** (`@capacitor/android`, `@capacitor/app` pour le bouton Retour de la télécommande, `@capacitor/preferences` pour la sauvegarde native).
-- **Service worker maison** (aucune dépendance à l'exécution) qui pré-cache tout l'export statique de la PWA.
+- **Service worker maison** (aucune dépendance à l'exécution) qui pré-cache tout l'export statique de la PWA ; une nouvelle version s'active à la demande du joueur (bannière du Hub) ou quand toutes les fenêtres de Mia sont fermées.
 - **Vitest + Testing Library**, **ESLint 9** (`strictTypeChecked`, `jsx-a11y` strict), **Prettier**, **Husky**, **commitlint**, **semantic-release**.
 
 ### Un code, trois supports
 
-| Support                | Entrée                                              | Particularités                                                                                                                                             |
-| :--------------------- | :-------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Smartphone et tablette | Tactile (tap, glisser-déposer), toutes orientations | Icônes d'installation PNG et SVG, écran de lancement, sauvegarde dans les `SharedPreferences` natives.                                                     |
-| Android TV             | D-Pad (flèches, OK, Retour), bannière Leanback      | Navigation spatiale entre tous les éléments, mode TV détecté par CSS et nativement (`UiModeManager`), bouton Retour physique géré, garde-fou WebView 111+. |
-| Navigateur Web (PWA)   | Souris, clavier, tactile                            | Installable (manifeste, icônes `any` et `maskable`), 100 % hors-ligne après la première visite, mises à jour atomiques au lancement suivant.               |
+| Support                | Entrée                                              | Particularités                                                                                                                                                |
+| :--------------------- | :-------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Smartphone et tablette | Tactile (tap, glisser-déposer), toutes orientations | Icônes d'installation PNG et SVG, écran de lancement, sauvegarde dans les `SharedPreferences` natives.                                                        |
+| Android TV             | D-Pad (flèches, OK, Retour), bannière Leanback      | Navigation spatiale entre tous les éléments, mode TV détecté par CSS et nativement (`UiModeManager`), bouton Retour physique géré, garde-fou WebView 111+.    |
+| Navigateur Web (PWA)   | Souris, clavier, tactile                            | Installable (manifeste, icônes `any` et `maskable`), 100 % hors-ligne après la première visite, mises à jour atomiques proposées au joueur (bannière du Hub). |
 
 ## Installation
 
@@ -89,7 +89,8 @@ flowchart LR
 
 1. Ouvre **<https://youtix.github.io/mia/>** (déployée automatiquement à chaque release).
 2. Sur mobile, choisis « Ajouter à l'écran d'accueil » ; sur ordinateur, l'icône d'installation apparaît dans la barre d'adresse.
-3. Après la première visite, Mia fonctionne hors-ligne ; une nouvelle version se télécharge en arrière-plan et s'active au prochain lancement.
+3. Après la première visite, Mia fonctionne hors-ligne. Une nouvelle version se télécharge en arrière-plan ; dès qu'elle est prête, une bannière du Hub te propose de l'activer (la page se recharge, ta progression est conservée). Sans action de ta part, elle s'active quand toutes les fenêtres de Mia sont fermées.
+4. Dans Réglages › Application, tu vois la version installée, tu peux chercher une mise à jour tout de suite et, si Mia se comporte mal, la réparer : son service worker et son cache sont supprimés puis retéléchargés, ta sauvegarde n'est pas touchée (une connexion est nécessaire).
 
 ### APK Android (smartphone, tablette, Android TV)
 
@@ -98,6 +99,8 @@ Chaque [GitHub Release](https://github.com/youtix/mia/releases) publiée depuis 
 1. Télécharge l'APK de la dernière release.
 2. Autorise l'installation d'applications de sources inconnues pour l'application qui ouvre le fichier (gestionnaire de fichiers, navigateur).
 3. Installe : Mia apparaît dans le lanceur (et, sur Android TV, dans le lanceur Leanback).
+
+Les mises à jour de l'APK ne passent pas par l'application : F-Droid (une fois Mia publiée) ou la nouvelle release installée par-dessus. Mia ne contacte aucun serveur et ne prévient donc pas qu'une release plus récente existe : Réglages › Application affiche la version installée, à comparer avec la [dernière release](https://github.com/youtix/mia/releases).
 
 > L'APK est signé avec la clé de release du projet quand elle est configurée dans la CI, sinon avec la clé de débogage du SDK (voir [Signature](#signature-de-lapk)). Android refuse de mettre à jour en place une application signée avec une autre clé : dans ce cas, exporte ta sauvegarde (Réglages), désinstalle, réinstalle, puis importe-la.
 
@@ -194,7 +197,7 @@ flowchart TD
 
 1. **Version** : `@semantic-release/commit-analyzer` lit les commits depuis le dernier tag ; `CHANGELOG.md` et `package.json` sont mis à jour.
 2. **Version Android** : `scripts/sync-android-version.mjs` écrit `versionName "X.Y.Z"` et `versionCode` dans `android/app/build.gradle`, avec `versionCode = major × 10000 + minor × 100 + patch` (`1.4.2` → `10402`, strictement croissant ; `minor` et `patch` doivent rester inférieurs à 100). Il aligne aussi la recette F-Droid.
-3. **Build** : `npm run cap:sync` exporte l'application et la copie dans `android/app/src/main/assets/public`.
+3. **Build** : `npm run cap:sync` exporte l'application et la copie dans `android/app/src/main/assets/public`. `next.config.ts` y injecte la version de `package.json` (`NEXT_PUBLIC_APP_VERSION`) : c'est le numéro affiché dans Réglages › Application, celui de la release dans l'APK comme dans la PWA déployée depuis le tag.
 4. **APK** : `scripts/build-apk.mjs` lance `./gradlew assembleRelease --no-daemon` (JDK 21 Temurin et cache Gradle installés par `actions/setup-java`, SDK Android préinstallé sur `ubuntu-latest`) et copie l'APK dans `dist-apk/` (ignoré par Git).
 5. **Commit et tag** : `@semantic-release/git` commite `CHANGELOG.md`, `package.json`, `package-lock.json`, `android/app/build.gradle` et `fdroid/org.mia.braintraining.yml` (`chore(release): X.Y.Z [skip ci]`, poussé par la GitHub App de release), puis pose le tag `vX.Y.Z`.
 6. **GitHub Release** : `@semantic-release/github` crée la release avec les notes de version et attache `dist-apk/*.apk`.
@@ -346,18 +349,18 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 .
 ├── .github/workflows/       # ci.yml, pr-title.yml, release-and-deploy.yml
 ├── android/                 # Projet Android Gradle (Capacitor) : manifeste TV, plugin natif TvMode, signature
-├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-19 (spécifications et décisions)
+├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-20 (spécifications et décisions)
 ├── fdroid/                  # Recette fdroiddata (org.mia.braintraining.yml)
 ├── metadata/fr-FR/          # Descriptions F-Droid (format Fastlane)
 ├── public/                  # manifest.json, icônes, page WebView obsolète
 ├── scripts/                 # build-sw.ts, generate-icons.mjs, validate-levels.ts, sync-android-version.mjs, build-apk.mjs
 ├── src/
-│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /settings
+│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /settings ; écran d'erreur global
 │   ├── components/          # Design system (ui), profils, progression (Hub, Carte des Étoiles), réglages
 │   ├── core/
 │   │   ├── navigation/      # Navigation spatiale D-Pad, bouton Retour Android
 │   │   ├── progression/     # Registre des jeux, moteur de progression, validateur de catalogues
-│   │   ├── pwa/             # Service worker et son enregistrement
+│   │   ├── pwa/             # Service worker, enregistrement, mises à jour et réparation
 │   │   └── storage/         # Sauvegarde locale, migrations, profils, mode TV
 │   ├── games/
 │   │   ├── memory/          # Moteur, symboles, composants, catalog.ts
