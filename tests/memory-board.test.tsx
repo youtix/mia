@@ -506,6 +506,33 @@ describe('Partie à la télécommande', () => {
   });
 });
 
+describe('Fin de partie depuis l’en-tête', () => {
+  it('rejoue sans planter quand le curseur est monté sur Retour avant la victoire', async () => {
+    forceTvMode();
+    renderBoard();
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+    // La dernière paire s'évalue encore : la modale va s'ouvrir depuis le bouton Retour.
+    act(() => {
+      getButton('Retour').focus();
+    });
+    expect(getButton('Retour')).toHaveAttribute('data-focused', 'true');
+    advance(MATCH_DELAY_MS);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    press('ArrowDown');
+    expect(getButton('Rejouer')).toHaveFocus();
+    press('Enter');
+    await advanceAsync(1000);
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    expect(getButton('Retour')).toHaveFocus();
+    expect(getButton('Retour')).toHaveAttribute('data-focused', 'true');
+  });
+});
+
 describe('Aperçu', () => {
   it('montre les cartes avec un compte à rebours, puis les cache', () => {
     renderBoard({ config: { previewSeconds: 2 } });

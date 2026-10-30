@@ -505,7 +505,7 @@ describe('Réglages de jeu', () => {
       screen
         .getAllByRole('region')
         .map((region) => within(region).getByRole('heading', { level: 2 }).textContent),
-    ).toEqual(['Appareil', 'Jeux', 'Sauvegarde']);
+    ).toEqual(['Appareil', 'Jeux', 'Sauvegarde', 'Application']);
     const section = screen.getByRole('region', { name: 'Jeux' });
     expect(within(section).getByText('Réglages de Léo')).toBeInTheDocument();
     expect(section.querySelector('[data-avatar="cat"]')).toHaveAttribute('aria-hidden', 'true');

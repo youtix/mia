@@ -1839,7 +1839,7 @@ describe('Fin de partie', () => {
     const dialog = getDialog();
     expect(dialog.querySelector('[data-star-award]')).toHaveAttribute('data-crown', 'true');
     expect(getVisibleText(document.body)).toBe('');
-    expect(within(dialog).getByRole('heading', { level: 2 })).toHaveClass('sr-only');
+    expect(within(dialog).getByRole('heading', { level: 2 }).parentElement).toHaveClass('sr-only');
   });
 
   it('ne couronne pas après un rebond, et n’en parle jamais', () => {

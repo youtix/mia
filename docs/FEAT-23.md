@@ -1,4 +1,4 @@
-# FEAT-23 : Jeu n°3 (Attrape-Piège) — Moteur Logique Pur
+# FEAT-23 : Jeu n°4 (Attrape-Piège) — Moteur Logique Pur
 
 > **Document parent** : [SPECIFICATION.md](./SPECIFICATION.md)
 > **ID Feature** : `FEAT-23`
@@ -9,7 +9,7 @@
 
 ## 1. Contexte & Objectif pour l'IA
 
-Le troisième jeu de **Mia** est **Attrape-Piège** (identifiant `bear-sort`). Il vise à stimuler la **flexibilité mentale** et le **contrôle inhibiteur** en adaptant à de jeunes enfants le test de classement de cartes du Wisconsin (*Wisconsin Card Sorting Test*). Sa forme préscolaire, le *Dimensional Change Card Sort* (DCCS), fait trier 6 cartes selon une règle, puis 6 selon l'autre. Le brief d'origine oppose le **Système 1** (l'habitude, rapide et intuitive) au **Système 3** (l'inhibition préfrontale) : le jeu installe une habitude, l'interrompt, puis demande de la retenir. **Mia exerce, elle ne soigne pas** : aucun effet clinique ou thérapeutique n'est revendiqué.
+Le quatrième jeu de **Mia** est **Attrape-Piège** (identifiant `bear-sort`). Il vise à stimuler la **flexibilité mentale** et le **contrôle inhibiteur** en adaptant à de jeunes enfants le test de classement de cartes du Wisconsin (*Wisconsin Card Sorting Test*). Sa forme préscolaire, le *Dimensional Change Card Sort* (DCCS), fait trier 6 cartes selon une règle, puis 6 selon l'autre. Le brief d'origine oppose le **Système 1** (l'habitude, rapide et intuitive) au **Système 3** (l'inhibition préfrontale) : le jeu installe une habitude, l'interrompt, puis demande de la retenir. **Mia exerce, elle ne soigne pas** : aucun effet clinique ou thérapeutique n'est revendiqué.
 
 L'enfant range des ours, petits ou grands, bleus ou jaunes, dans deux boîtes qui portent chacune une couleur **et** une taille, fixes pour toute l'étoile : un grand ours bleu, face à une petite boîte bleue et une grande boîte jaune, tire dans les deux sens. Un panneau STOP interrompt la série pendant que des ours attendent encore, et la règle change. Personne ne peut perdre : un ours mal placé rebondit et attend de nouveau.
 

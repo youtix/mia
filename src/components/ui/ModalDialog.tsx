@@ -20,9 +20,9 @@ import { FocusableButton } from './FocusableButton';
 export interface ModalDialogProps {
   isOpen: boolean;
   title: string;
-  /** Titre réservé aux lecteurs d'écran (ex: fin de partie d'Attrape-Piège, sans aucun texte) */
-  isTitleHidden?: boolean;
   subtitle?: string;
+  /** Modale sans texte à lire (jeux pour les petits, FEAT-21) : titres réservés aux lecteurs d'écran */
+  isTextless?: boolean;
   /**
    * Fermeture par `Échap`, par le fond ou par le bouton ✕, et par Retour (Retour arrière, bouton
    * Android) quand aucune zone D-Pad de la modale ne le gère. Sans `onClose`, la modale impose un
@@ -31,6 +31,8 @@ export interface ModalDialogProps {
   onClose?: () => void;
   /** Élément focalisé à l'ouverture (défaut : la boîte de dialogue elle-même) */
   initialFocusRef?: RefObject<HTMLElement | null>;
+  /** Rend le focus à l'élément d'origine à la fermeture (défaut), sauf si l'écran place son curseur */
+  restoreFocus?: boolean;
   children: ReactNode;
   /** Classes du panneau de la boîte de dialogue */
   className?: string;
@@ -103,10 +105,11 @@ export function ModalDialog({ isOpen, ...dialogProps }: ModalDialogProps) {
 
 function DialogLayer({
   title,
-  isTitleHidden = false,
   subtitle,
+  isTextless = false,
   onClose,
   initialFocusRef,
+  restoreFocus = true,
   children,
   className,
 }: Omit<ModalDialogProps, 'isOpen'>) {
@@ -141,9 +144,9 @@ function DialogLayer({
 
     return () => {
       panel.removeEventListener('keydown', listener);
-      opener?.focus();
+      if (restoreFocus) opener?.focus();
     };
-  }, [initialFocusRef]);
+  }, [initialFocusRef, restoreFocus]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center tv-safe-container">
@@ -174,18 +177,14 @@ function DialogLayer({
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
       >
-        {/* Titre masqué : `contents` retire son conteneur, vide à l'écran, de l'espacement. */}
         <div
           className={cn(
             'flex flex-col gap-2 text-center',
             onClose && 'px-10',
-            isTitleHidden && 'contents',
+            isTextless && 'sr-only',
           )}
         >
-          <h2
-            id={titleId}
-            className={cn('text-fluid-2xl font-bold text-slate-50', isTitleHidden && 'sr-only')}
-          >
+          <h2 id={titleId} className="text-fluid-2xl font-bold text-slate-50">
             {title}
           </h2>
           {subtitle ? (

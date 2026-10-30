@@ -7,6 +7,8 @@
 import {
   CACHE_PREFIX,
   NOT_FOUND_KEY,
+  RESTORE_PRECACHE_MESSAGE,
+  SKIP_WAITING_MESSAGE,
   resolveAssetKey,
   resolveNavigationKey,
   type PrecacheEntry,
@@ -33,6 +35,24 @@ async function precacheAll(): Promise<void> {
   await cache.addAll(
     PRECACHE_ENTRIES.map((entry) => new Request(toAbsoluteUrl(entry.url), { cache: 'reload' })),
   );
+  // Une autre version activée pendant le téléchargement purge ce cache : `addAll` a rempli un objet
+  // orphelin, et ce worker attendrait ensuite sans rien pour répondre. Échouer le rend `redundant` ;
+  // la prochaine recherche le retélécharge.
+  if (!(await caches.has(CACHE_NAME))) throw new Error('Pré-cache purgé pendant le téléchargement');
+}
+
+/**
+ * Refait le pré-cache s'il a disparu. Sous Chromium, une réparation (FEAT-20) lancée avec un autre
+ * onglet ouvert supprime le cache sans remplacer le worker : l'inscription survit à son client
+ * restant, `register` la reprend, et aucune installation ne suit tant que `sw.js` ne change pas. Sans
+ * cela, le hors-ligne resterait perdu jusqu'à la prochaine version. Le worker actif reprend ensuite
+ * la main sur la page ; un worker en attente n'en a pas le droit (`InvalidStateError`).
+ */
+async function restorePrecache(): Promise<void> {
+  const cache = await caches.open(CACHE_NAME);
+  if ((await cache.keys()).length > 0) return;
+  await precacheAll();
+  if (self.registration.active === self.serviceWorker) await self.clients.claim();
 }
 
 /** Supprime les caches des versions précédentes : seule la version activée reste installée. */
@@ -101,9 +121,16 @@ async function handleAsset(request: Request, key: string): Promise<Response> {
 }
 
 self.addEventListener('install', (event) => {
-  // Jamais de skipWaiting() : une page ouverte sur l'ancienne version attend encore ses chunks ;
-  // la nouvelle version s'active quand toutes les fenêtres de Mia sont fermées.
+  // Jamais de skipWaiting() ici : une page ouverte sur l'ancienne version attend encore ses chunks ;
+  // la nouvelle version s'active quand toutes les fenêtres de Mia sont fermées, ou à la demande du
+  // joueur (message ci-dessous).
   event.waitUntil(precacheAll());
+});
+
+self.addEventListener('message', (event) => {
+  // Le joueur accepte la mise à jour (FEAT-20) : chaque page se recharge au changement de worker.
+  if (event.data === SKIP_WAITING_MESSAGE) event.waitUntil(self.skipWaiting());
+  else if (event.data === RESTORE_PRECACHE_MESSAGE) event.waitUntil(restorePrecache());
 });
 
 self.addEventListener('activate', (event) => {

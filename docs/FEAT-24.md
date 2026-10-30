@@ -1,4 +1,4 @@
-# FEAT-24 : Jeu n°3 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices
+# FEAT-24 : Jeu n°4 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices
 
 > **Document parent** : [SPECIFICATION.md](./SPECIFICATION.md)
 > **ID Feature** : `FEAT-24`
@@ -26,8 +26,8 @@ Le moteur d'Attrape-Piège ([FEAT-23](./FEAT-23.md)) et sa voix ([FEAT-22](./FEA
 src/
 ├── components/
 │   └── ui/
-│       ├── AppShell.tsx               # isHeaderTextHidden : titre et « Retour » réservés aux lecteurs d'écran
-│       └── ModalDialog.tsx            # isTitleHidden : titre réservé aux lecteurs d'écran
+│       ├── AppShell.tsx               # isTextless (FEAT-21) : titre et « Retour » réservés aux lecteurs d'écran
+│       └── ModalDialog.tsx            # isTextless (FEAT-21) : titres réservés aux lecteurs d'écran
 └── games/
     └── bear-sort/
         ├── labels.ts                  # Noms vocalisés : getBearLabel(), getBoxLabel(), getRuleLabel()
@@ -52,8 +52,7 @@ src/
             └── index.ts
 tests/
 ├── bear-sort-board.test.tsx           # Plateau : gestes, télécommande, STOP, échelle d'indices, fin de partie
-├── bear-sort-art.test.tsx             # Dessins : sortes d'ours, estompage, humeurs, rouge réservé au STOP
-└── ui-components.test.tsx             # isHeaderTextHidden, isTitleHidden
+└── bear-sort-art.test.tsx             # Dessins : sortes d'ours, estompage, humeurs, rouge réservé au STOP
 ```
 
 ---
@@ -64,7 +63,7 @@ tests/
 
 ### 3.1. Un écran sans texte
 
-* **En-tête** : `AppShell` avec `isHeaderTextHidden` : le titre (« Étoile #N ») et « Retour » restent pour les lecteurs d'écran, le bouton Retour se réduit à son icône. Aucune aide de télécommande en pied d'écran (`footerHints` absent).
+* **En-tête** : `AppShell` avec `isTextless` ([FEAT-21](./FEAT-21.md)) : le titre (« Étoile #N ») et « Retour » restent pour les lecteurs d'écran, le bouton Retour se réduit à son icône. Aucune aide de télécommande en pied d'écran (`footerHints` absent).
 * **Pendant la partie** : aucun compteur, aucun libellé. Seules les lettres du panneau STOP sont visibles, et elles sont tracées comme un dessin (aucune police requise).
 * **Fin de partie** : image seule ([§3.8](#38-fin-détoile-bearsortendscreentsx)).
 * **Lecteurs d'écran** : tout reste nommé (`labels.ts`, région `role="status"`, [§3.9](#39-accessibilité)). Le Hub et la Carte des Étoiles ne changent pas.
@@ -133,7 +132,7 @@ L'ours visé est l'ours tenu, sinon l'ours choisi, sinon celui du dernier rebond
 ### 3.8. Fin d'étoile (`BearSortEndScreen.tsx`)
 
 * **Victoire** : dans le gestionnaire du dépôt gagnant, jamais dans un effet (StrictMode) : `victory`, puis « Bravo ! Tu as gagné une étoile. » et, sans aucun rebond, « Et une couronne, c'est parfait ! » ; `controls.recordVictory({ moves, timeSeconds, isPerfect })` une seule fois (`timeSeconds` par `performance.now()`). Le temps n'est montré nulle part.
-* **Écran de fin** : `END_SCREEN_DELAY_MS` (900 ms) après la victoire, pour laisser voir le dernier ours rangé. `ModalDialog` avec `isTitleHidden`, sans `onClose` (ni ✕, ni fond ; `Retour` mène à la Carte des Étoiles). Une grande étoile (`StarAward`), la couronne si elle est gagnée ou déjà acquise, et trois grands boutons-icônes : étoile suivante (absente après la dernière), rejouer, carte. Zone D-Pad déclarée dans la modale, curseur sur la première action.
+* **Écran de fin** : `END_SCREEN_DELAY_MS` (900 ms) après la victoire, pour laisser voir le dernier ours rangé. `ModalDialog` avec `isTextless`, sans `onClose` (ni ✕, ni fond ; `Retour` mène à la Carte des Étoiles). Une grande étoile (`StarAward`), la couronne si elle est gagnée ou déjà acquise, et trois grands boutons-icônes : étoile suivante (absente après la dernière), rejouer, carte. Zone D-Pad déclarée dans la modale, curseur sur la première action.
 * **Couronne manquée** : jamais évoquée. Sans couronne, l'étoile prend toute la place : rien ne laisse deviner un manque. Ni coups ni erreurs à l'écran.
 * **Rejouer** : nouvel ordre des ours, règle annoncée de nouveau, chronomètre remis à zéro.
 
@@ -209,6 +208,6 @@ Décisions prises avec le propriétaire au fil de trois séries de questions, av
 | **Couleurs** | Bleu et jaune pour le tri, gris neutre pour tout ce qui est « non » ou estompé, vert très pâle pour le halo, rouge seulement sur le panneau STOP : décision et motivation dans [FEAT-25 §6](./FEAT-25.md#6-décisions-dimplémentation-session-de-cadrage). |
 | **Dessins** | SVG inline, dans le même esprit que le reste de l'application : aucun fichier image, net en 4K sur TV. `BearSvg` et `NoSignShape` sont partagés avec l'image de la règle ; `art-tokens.ts` centralise les couleurs des ours et des boîtes. |
 | **Voix pendant la partie** | Une nouvelle parole remplace la précédente (`playClips`), un ours rangé n'interrompt pas la voix. `useMascotSpeech` associe voix et mime par un jeton : une parole ancienne ne peut pas clore une parole récente. |
-| **Tests** | `tests/bear-sort-board.test.tsx` (nouveau) : `findDropZone`, `isPointInRect` ; écran (tout est nommé, **aucun texte visible** dans la page, boîte ouverte, clips préchargés, annonce unique sous `StrictMode`, règle rejouée, image dans le sens des boîtes) ; tap (sélection, dépôt, rebond, boîte sans ours, petit déplacement, clic natif au clavier) ; glisser (suivi, dépôt à moins de 40 px, rebond, hors boîte, lâché sur la réserve, `pointercancel`, clic après un glissement, main posée, second doigt, glissement jamais relâché, capture qui échoue) ; échelle d'indices (trois échelons, piège ou simple maladresse, halo qui suit l'ours, règle « sauf », main qui passe à un ours permis) ; inaction (trois relances au plus) ; STOP (plateau gelé, 5 s même si la voix a fini, voix plus longue, tap, `OK`, relance toutes les 6 s, trois au plus, `StrictMode`) ; fin d'une règle « sauf » ; télécommande (ours en cours, un appui par ours, flèches d'une règle « sauf », `OK`, `Retour`, flèches sans texte, réveil après le tactile, bouton Retour atteint au Tab) ; fin de partie (victoire enregistrée une fois, couronne gagnée, déjà acquise ou manquée sans en parler, boutons-icônes, télécommande, rejouer) ; geste (main, nouvelle mesure à la rotation, flèche au D-Pad) ; humeur de la mascotte. `tests/bear-sort-art.test.tsx` (nouveau) : dessins (quatre sortes d'ours, estompage, halo, humeurs, image de chaque règle), réduction des animations, images clés hissées une seule fois, **rouge réservé au panneau STOP**. `tests/ui-components.test.tsx` : options `isHeaderTextHidden` et `isTitleHidden`. Le rendu réel (mise en page, zéro défilement) n'est pas couvert : jsdom ne mesure rien. |
+| **Tests** | `tests/bear-sort-board.test.tsx` (nouveau) : `findDropZone`, `isPointInRect` ; écran (tout est nommé, **aucun texte visible** dans la page, boîte ouverte, clips préchargés, annonce unique sous `StrictMode`, règle rejouée, image dans le sens des boîtes) ; tap (sélection, dépôt, rebond, boîte sans ours, petit déplacement, clic natif au clavier) ; glisser (suivi, dépôt à moins de 40 px, rebond, hors boîte, lâché sur la réserve, `pointercancel`, clic après un glissement, main posée, second doigt, glissement jamais relâché, capture qui échoue) ; échelle d'indices (trois échelons, piège ou simple maladresse, halo qui suit l'ours, règle « sauf », main qui passe à un ours permis) ; inaction (trois relances au plus) ; STOP (plateau gelé, 5 s même si la voix a fini, voix plus longue, tap, `OK`, relance toutes les 6 s, trois au plus, `StrictMode`) ; fin d'une règle « sauf » ; télécommande (ours en cours, un appui par ours, flèches d'une règle « sauf », `OK`, `Retour`, flèches sans texte, réveil après le tactile, bouton Retour atteint au Tab) ; fin de partie (victoire enregistrée une fois, couronne gagnée, déjà acquise ou manquée sans en parler, boutons-icônes, télécommande, rejouer) ; geste (main, nouvelle mesure à la rotation, flèche au D-Pad) ; humeur de la mascotte. `tests/bear-sort-art.test.tsx` (nouveau) : dessins (quatre sortes d'ours, estompage, halo, humeurs, image de chaque règle), réduction des animations, images clés hissées une seule fois, **rouge réservé au panneau STOP**. Le rendu réel (mise en page, zéro défilement) n'est pas couvert : jsdom ne mesure rien. |
 | **Non vérifié** | **Personne n'a joué avec un vrai enfant ni écouté la voix avec lui** : rythme et compréhension restent à éprouver, notamment l'attente du STOP, la longueur des séances, l'échelle d'indices et la capacité d'un enfant de 3 ans à gérer « sauf un petit ours bleu ». **Aucune partie sur un vrai Android TV ni dans l'APK** (ni JDK ni SDK Android en local, seule la CI compile l'APK) : lisibilité des flèches à 3 mètres, rythme d'un appui par ours et TalkBack à vérifier sur l'appareil, avec FEAT-15. **Doigt réel** : le toucher n'a été exercé que dans Chromium (évènements tactiles du protocole DevTools), pas sur un écran réel. |
 | **Git** | Commit prévu à l'intégration : `feat(bear-sort): add board with permissive drag, one-press remote, stop sign and hint ladder`. |

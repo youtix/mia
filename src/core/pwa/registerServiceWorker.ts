@@ -10,6 +10,15 @@ export interface ServiceWorkerEnvironment {
   supportsServiceWorker: boolean;
 }
 
+/** Environnement courant, évalué à chaque appel. */
+export function readServiceWorkerEnvironment(): ServiceWorkerEnvironment {
+  return {
+    nodeEnv: process.env.NODE_ENV,
+    isNativePlatform: Capacitor.isNativePlatform(),
+    supportsServiceWorker: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
+  };
+}
+
 /** Pure : vrai seulement en production, dans un navigateur Web supportant les service workers. */
 export function shouldRegisterServiceWorker(env: ServiceWorkerEnvironment): boolean {
   return env.nodeEnv === 'production' && !env.isNativePlatform && env.supportsServiceWorker;
@@ -24,6 +33,16 @@ export function shouldUnregisterStaleServiceWorkers(env: ServiceWorkerEnvironmen
   return env.nodeEnv !== 'production' && !env.isNativePlatform && env.supportsServiceWorker;
 }
 
+/** Supprime les caches `mia-precache-*`, jamais ceux des autres applications de l'origine. */
+export async function deletePrecaches(): Promise<void> {
+  // `caches` manque hors contexte sécurisé (http autre que localhost) : rien à purger alors.
+  if (typeof caches === 'undefined') return;
+  const names = await caches.keys();
+  await Promise.all(
+    names.filter((name) => name.startsWith(CACHE_PREFIX)).map((name) => caches.delete(name)),
+  );
+}
+
 /**
  * Désinscrit tous les service workers de l'origine courante et supprime les caches `mia-precache-*`
  * (hors production uniquement, voir `shouldUnregisterStaleServiceWorkers`). Ne lève jamais : une
@@ -33,12 +52,7 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
   try {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((registration) => registration.unregister()));
-    // `caches` manque hors contexte sécurisé (http autre que localhost) : rien à purger alors.
-    if (typeof caches === 'undefined') return;
-    const names = await caches.keys();
-    await Promise.all(
-      names.filter((name) => name.startsWith(CACHE_PREFIX)).map((name) => caches.delete(name)),
-    );
+    await deletePrecaches();
   } catch (error) {
     console.warn(
       'Anciens service workers non désinscrits : un ancien build de Mia peut encore être servi.',
@@ -56,11 +70,7 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
  * par un `npm start` précédent (`unregisterStaleServiceWorkers`), puis renvoie null.
  */
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
-  const environment: ServiceWorkerEnvironment = {
-    nodeEnv: process.env.NODE_ENV,
-    isNativePlatform: Capacitor.isNativePlatform(),
-    supportsServiceWorker: typeof navigator !== 'undefined' && 'serviceWorker' in navigator,
-  };
+  const environment = readServiceWorkerEnvironment();
   if (!shouldRegisterServiceWorker(environment)) {
     if (shouldUnregisterStaleServiceWorkers(environment)) await unregisterStaleServiceWorkers();
     return null;

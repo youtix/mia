@@ -43,7 +43,7 @@ export function BearSortEndScreen({
     <ModalDialog
       isOpen={isOpen}
       title={`Étoile #${String(starNumber)} gagnée`}
-      isTitleHidden
+      isTextless
       className="items-center"
     >
       <div data-star-award="true" data-crown={hasCrown || undefined}>

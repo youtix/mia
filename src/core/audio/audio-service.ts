@@ -4,7 +4,8 @@ import type { AudioService, SoundEffect } from './types';
  * Service audio (FEAT-22), sans React : une seule `AudioContext` pour la voix (fichiers) et les
  * effets (synthétisés). Elle se débloque au premier geste, puis joue sans autre geste, ce qu'un
  * élément `<audio>` ne garantit pas sur iOS. Les fichiers passent par `fetch` : le service worker
- * les sert hors-ligne (FEAT-17) et ils sont locaux dans l'APK.
+ * les sert hors-ligne (FEAT-17) et ils sont locaux dans l'APK. La synthèse de Suites Logiques (`synth.ts`,
+ * FEAT-21) garde son propre contexte : un seul écran de jeu est monté à la fois, ils ne jouent pas ensemble.
  */
 
 /** Note d'un effet : glissando si `endFrequency`, `start` et `duration` en secondes. */

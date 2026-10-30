@@ -14,6 +14,7 @@ import {
   type GridCoord,
 } from '@/core/navigation';
 import { GAMES, getProfileProgressSummary, type GameManifest } from '@/core/progression';
+import { useAppUpdateStatus } from '@/core/pwa';
 import { useMiaStorage } from '@/core/storage';
 import type { GameId } from '@/types/mia';
 import { Settings, UserRound } from 'lucide-react';
@@ -22,6 +23,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { GameHubCard } from './GameHubCard';
 import { getStarCounter } from './labels';
 import { getLevelHref } from './routes';
+import { UpdateBanner } from './UpdateBanner';
 import { WaitingScreen } from './WaitingScreen';
 import { useZoneRegistry, type ZoneEntry } from './zone-chain';
 
@@ -54,8 +56,11 @@ function getCardEntry(direction: Direction, coord: GridCoord): ZoneEntry {
   return { kind: 'index', index: coord.row };
 }
 
-/** Zones D-Pad du Hub : les boutons du profil actif et des Réglages, puis les actions de chaque carte. */
-type HubZone = 'profile' | GameId;
+/**
+ * Zones D-Pad du Hub, de haut en bas : les boutons du profil actif et des Réglages, le bandeau de
+ * mise à jour (quand il est affiché), puis les actions de chaque carte.
+ */
+type HubZone = 'profile' | 'update' | GameId;
 
 export interface HubScreenProps {
   /** Jeux affichés, dans l'ordre (tests : catalogues injectés) ; défaut : le registre (`GAMES`) */
@@ -63,9 +68,10 @@ export interface HubScreenProps {
 }
 
 /**
- * Hub principal : profil actif (choix du joueur), compteur d'étoiles de tous les jeux et une carte
- * par jeu. Tant que la sauvegarde n'est pas chargée (ou que « Joueur 1 » n'est pas encore créé),
- * un écran d'attente remplace le Hub vide.
+ * Hub principal : profil actif (choix du joueur), compteur d'étoiles de tous les jeux, bandeau de
+ * mise à jour quand une nouvelle version est prête (FEAT-20) et une carte par jeu. Tant que la
+ * sauvegarde n'est pas chargée (ou que « Joueur 1 » n'est pas encore créé), un écran d'attente
+ * remplace le Hub vide.
  */
 export function HubScreen({ games = GAMES }: HubScreenProps) {
   const { state, isLoaded } = useMiaStorage();
@@ -102,6 +108,7 @@ interface HubContentProps {
 function HubContent({ games, onOpenSelector }: HubContentProps) {
   const router = useRouter();
   const { activeProfile } = useMiaStorage();
+  const isUpdateReady = useAppUpdateStatus() === 'ready';
   const progress = useMemo(
     () => getProfileProgressSummary(activeProfile, games),
     [activeProfile, games],
@@ -113,8 +120,14 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
     return (games.find((game) => game.id === lastGameId) ?? games[0])?.id ?? null;
   });
   const [activeZone, setActiveZone] = useState<HubZone>(initialGameId ?? 'profile');
-  // Carte rejointe par Bas depuis le profil : celle que le curseur a quittée.
+  // Carte rejointe par Bas depuis le profil ou le bandeau : celle que le curseur a quittée.
   const [lastGameId, setLastGameId] = useState<GameId | null>(initialGameId);
+  // Le bandeau peut disparaître sous le curseur (nouvelle version activée, la page va se recharger) :
+  // la zone active retombe sur la dernière carte, ou sur le profil sans jeu. Dérivée au rendu plutôt
+  // que corrigée après coup par un effet. Au D-Pad, le focus posé sur cette zone met `activeZone` à
+  // jour (`onFocus`) : si le bandeau revient, il ne reprend pas le curseur.
+  const zone: HubZone =
+    activeZone === 'update' && !isUpdateReady ? (lastGameId ?? 'profile') : activeZone;
 
   const focusGame = (gameId: GameId) => {
     setActiveZone(gameId);
@@ -126,19 +139,37 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
     focusGame(gameId);
   };
 
-  // Profil puis Réglages, côte à côte ; Bas depuis l'un ou l'autre descend vers la dernière carte.
+  /** Arrivée dans la dernière carte, par le haut : sur sa première action. */
+  const enterLastGame = () => {
+    if (lastGameId) activateGame(lastGameId, { kind: 'first' });
+  };
+
+  // Profil puis Réglages, côte à côte ; Bas depuis l'un ou l'autre descend vers le bandeau de mise à
+  // jour s'il est affiché, sinon vers la dernière carte.
   const profileZone = useGridNavigation({
     scopeId: 'hub-profile',
     rows: 1,
     cols: 2,
-    isActive: activeZone === 'profile',
+    isActive: zone === 'profile',
     onEdge: (direction) => {
-      if (direction === 'down' && lastGameId) activateGame(lastGameId, { kind: 'first' });
+      if (direction !== 'down') return;
+      if (isUpdateReady) focusUpdate();
+      else enterLastGame();
     },
   });
 
   const focusProfile = () => {
     setActiveZone('profile');
+  };
+
+  const focusUpdate = () => {
+    setActiveZone('update');
+  };
+
+  // Le bandeau s'intercale entre le profil (Haut) et la dernière carte (Bas).
+  const handleUpdateEdge = (direction: Direction) => {
+    if (direction === 'up') focusProfile();
+    else if (direction === 'down') enterLastGame();
   };
 
   // Les cartes suivent la grille affichée (une colonne sur smartphone, deux sur tablette et TV).
@@ -151,7 +182,7 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
     });
     const target = games[coordToIndex(to, cardCols)];
     if (target && target.id !== gameId) activateGame(target.id, getCardEntry(direction, coord));
-    else if (direction === 'up') focusProfile();
+    else if (direction === 'up') setActiveZone(isUpdateReady ? 'update' : 'profile');
   };
 
   const openGame = (game: GameManifest, href: string) => {
@@ -212,6 +243,12 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
       footerHints={HUB_REMOTE_HINTS}
     >
       <FadeIn>
+        <UpdateBanner
+          isVisible={isUpdateReady}
+          isActive={zone === 'update'}
+          onEdge={handleUpdateEdge}
+          onFocusZone={focusUpdate}
+        />
         <div ref={gridRef} className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
           {progress.games.map((summary, index) => {
             const game = games[index];
@@ -221,7 +258,7 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
                 key={game.id}
                 game={game}
                 summary={summary}
-                isActive={activeZone === game.id}
+                isActive={zone === game.id}
                 register={zones.register}
                 onEdge={handleCardEdge}
                 onFocusZone={focusGame}

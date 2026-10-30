@@ -1,4 +1,4 @@
-# FEAT-25 : Jeu n°3 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
+# FEAT-25 : Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
 
 > **Document parent** : [SPECIFICATION.md](./SPECIFICATION.md)
 > **ID Feature** : `FEAT-25`
@@ -24,7 +24,7 @@ src/
 │       └── page.tsx                   # Route /bear-sort : metadata (titre du registre) et écran client
 ├── components/
 │   └── progression/
-│       └── game-icons.ts              # Icône du jeu dans le Hub : PawPrint, pastille bg-emerald-300
+│       └── game-icons.ts              # Icône du jeu dans le Hub : PawPrint, pastille bg-sky-300
 ├── core/
 │   └── progression/
 │       └── game-registry.ts           # Entrée 'bear-sort' : titre, faculté, route, catalogue
@@ -39,7 +39,7 @@ tests/
 └── bear-sort-catalog.test.ts          # Les 20 étoiles, la courbe et le validateur
 docs/
 ├── FEAT-25.md                         # Ce document
-└── SPECIFICATION.md                   # §4.3 (table des 20 étoiles), §7.4 (ajouter un niveau)
+└── SPECIFICATION.md                   # §4.4 (table des 20 étoiles), §7.5 (ajouter un niveau)
 ```
 
 ---
@@ -95,10 +95,10 @@ Le validateur vérifie qu'une étoile se joue, pas qu'elle est à sa place dans 
 
 ### 3.4. Branchements
 
-* **Registre** (`game-registry.ts`) : `GAME_REGISTRY['bear-sort']` = `{ id: 'bear-sort', title: 'Attrape-Piège', skill: 'Flexibilité mentale & Inhibition', path: '/bear-sort', catalog: BEAR_SORT_CATALOG }`, troisième carte du Hub.
-* **Icône** (`game-icons.ts`) : `PawPrint` sur une pastille `bg-emerald-300` (l'exhaustivité sur `GameId` est imposée par le compilateur).
+* **Registre** (`game-registry.ts`) : `GAME_REGISTRY['bear-sort']` = `{ id: 'bear-sort', title: 'Attrape-Piège', skill: 'Flexibilité mentale & Inhibition', path: '/bear-sort', catalog: BEAR_SORT_CATALOG }`, quatrième carte du Hub.
+* **Icône** (`game-icons.ts`) : `PawPrint` sur une pastille `bg-sky-300` (l'exhaustivité sur `GameId` est imposée par le compilateur).
 * **Page** (`src/app/bear-sort/page.tsx`) : `metadata` avec le titre du registre, rend `BearSortGameScreen` importé en module direct.
-* **`validate:levels`** (`scripts/validate-levels.ts`) : troisième `CatalogCheck`, résumé de chaque étoile par ses règles (`getRuleLabel`, par exemple « Ranger par couleur → Tous les ours, sauf un ours bleu ») ; le bilan devient « 60 niveaux valides dans 3 catalogues ».
+* **`validate:levels`** (`scripts/validate-levels.ts`) : quatrième `CatalogCheck`, résumé de chaque étoile par ses règles (`getRuleLabel`, par exemple « Ranger par couleur → Tous les ours, sauf un ours bleu ») ; le bilan devient « 80 niveaux valides dans 4 catalogues ».
 
 ---
 
@@ -114,7 +114,7 @@ Le validateur vérifie qu'une étoile se joue, pas qu'elle est à sa place dans 
 
 ## 5. Critères d'Acceptation (Definition of Done)
 
-- [x] `npm run validate:levels` s'exécute avec succès et valide les 20 étoiles de *Memory*, de *Traffic Jam* et d'*Attrape-Piège* (60 niveaux, code de sortie `0`).
+- [x] `npm run validate:levels` s'exécute avec succès et valide les 20 étoiles de *Memory*, de *Traffic Jam*, de *Suites Logiques* et d'*Attrape-Piège* (80 niveaux, code de sortie `0`).
 - [x] `tests/bear-sort-catalog.test.ts` fige les 20 étoiles (identifiant, palier, `order`, suite des règles) et la courbe, joue chaque étoile en parties simulées (joueur parfait : couronne ; joueur maladroit : étoile sans couronne) et exerce chaque règle du validateur sur des catalogues invalides.
 - [x] La page `/bear-sort` affiche la Carte des Étoiles et lance le plateau de [FEAT-24](./FEAT-24.md), de l'Étoile #1 à l'Étoile #20 ; le Hub compte les étoiles du jeu.
 - [ ] Recette avec de vrais enfants : compréhension et rythme de la courbe, notamment « sauf un petit ours bleu » à 3 ans (voir [§6](#6-décisions-dimplémentation-session-de-cadrage), « Non vérifié »).

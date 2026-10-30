@@ -234,6 +234,7 @@ describe('Commitlint', () => {
     'fix(deps): bump next from 16.4.3 to 16.5.0',
     'chore(deps-dev): bump the dev group with 3 updates',
     'feat(memory)!: drop legacy save format',
+    'feat(patterns): add the patterns game',
     'feat(bear-sort): add the sorting game',
   ])('accepte « %s »', SLOW, async (message) => {
     expect((await lintMessage(message)).valid).toBe(true);
@@ -310,6 +311,7 @@ describe('Couverture Vitest', () => {
         'src/**/index.ts',
         'src/types/**',
         'src/app/layout.tsx',
+        'src/app/global-error.tsx',
         'src/core/pwa/sw/**',
       ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
@@ -328,6 +330,14 @@ describe('Couverture Vitest', () => {
     expect(vitestConfig.test?.coverage).toMatchObject({
       thresholds: {
         'src/games/traffic-jam/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
+
+  it('impose 90 % de couverture au moteur pur de Suites Logiques (FEAT-21)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/patterns/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
       },
     });
   });

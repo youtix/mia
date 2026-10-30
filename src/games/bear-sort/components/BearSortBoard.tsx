@@ -678,7 +678,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   return (
     <AppShell
       title={`Étoile #${String(level.starNumber)}`}
-      isHeaderTextHidden
+      isTextless
       onBack={controls.exitToMap}
       isBackFocused={back.isItemFocused(0)}
       backButtonRef={back.getItemRef(0)}

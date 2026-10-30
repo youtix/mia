@@ -22,6 +22,8 @@ export default defineConfig({
         'src/**/index.ts',
         'src/types/**',
         'src/app/layout.tsx',
+        // Mince enveloppe qui rend <html>, impossible à imbriquer dans un conteneur de test jsdom.
+        'src/app/global-error.tsx',
         // Glue du service worker (FEAT-17), exécutée uniquement dans le contexte service worker.
         'src/core/pwa/sw/**',
       ],
@@ -39,6 +41,13 @@ export default defineConfig({
         },
         // Moteur pur de Traffic Jam (FEAT-12) : 90 % exigés, hors composants d'interface (FEAT-13).
         'src/games/traffic-jam/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
+        // Moteur pur de Suites Logiques (FEAT-21) : 90 % exigés, hors composants d'interface.
+        'src/games/patterns/*.ts': {
           lines: 90,
           functions: 90,
           branches: 90,
