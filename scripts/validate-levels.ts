@@ -1,6 +1,6 @@
 /**
- * `npm run validate:levels` (FEAT-14) : valide tous les catalogues de niveaux de Mia (Memory et
- * Traffic Jam) et affiche un résumé par jeu (niveaux par palier, puis chaque étoile avec sa
+ * `npm run validate:levels` (FEAT-14) : valide tous les catalogues de niveaux de Mia (Memory, Traffic
+ * Jam et Suites Logiques) et affiche un résumé par jeu (niveaux par palier, puis chaque étoile avec sa
  * configuration : coups optimaux mesurés par le solveur BFS pour Traffic Jam). Code de sortie 1 à
  * la moindre anomalie (`validate:all`, CI). Modules importés directement, jamais les barrels
  * (`@/games/memory` et `@/games/traffic-jam` ré-exportent des composants React) : le script
@@ -10,6 +10,8 @@ import { DIFFICULTY_TIER_IDS, sortLevels } from '@/core/progression/progression-
 import type { BaseLevelDefinition, CatalogValidationResult } from '@/core/progression/types';
 import { MEMORY_CATALOG, validateMemoryCatalog } from '@/games/memory/catalog';
 import type { MemoryLevelConfig } from '@/games/memory/types';
+import { PATTERNS_CATALOG, validatePatternsCatalog } from '@/games/patterns/catalog';
+import type { PatternLevelConfig } from '@/games/patterns/types';
 import { TRAFFIC_JAM_CATALOG, validateTrafficJamCatalog } from '@/games/traffic-jam/catalog';
 import type { TrafficJamLevelConfig } from '@/games/traffic-jam/types';
 import { DIFFICULTY_TIERS, type DifficultyTierMeta } from '@/types/mia';
@@ -44,6 +46,19 @@ const TRAFFIC_JAM: CatalogCheck<TrafficJamLevelConfig> = {
       formatCount(optimalMoves, 'coup optimal', 'coups optimaux'),
       formatCount(vehicles.length, 'véhicule', 'véhicules'),
       formatCount(obstacles.length, 'obstacle', 'obstacles'),
+    ].join(', '),
+};
+
+const PATTERNS: CatalogCheck<PatternLevelConfig> = {
+  title: 'Suites Logiques',
+  catalog: PATTERNS_CATALOG,
+  validate: () => validatePatternsCatalog(PATTERNS_CATALOG),
+  describe: ({ rule, family, colorMode, visibleItems, answerMode, soundPairing, stopRounds }) =>
+    [
+      `${rule === 'ab' ? 'A-B' : 'A-B-B'} ${family}, ${colorMode}`,
+      formatCount(visibleItems, 'élément', 'éléments'),
+      answerMode === 'sound' ? `sons ${String(soundPairing)}` : 'pièces',
+      formatCount(stopRounds, 'STOP', 'STOP'),
     ].join(', '),
 };
 
@@ -83,8 +98,8 @@ function report<TConfig>({ title, catalog, validate, describe }: CatalogCheck<TC
   return errors.length;
 }
 
-const checks = [MEMORY, TRAFFIC_JAM] as const;
-const anomalies = report(MEMORY) + report(TRAFFIC_JAM);
+const checks = [MEMORY, TRAFFIC_JAM, PATTERNS] as const;
+const anomalies = report(MEMORY) + report(TRAFFIC_JAM) + report(PATTERNS);
 const levelCount = checks.reduce((total, check) => total + check.catalog.length, 0);
 
 if (anomalies > 0) {

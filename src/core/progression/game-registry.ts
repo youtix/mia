@@ -1,4 +1,5 @@
 import { MEMORY_CATALOG } from '@/games/memory/catalog';
+import { PATTERNS_CATALOG } from '@/games/patterns/catalog';
 import { TRAFFIC_JAM_CATALOG } from '@/games/traffic-jam/catalog';
 import type { GameId, UserProfile } from '@/types/mia';
 import { getGameProgressSummary } from './progression-engine';
@@ -26,6 +27,13 @@ export const GAME_REGISTRY: GameRegistry = {
     skill: 'Planification & Logique séquentielle',
     path: '/traffic-jam',
     catalog: TRAFFIC_JAM_CATALOG,
+  },
+  patterns: {
+    id: 'patterns',
+    title: 'Suites Logiques',
+    skill: 'Raisonnement & Logique sérielle · dès 4 ans',
+    path: '/patterns',
+    catalog: PATTERNS_CATALOG,
   },
 };
 

@@ -3,7 +3,7 @@
 [![CI](https://github.com/youtix/mia/actions/workflows/ci.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/ci.yml)
 [![Release & Deploy](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml)
 
-**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification. Une seule base de code pour trois usages :
+**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits (dès 4 ans), raisonnement inductif sur des suites logiques. Une seule base de code pour trois usages :
 
 - **Smartphone et tablette** : au doigt (tap, glisser-déposer).
 - **Android TV** : à la télécommande (flèches, OK, Retour), avec de grands boutons, des aides à l'écran et des marges adaptées au téléviseur (« 10-foot UI »).
@@ -25,13 +25,14 @@ Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqu
 
 ## Fonctionnalités
 
-| Domaine         | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                      |
-| :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Memory**      | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu initial (5 s, ajustable par joueur), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs. |
-| **Traffic Jam** | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                  |
-| **Progression** | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne. Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                       |
-| **Profils**     | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                            |
-| **Réglages**    | Mode TV forcé ou automatique, son, contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation ; version de l'application et, dans la PWA, recherche de mise à jour et réparation.                                                   |
+| Domaine             | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                                                 |
+| :------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Memory**          | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu initial (5 s, ajustable par joueur), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs.                            |
+| **Traffic Jam**     | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                                             |
+| **Suites Logiques** | Premier jeu pour les petits (4 à 8 ans), sans aucun texte à lire : complète la suite logique parmi trois grands boutons, de la règle A-B à A-B-B, puis retrouve la structure dans des sons (cloche, tambour). On ne peut pas perdre une étoile, et un panneau STOP entraîne à se retenir.                                                                                          |
+| **Progression**     | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne (pour Suites Logiques : une série sans mauvaise réponse ni tape pendant un STOP). Le catalogue s'étend sans jamais casser les sauvegardes.                                 |
+| **Profils**         | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                                                       |
+| **Réglages**        | Mode TV forcé ou automatique, son (il commande les sons de Suites Logiques, le seul jeu sonore pour l'instant), contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation ; version de l'application et, dans la PWA, recherche de mise à jour et réparation. |
 
 ## Architecture
 
@@ -71,6 +72,7 @@ flowchart LR
 - **Next.js 16** (App Router, export statique, `basePath` injecté par la CI pour GitHub Pages), **React 19**, **TypeScript strict**.
 - **Tailwind CSS v4** avec la variante `tv:` (marges anti-overscan, tailles lisibles à 3 mètres) pilotée par `<html data-tv>`.
 - **Framer Motion** et transitions CSS accélérées pour rester fluide sur les boîtiers TV modestes.
+- **Synthèse Web Audio** (`src/core/audio/`) : la cloche, le tambour et les jingles de Suites Logiques sont générés à la volée, sans aucun fichier audio à embarquer, à licencier (F-Droid) ni à pré-cacher (PWA).
 - **Capacitor 8** (`@capacitor/android`, `@capacitor/app` pour le bouton Retour de la télécommande, `@capacitor/preferences` pour la sauvegarde native).
 - **Service worker maison** (aucune dépendance à l'exécution) qui pré-cache tout l'export statique de la PWA ; une nouvelle version s'active à la demande du joueur (bannière du Hub) ou quand toutes les fenêtres de Mia sont fermées.
 - **Vitest + Testing Library**, **ESLint 9** (`strictTypeChecked`, `jsx-a11y` strict), **Prettier**, **Husky**, **commitlint**, **semantic-release**.
@@ -145,14 +147,14 @@ npm run dev      # http://localhost:3000
 | `npm run lint`            | ESLint strict, 0 avertissement toléré (`npm run lint:fix` corrige ce qui peut l'être).                              |
 | `npm run format:check`    | Prettier (`npm run format` reformate tout le dépôt).                                                                |
 | `npm test`                | Tests Vitest (`npm run test:watch` en continu, `npm run test:coverage` avec la couverture).                         |
-| `npm run validate:levels` | Valide tous les catalogues de niveaux (Memory et Traffic Jam, solveur BFS compris) et affiche un résumé par jeu.    |
+| `npm run validate:levels` | Valide les trois catalogues (Memory, Traffic Jam avec solveur BFS, Suites Logiques) et affiche un résumé par jeu.   |
 | `npm run validate:all`    | Enchaîne `format:check`, `lint`, `typecheck`, `validate:levels`, `test:coverage` et `build` : ce que la CI exécute. |
 
 Scripts de la chaîne de release, lancés par `semantic-release` (voir [Release automatique](#release-automatique)) : `node scripts/sync-android-version.mjs <version>` et `node scripts/build-apk.mjs <version>`.
 
 ### Qualité et hooks Git
 
-- **Couverture** : 80 % minimum (lignes, fonctions, branches, instructions) sur `src/`, 90 % sur les moteurs purs de Memory et de Traffic Jam.
+- **Couverture** : 80 % minimum (lignes, fonctions, branches, instructions) sur `src/`, 90 % sur les moteurs purs de Memory, de Traffic Jam et de Suites Logiques.
 - **Hooks Husky** : `pre-commit` (`lint-staged` : ESLint `--fix` puis Prettier sur les fichiers indexés, puis `typecheck`), `commit-msg` (commitlint), `pre-push` (`test:coverage`).
 - **Accessibilité** : règles `jsx-a11y` strictes, tout élément interactif est atteignable au clavier et à la télécommande.
 
@@ -161,7 +163,7 @@ Scripts de la chaîne de release, lancés par `semantic-release` (voir [Release 
 Les messages de commit pilotent les releases : ils doivent respecter **[Conventional Commits](https://www.conventionalcommits.org/fr/)** (`type(scope): description`, description en minuscules, en anglais comme le changelog).
 
 - **Types autorisés** : `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
-- **Scopes autorisés** (facultatif) : `core`, `ui`, `navigation`, `storage`, `profile`, `progression`, `hub`, `settings`, `memory`, `traffic-jam`, `android`, `pwa`, `release`, `quality`, `deps`, `deps-dev`.
+- **Scopes autorisés** (facultatif) : `core`, `ui`, `navigation`, `storage`, `profile`, `progression`, `hub`, `settings`, `memory`, `traffic-jam`, `patterns`, `android`, `pwa`, `release`, `quality`, `deps`, `deps-dev`.
 - **Effet sur la version** : `feat` → version mineure, `fix` et `perf` → correctif, `!` après le type ou `BREAKING CHANGE:` en pied → version majeure. Les autres types ne publient rien.
 
 ```text
@@ -241,9 +243,9 @@ Ne lance pas `scripts/sync-android-version.mjs` à la main sur le dépôt : seul
 
 Les catalogues sont de simples tableaux TypeScript, **sans aucune fabrique** : un niveau se copie et s'édite champ par champ. Ajouter un objet ajoute une étoile ; le Hub, la Carte des Étoiles, la sauvegarde et le déblocage suivent automatiquement.
 
-Règles communes aux deux jeux (vérifiées par `npm run validate:levels` et par les tests) :
+Règles communes aux trois jeux (vérifiées par `npm run validate:levels` et par les tests) :
 
-- `id` **unique et immuable** (`mem-021`, `tj-021` : minuscules, chiffres, tirets) : c'est la clé de la sauvegarde des joueurs. Un niveau publié n'est **jamais retiré ni renommé** ; changer son palier ou son `order` est sans risque.
+- `id` **unique et immuable** (`mem-021`, `tj-021`, `pat-021` : minuscules, chiffres, tirets) : c'est la clé de la sauvegarde des joueurs. Un niveau publié n'est **jamais retiré ni renommé** ; changer son palier ou son `order` est sans risque.
 - `tier` : `very_easy`, `easy`, `medium`, `hard` ou `very_hard` ; `order` : position dans le palier, **unique**. Les niveaux initiaux utilisent `10, 20, 30, 40` : un nouveau niveau s'intercale avec un `order` libre (`15`, `25`…) ou s'ajoute à la fin (`50`).
 - `title` : titre court en français (jamais affiché, l'écran indique « Étoile #N »).
 - Le numéro d'étoile est recalculé à partir de l'ordre des paliers puis des `order` : insérer un niveau au début ne bloque jamais un joueur avancé (règle de déblocage hybride du moteur de progression).
@@ -334,12 +336,57 @@ Chaque niveau est dessiné avec `parseTrafficJamAscii(lignes, { optimalMoves })`
 
 Le validateur refuse aussi une grille non carrée ou mal formée (message avec ligne et colonne), un niveau insoluble ou déjà gagné au départ, un `optimalMoves` qui redescend par rapport à l'étoile précédente sur la carte, et un palier dont le `optimalMoves` moyen n'est pas supérieur au palier précédent : place ton niveau là où sa difficulté le mérite. Le solveur explore au plus 50 000 positions (`DEFAULT_MAX_STATES`), largement suffisant pour une grille 6 × 6.
 
+### Suites Logiques : un objet dans `PATTERNS_CATALOG`
+
+Un niveau ne contient **aucune suite** : le moteur tire les défis (éléments, couleurs, intrus, ordre des propositions, défis ouverts par un STOP) au hasard à chaque partie, si bien qu'une réponse ne se mémorise pas et qu'une étoile tient en dix champs.
+
+1. Ouvre [`src/games/patterns/catalog.ts`](./src/games/patterns/catalog.ts).
+2. Ajoute un objet dans `PATTERNS_CATALOG` (de préférence à sa place dans l'ordre de la carte) :
+
+```ts
+{
+  id: 'pat-021',
+  gameId: 'patterns',
+  tier: 'medium',
+  order: 35, // s'intercale entre pat-011 (30) et pat-012 (40)
+  title: 'Animaux, une seule couleur',
+  config: {
+    rule: 'abb',
+    family: 'animals',
+    colorMode: 'same',
+    visibleItems: 5,
+    answerMode: 'visual',
+    soundPairing: null,
+    rounds: 5,
+    stopRounds: 2,
+    stopSeconds: 3,
+    hasGuide: false,
+  },
+},
+```
+
+| Champ          | Valeurs                     | Règles                                                                                                                                                                                                                                |
+| :------------- | :-------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `rule`         | `ab` ou `abb`               | Unité répétée de la suite : A-B (deux éléments) ou A-B-B (trois).                                                                                                                                                                     |
+| `family`       | `animals` ou `shapes`       | Banque d'éléments : 8 animaux ou 8 formes, tirés au hasard par le moteur.                                                                                                                                                             |
+| `colorMode`    | `distinct` ou `same`        | `distinct` : une couleur par élément ; `same` : une seule couleur, seule la forme les distingue.                                                                                                                                      |
+| `visibleItems` | Entier                      | Éléments de la ligne avant la case vide. Pièces : de la longueur de l'unité + 2 à 6 (A-B : 4 à 6 ; A-B-B : 5 ou 6). Sons : nombre de temps d'une réponse, un nombre entier d'unités (A-B : 4 ; A-B-B : 3 ou 6).                       |
+| `answerMode`   | `visual` ou `sound`         | Trois pièces à placer, ou trois suites de sons à écouter (mêmes sons, même durée, seule leur disposition change).                                                                                                                     |
+| `soundPairing` | `fixed`, `varied` ou `null` | `null` obligatoire avec `visual` ; `fixed` ou `varied` obligatoire avec `sound`. `fixed` : chaque élément garde son son pendant toute l'étoile ; `varied` : l'association change à chaque défi, seule la structure mène à la réponse. |
+| `rounds`       | Entier ≥ 1                  | Défis de l'étoile, enchaînés sans écran de fin (5 au catalogue).                                                                                                                                                                      |
+| `stopRounds`   | Entier de 0 à `rounds`      | Défis ouverts par un STOP, tirés au hasard à chaque partie.                                                                                                                                                                           |
+| `stopSeconds`  | Nombre fini > 0             | Durée d'un STOP en secondes, qu'il soit prévu (`stopRounds`) ou déclenché par une mauvaise réponse en moins de 1,2 s (2 s en Très Facile et Facile au catalogue, 3 s ensuite).                                                        |
+| `hasGuide`     | `true` ou `false`           | Main fantôme sur la bonne réponse au premier défi, pour apprendre le geste sans texte (`pat-001` et `pat-013` au catalogue).                                                                                                          |
+
+3. Lance `npm run validate:levels` (ou `npx vitest run tests/patterns-catalog.test.ts`) : `validatePatternsCatalog` signale chaque anomalie avec le nom du niveau, et instancie chaque configuration avec le moteur (`createPatternsGame`) pour s'assurer qu'elle se joue.
+
 ## Ajouter un nouveau jeu
 
 1. Crée `src/games/<nouveau-jeu>/` avec un moteur en TypeScript pur (sans React ni DOM : testable et importable par `validate:levels`), ses composants (`'use client'` pour ceux qui ont un état) et son `catalog.ts` qui exporte un tableau de `BaseLevelDefinition<Config>` et une fonction `validate<Jeu>Catalog` (commence par `validateLevelCatalog(gameId, catalog)` de `@/core/progression/catalog-validator`).
-2. Ajoute l'identifiant au type `GameId` (`src/types/mia.ts`) : le compilateur exige alors son entrée dans `GAME_REGISTRY` (`src/core/progression/game-registry.ts`, titre, faculté travaillée, route, catalogue) et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, `src/core/storage`), sans laquelle sa progression serait écartée au chargement.
+2. Ajoute l'identifiant au type `GameId` (`src/types/mia.ts`) : le compilateur exige alors son entrée dans `GAME_REGISTRY` (`src/core/progression/game-registry.ts`, titre, faculté travaillée, route, catalogue), dans la table des icônes (`GAME_ICONS`, `src/components/progression/game-icons.ts`) et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, `src/core/storage`), sans laquelle sa progression serait écartée au chargement.
 3. Crée la page `src/app/<nouveau-jeu>/page.tsx`, qui rend un écran client `<GameScreen gameId="…" catalog={…} renderLevel={(level, controls) => <TonPlateau … />} />` (`src/components/progression/GameScreen.tsx`) : Carte des Étoiles, déblocage, enregistrement des victoires et navigation sont fournis.
 4. Branche le catalogue dans `scripts/validate-levels.ts`, ajoute une entrée au scope commitlint si nécessaire (`commitlint.config.mjs`) et un seuil de couverture de 90 % pour le moteur dans `vitest.config.ts`.
+5. Facultatif : un jeu qui produit des sons utilise `useSoundPlayer` de `@/core/audio` (synthèse Web Audio, silencieux quand le réglage « Son » est coupé) sans jamais faire dépendre son déroulé de l'audio ; un écran sans texte à lire, pour les non-lecteurs, passe `isTextless` à `AppShell` et à `ModalDialog` (titres et libellés réservés aux lecteurs d'écran).
 
 Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent automatiquement en charge le nouveau jeu.
 
@@ -349,21 +396,23 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 .
 ├── .github/workflows/       # ci.yml, pr-title.yml, release-and-deploy.yml
 ├── android/                 # Projet Android Gradle (Capacitor) : manifeste TV, plugin natif TvMode, signature
-├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-20 (spécifications et décisions)
+├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-21 (spécifications et décisions)
 ├── fdroid/                  # Recette fdroiddata (org.mia.braintraining.yml)
 ├── metadata/fr-FR/          # Descriptions F-Droid (format Fastlane)
 ├── public/                  # manifest.json, icônes, page WebView obsolète
 ├── scripts/                 # build-sw.ts, generate-icons.mjs, validate-levels.ts, sync-android-version.mjs, build-apk.mjs
 ├── src/
-│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /settings ; écran d'erreur global
+│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /patterns, /settings ; écran d'erreur global
 │   ├── components/          # Design system (ui), profils, progression (Hub, Carte des Étoiles), réglages
 │   ├── core/
+│   │   ├── audio/           # Synthèse Web Audio (cloche, tambour, jingles), hook useSoundPlayer
 │   │   ├── navigation/      # Navigation spatiale D-Pad, bouton Retour Android
 │   │   ├── progression/     # Registre des jeux, moteur de progression, validateur de catalogues
 │   │   ├── pwa/             # Service worker, enregistrement, mises à jour et réparation
 │   │   └── storage/         # Sauvegarde locale, migrations, profils, mode TV
 │   ├── games/
 │   │   ├── memory/          # Moteur, symboles, composants, catalog.ts
+│   │   ├── patterns/        # Moteur, banque d'éléments, composants, catalog.ts
 │   │   └── traffic-jam/     # Moteur, parseur ASCII, solveur BFS, composants, catalog.ts
 │   └── types/               # Types partagés (sauvegarde, paliers, jeux)
 ├── tests/                   # Tests Vitest (moteurs, écrans, configuration, Android, PWA, release)

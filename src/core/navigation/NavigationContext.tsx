@@ -397,6 +397,8 @@ export function useNavigationScope(options: UseNavigationScopeOptions): Navigati
   }, [store, token, scopeId, depth, isRequested]);
 
   const { inputMode, activeToken } = useNavigationSnapshot(store);
-  const isActive = activeToken === token;
+  // `isRequested` aussi : le magasin ne suit qu'après les effets. Entre-temps, une zone qu'on ne demande
+  // plus reprendrait le focus à celle qu'on demande, et les deux se le renverraient sans fin.
+  const isActive = isRequested && activeToken === token;
   return { isActive, isFocusVisible: isActive && inputMode === 'dpad', inputMode };
 }

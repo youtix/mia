@@ -46,6 +46,13 @@ export default defineConfig({
           branches: 90,
           statements: 90,
         },
+        // Moteur pur de Suites Logiques (FEAT-21) : 90 % exigés, hors composants d'interface.
+        'src/games/patterns/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },

@@ -1,6 +1,6 @@
 # Spécification Technique & Fonctionnelle — Projet **Mia**
 
-> **Vision** : **Mia** est une application gratuite et open-source d'entraînement et de développement des capacités cérébrales (mémoire de travail, repérage visuo-spatial, planification logique, inhibition cognitive). Elle est conçue pour fonctionner de manière fluide aussi bien sur **Smartphone et Tablette (tactile)** que sur **Android TV (télécommande D-Pad)** et **Navigateur Web (PWA)**, avec un système de progression par étoiles **extensible à l'infini**.
+> **Vision** : **Mia** est une application gratuite et open-source d'entraînement et de développement des capacités cérébrales (mémoire de travail, repérage visuo-spatial, planification logique, raisonnement inductif, inhibition cognitive). Elle est conçue pour fonctionner de manière fluide aussi bien sur **Smartphone et Tablette (tactile)** que sur **Android TV (télécommande D-Pad)** et **Navigateur Web (PWA)**, avec un système de progression par étoiles **extensible à l'infini**.
 
 ---
 
@@ -9,9 +9,9 @@
 1. [Principes Directeurs & Contraintes](#1-principes-directeurs--contraintes)
 2. [Architecture Technique Globale](#2-architecture-technique-globale)
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
-4. [Conception Détaillée des Jeux (Memory & Traffic Jam)](#4-conception-détaillée-des-jeux-memory--traffic-jam)
+4. [Conception Détaillée des Jeux (Memory, Traffic Jam & Suites Logiques)](#4-conception-détaillée-des-jeux-memory-traffic-jam--suites-logiques)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-20`)](#6-découpage-en-features-atomiques-feat-01-à-feat-20)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-21`)](#6-découpage-en-features-atomiques-feat-01-à-feat-21)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -32,6 +32,7 @@
    - [FEAT-18.md](./FEAT-18.md) — Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)
    - [FEAT-19.md](./FEAT-19.md) — Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)
    - [FEAT-20.md](./FEAT-20.md) — Mises à jour de la PWA, Réparation & Écran d'Erreur
+   - [FEAT-21.md](./FEAT-21.md) — Jeu n°3 (Suites Logiques) — Moteur, Interface sans Texte, Sons & Catalogue des 20 Étoiles
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -85,6 +86,7 @@ flowchart LR
 * **Styling & Responsive** : **Tailwind CSS** (avec classes utilitaires dédiées aux grands écrans TV `tv:` / `xl:` et gestion des zones sûres `safe-area`).
 * **Animations** : **Framer Motion** + Transitions CSS accélérées matériellement (`transform`, `opacity`) pour garantir 60 FPS sur les processeurs modestes des boîtiers Android TV.
 * **Icônes & Graphismes** : **Lucide React** + SVG vectoriels inline (poids plume, netteté parfaite en 4K sur TV, 0 dépendance externe).
+* **Sons** : synthèse **Web Audio** (`src/core/audio/`, `FEAT-21`) : cloche, tambour et jingles générés à la volée, sans aucun fichier audio à embarquer, à licencier (F-Droid) ni à pré-cacher (PWA) ; le réglage « Son » de l'appareil (`soundEnabled`, `FEAT-18`) les commande.
 * **Stockage des Données** :
   * Plugin officiel **`@capacitor/preferences`** (stocke nativement dans les `SharedPreferences` Android sur mobile/TV, évitant tout effacement accidentel du cache WebView par l'OS).
   * Fallback automatique sur **`localStorage`** (avec `navigator.storage.persist()`) lorsque l'application tourne dans un navigateur Web classique.
@@ -197,7 +199,7 @@ Tous les jeux de **Mia** partagent la même échelle de difficulté à 5 paliers
 
 ---
 
-## 4. Conception Détaillée des Jeux (Memory & Traffic Jam)
+## 4. Conception Détaillée des Jeux (Memory, Traffic Jam & Suites Logiques)
 
 ### 4.1. Jeu n°1 : Memory (Mémoire visuo-spatiale & Mémoire de travail)
 
@@ -300,6 +302,51 @@ stateDiagram-v2
 
 ---
 
+### 4.3. Jeu n°3 : Suites Logiques (Raisonnement inductif & Logique sérielle)
+
+#### Règles & Paramètres d'Extensibilité
+* **Public** : premier jeu de **Mia** pour les petits (**4 à 8 ans**, non-lecteurs ou lecteurs débutants), donc **aucun texte à lire** pendant la partie.
+* **Défi** : une ligne d'éléments qui se répètent et dont le dernier manque ; l'enfant choisit la bonne réponse parmi **trois grands boutons**.
+* **Étoile** : une série de 5 défis qu'on ne peut pas perdre. Une erreur fait rebondir la pièce, la 2e erreur d'un défi montre l'unité répétée de la ligne et la 3e fait luire la bonne proposition ; la **couronne** récompense une série sans mauvaise réponse **et** sans tape pendant un STOP.
+
+Chaque niveau est une configuration de dix champs (le moteur tire les défis à chaque partie : aucune suite n'est écrite dans le catalogue, voir [FEAT-21](./FEAT-21.md)) qui fait varier la difficulté sur 5 axes :
+1. **Règle de la suite (`rule`)** : A-B (`ab`) ou A-B-B (`abb`).
+2. **Éléments (`family`, `colorMode`)** : animaux ou formes, en couleurs distinctes ou en une seule couleur (seule la forme les distingue alors).
+3. **Longueur de la ligne (`visibleItems`)** : de 3 à 6 éléments avant la case vide.
+4. **Mode de réponse (`answerMode`, `soundPairing`)** : trois pièces à placer, ou **transfert sensoriel** vers trois suites de sons (cloche, tambour) à écouter, par deux appuis (écouter, puis valider). Chaque élément garde son son (`fixed`), puis l'association change à chaque défi (`varied`) et seule la structure mène à la réponse. Son coupé dans les Réglages (`FEAT-18`), les sons deviennent des images en rythme.
+5. **STOP (`stopRounds`, `stopSeconds`)** : *go / no-go* actif qui entraîne le contrôle inhibiteur. Un panneau STOP ouvre une partie des défis et s'impose après une mauvaise réponse donnée en moins de 1,2 s ; une tape pendant un STOP ne l'abrège pas et fait perdre la couronne.
+
+Deux champs complètent la configuration : `rounds` (défis de l'étoile) et `hasGuide` (main fantôme qui apprend le geste au premier défi).
+
+#### Progression Initiale des 20 Étoiles de Suites Logiques (MVP)
+
+| Étoile | ID Niveau | Palier | Règle | Famille | Couleurs | Ligne | Réponses | STOP | Guide |
+| :---: | :--- | :--- | :---: | :--- | :--- | :---: | :--- | :---: | :---: |
+| ⭐ 1 | `pat-001` | Très Facile | A-B | Animaux | Distinctes | 4 | Pièces | 0 (2 s) | ✔ |
+| ⭐ 2 | `pat-002` | Très Facile | A-B | Animaux | Distinctes | 4 | Pièces | 1 (2 s) | — |
+| ⭐ 3 | `pat-003` | Très Facile | A-B | Animaux | Distinctes | 5 | Pièces | 1 (2 s) | — |
+| ⭐ 4 | `pat-004` | Très Facile | A-B | Animaux | Unique | 4 | Pièces | 1 (2 s) | — |
+| ⭐ 5 | `pat-005` | Facile | A-B | Formes | Distinctes | 4 | Pièces | 1 (2 s) | — |
+| ⭐ 6 | `pat-006` | Facile | A-B | Formes | Distinctes | 5 | Pièces | 1 (2 s) | — |
+| ⭐ 7 | `pat-007` | Facile | A-B | Formes | Unique | 4 | Pièces | 2 (2 s) | — |
+| ⭐ 8 | `pat-008` | Facile | A-B | Formes | Unique | 5 | Pièces | 2 (2 s) | — |
+| ⭐ 9 | `pat-009` | Moyen | A-B-B | Animaux | Distinctes | 6 | Pièces | 1 (3 s) | — |
+| ⭐ 10 | `pat-010` | Moyen | A-B-B | Animaux | Distinctes | 5 | Pièces | 2 (3 s) | — |
+| ⭐ 11 | `pat-011` | Moyen | A-B-B | Formes | Distinctes | 5 | Pièces | 2 (3 s) | — |
+| ⭐ 12 | `pat-012` | Moyen | A-B-B | Formes | Unique | 5 | Pièces | 2 (3 s) | — |
+| ⭐ 13 | `pat-013` | Difficile | A-B | Formes | Distinctes | 4 | Sons `fixed` | 0 (3 s) | ✔ |
+| ⭐ 14 | `pat-014` | Difficile | A-B | Animaux | Distinctes | 4 | Sons `fixed` | 1 (3 s) | — |
+| ⭐ 15 | `pat-015` | Difficile | A-B | Formes | Distinctes | 4 | Sons `varied` | 1 (3 s) | — |
+| ⭐ 16 | `pat-016` | Difficile | A-B | Animaux | Unique | 4 | Sons `varied` | 2 (3 s) | — |
+| ⭐ 17 | `pat-017` | Très Difficile | A-B-B | Formes | Distinctes | 3 | Sons `varied` | 1 (3 s) | — |
+| ⭐ 18 | `pat-018` | Très Difficile | A-B-B | Animaux | Unique | 3 | Sons `varied` | 2 (3 s) | — |
+| ⭐ 19 | `pat-019` | Très Difficile | A-B-B | Formes | Distinctes | 6 | Sons `varied` | 2 (3 s) | — |
+| ⭐ 20 | `pat-020` | Très Difficile | A-B-B | Formes | Unique | 6 | Sons `varied` | 3 (3 s) | — |
+
+> **Valeurs de départ.** Les valeurs publiées sont celles de `src/games/patterns/catalog.ts` ([FEAT-21](./FEAT-21.md) §3.3) ; `npm run validate:levels` les affiche. Les durées (`stopSeconds`, seuil de 1,2 s d'une réponse trop rapide) sont à régler avec de vrais enfants ([FEAT-21 §6](./FEAT-21.md#6-décisions-dimplémentation-session-de-cadrage)).
+
+---
+
 ## 5. Graphe de Dépendances des Features Atomiques
 
 Chaque feature est conçue pour être **atomique** et décrite dans son propre fichier `FEAT-XX.md` : elle possède un périmètre réduit, des entrées/sorties claires et peut être développée, testée et validée indépendamment avant de passer à la suivante.
@@ -351,13 +398,19 @@ flowchart TD
     F18 --> F20
     F08 --> F20
     F04 --> F20
+
+    F03 --> F21["FEAT-21 : Suites Logiques — Moteur, UI sans texte, Sons & Catalogue 20 Étoiles"]
+    F04 --> F21
+    F07 --> F21
+    F08 --> F21
+    F18 --> F21
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-20`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-21`)
 
-Chacune des 20 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 21 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -381,6 +434,7 @@ Chacune des 20 features possède sa spécification complète et autonome pour l'
 | **18** | [FEAT-18.md](./FEAT-18.md) | **Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)** | `FEAT-05`, `FEAT-08` |
 | **19** | [FEAT-19.md](./FEAT-19.md) | **Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)** | `FEAT-06`, `FEAT-11`, `FEAT-18` |
 | **20** | [FEAT-20.md](./FEAT-20.md) | **Mises à jour de la PWA, Réparation & Écran d'Erreur** | `FEAT-04`, `FEAT-08`, `FEAT-17`, `FEAT-18` |
+| **21** | [FEAT-21.md](./FEAT-21.md) | **Jeu n°3 (Suites Logiques) — Moteur, Interface sans Texte, Sons & Catalogue des 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-18` |
 
 ---
 
@@ -562,6 +616,14 @@ Chacune des 20 features possède sa spécification complète et autonome pour l'
 
 ---
 
+### `FEAT-21` : Jeu n°3 (Suites Logiques) — Moteur, Interface sans Texte, Sons & Catalogue des 20 Étoiles ([FEAT-21.md](./FEAT-21.md))
+
+* **Objectif** : Ajouter le troisième jeu de *Mia* et son premier jeu pour les petits (4 à 8 ans, sans aucun texte à lire) : le moteur pur de *Suites Logiques* (suites A-B et A-B-B à compléter, défis tirés à chaque partie, étoile impossible à perdre avec échelle d'aide, STOP qui entraîne le contrôle inhibiteur), son interface sans texte (`isTextless` sur `AppShell` et `ModalDialog`), le premier module de sons de l'application (`src/core/audio/` : synthèse Web Audio, qui donne enfin un effet au réglage « Son » de `FEAT-18`) et le catalogue des 20 étoiles (`pat-001` à `pat-020`), des pièces au transfert vers des suites de sons.
+* **Dépendances** : `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-18`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-21.md](./FEAT-21.md).
+
+---
+
 ## 7. Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu
 
 L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi instantané :
@@ -576,10 +638,16 @@ L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi ins
 2. Déclarer le nouveau plateau (soit via la liste des véhicules, soit via une grille ASCII `6x6` lisible).
 3. Lancer `npm run validate:levels` : le solveur BFS vérifie automatiquement que votre niveau est soluble et vous indique son nombre exact de coups optimaux (`optimalMoves`).
 
-### 7.3. Ajouter un 3e, 4e ou 5e jeu cérébral dans le futur
+### 7.3. Ajouter un 4e, 5e ou 6e jeu cérébral dans le futur
 Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.
-3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, FEAT-05), sans laquelle sa progression serait écartée au chargement.
+3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre, dans la table des icônes (`GAME_ICONS`, `src/components/progression/game-icons.ts`) et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, FEAT-05), sans laquelle sa progression serait écartée au chargement.
 4. Un jeu qui propose ses propres réglages (`FEAT-19`) ajoute son objet à `ProfileGameSettings` (`src/types/mia.ts`), ses valeurs par défaut à `createDefaultGameSettings` (`src/core/storage/default-state.ts`), son assainisseur dans `src/core/storage/migrations.ts` et son bloc dans la section « Jeux » de l'écran Réglages.
-5. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !
+5. Un jeu qui produit des sons utilise `useSoundPlayer` (`src/core/audio/`, `FEAT-21`), qui suit le réglage « Son » de l'appareil ; un jeu pour les non-lecteurs passe `isTextless` à `AppShell` et à `ModalDialog` (`FEAT-21`).
+6. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !
+
+### 7.4. Ajouter des niveaux à *Suites Logiques*
+1. Ouvrir `src/games/patterns/catalog.ts`.
+2. Ajouter un nouvel objet dans `PATTERNS_CATALOG` avec un `id` unique (ex: `"pat-021"`), choisir son palier (`tier`), son `order` et sa configuration (`rule`, `family`, `colorMode`, `visibleItems`, `answerMode`, `soundPairing`, `rounds`, `stopRounds`, `stopSeconds`, `hasGuide`). Aucune suite n'est à écrire : le moteur tire les défis à chaque partie.
+3. Lancer `npm run validate:levels` : `validatePatternsCatalog` vérifie chaque configuration (longueur de ligne permise pour la règle et le mode de réponse, `soundPairing` renseigné pour les sons seulement, `stopRounds` au plus égal à `rounds`…) et instancie le niveau avec le moteur pour s'assurer qu'il se joue. Les règles de chaque champ sont détaillées dans le [README](../README.md) (« Ajouter des niveaux ») et dans [FEAT-21 §3.3](./FEAT-21.md).

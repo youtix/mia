@@ -187,3 +187,24 @@
     }
   }
 }
+
+/*
+ * Ligne de lecture de Suites Logiques (FEAT-21) : une seule ligne de cases carrées, aussi grandes que
+ * la zone le permet, sans retour à la ligne ni défilement, du téléphone (360 × 640, 640 × 360) à la
+ * TV (960 × 540). Même technique que memory-grid : la zone est un conteneur de taille
+ * (`@container-size`) ; --patterns-cells (éléments de la ligne + cible) vient du défi.
+ */
+@utility patterns-row {
+  --patterns-gap: clamp(0.25rem, 2cqmin, 0.75rem);
+  --patterns-cell: min(
+    (100cqw - (var(--patterns-cells) - 1) * var(--patterns-gap)) / var(--patterns-cells),
+    100cqh
+  );
+  display: grid;
+  grid-template-columns: repeat(var(--patterns-cells), var(--patterns-cell));
+  grid-template-rows: var(--patterns-cell);
+  gap: var(--patterns-gap);
+  place-content: center;
+  width: 100%;
+  height: 100%;
+}

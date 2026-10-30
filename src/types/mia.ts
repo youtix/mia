@@ -1,6 +1,6 @@
 export type DifficultyTier = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard';
 
-export type GameId = 'memory' | 'traffic-jam';
+export type GameId = 'memory' | 'traffic-jam' | 'patterns';
 
 export type InputMode = 'touch' | 'dpad';
 

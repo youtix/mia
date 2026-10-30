@@ -876,6 +876,78 @@ describe('Couches de navigation (ModalDialog)', () => {
     expect(getButton('Carte 1')).toHaveFocus();
   });
 
+  it('ne fait pas s’échanger le focus à deux zones quand la modale le rend à l’autre zone', async () => {
+    // Zone du bas redemandée pendant que la modale est ouverte, focus rendu à la zone du haut : même
+    // parcours que « Rejouer » depuis une fin de partie, curseur sur le bouton Retour.
+    function TwoZones() {
+      const [zone, setZone] = useState<'top' | 'bottom'>('top');
+      const [isOpen, setIsOpen] = useState(false);
+      const top = useGridNavigation({ scopeId: 'top', rows: 1, cols: 1, isActive: zone === 'top' });
+      const bottom = useGridNavigation({
+        scopeId: 'bottom',
+        rows: 1,
+        cols: 1,
+        isActive: zone === 'bottom',
+      });
+      return (
+        <>
+          <FocusableButton
+            ref={top.getItemRef(0)}
+            isFocused={top.isItemFocused(0)}
+            onFocus={() => {
+              setZone('top');
+            }}
+            onClick={() => {
+              setIsOpen(true);
+            }}
+          >
+            Haut
+          </FocusableButton>
+          <FocusableButton
+            ref={bottom.getItemRef(0)}
+            isFocused={bottom.isItemFocused(0)}
+            onFocus={() => {
+              setZone('bottom');
+            }}
+          >
+            Bas
+          </FocusableButton>
+          <ModalDialog isOpen={isOpen} title="Fin">
+            <FocusableButton
+              onClick={() => {
+                setZone('bottom');
+                setIsOpen(false);
+              }}
+            >
+              Rejouer
+            </FocusableButton>
+          </ModalDialog>
+        </>
+      );
+    }
+
+    forceTvMode();
+    render(<TwoZones />, { wrapper: NavigationProvider });
+    fireEvent.click(getButton('Haut'));
+    let focusChanges = 0;
+    const countFocusChange = () => {
+      focusChanges += 1;
+    };
+    document.addEventListener('focusin', countFocusChange);
+    fireEvent.click(getButton('Rejouer'));
+    // Comme `waitForBoard` : la couche de la modale ne se retire qu'après son DOM, dans une autre tâche.
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(ringedLabels()).toEqual(['Haut']);
+      expect(getButton('Haut')).toHaveFocus();
+    });
+    document.removeEventListener('focusin', countFocusChange);
+
+    // Une zone qu'on ne demande plus n'est plus active, même le temps d'un rendu : le focus ne va et
+    // vient pas entre les deux, ce qui finirait par faire planter React.
+    expect(focusChanges).toBeLessThanOrEqual(2);
+  });
+
   it('active la zone d’une modale déjà ouverte au montage', () => {
     forceTvMode();
     render(<PauseScreen initiallyOpen />, { wrapper: NavigationProvider });
