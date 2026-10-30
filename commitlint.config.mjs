@@ -35,6 +35,7 @@ const config = {
         'settings',
         'memory',
         'traffic-jam',
+        'patterns',
         'android',
         'pwa',
         'release',

@@ -1,4 +1,4 @@
-Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification.
+Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits dès 4 ans, raisonnement sur des suites logiques.
 
 Une seule application pour trois usages :
 
@@ -10,6 +10,7 @@ Les jeux :
 
 - Memory : retrouve les paires (ou les triplets) de cartes identiques ; dans les niveaux avancés, des cartes échangent leur place après tes erreurs.
 - Traffic Jam : libère la voiture rouge du parking en déplaçant les autres véhicules, en un minimum de coups.
+- Suites Logiques : pour les petits dès 4 ans, complète la suite en images puis en sons, sans aucun texte à lire ; on ne peut pas perdre, et un panneau STOP apprend à se retenir.
 
 Une progression par étoiles sur cinq paliers de difficulté, de Très Facile à Très Difficile : chaque niveau réussi rapporte une étoile, un sans-faute rapporte une couronne. Plusieurs profils peuvent coexister sur le même appareil (famille, salon partagé), chacun avec sa propre progression. La sauvegarde s'exporte et s'importe au format JSON.
 

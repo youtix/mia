@@ -359,6 +359,44 @@ describe('AppShell', () => {
     expect(onBackFocus).toHaveBeenCalledOnce();
   });
 
+  it('réserve le titre et « Retour » aux lecteurs d’écran sur un écran sans texte (FEAT-21)', () => {
+    const onBack = vi.fn();
+    render(
+      <AppShell title="Suites Logiques" isTextless onBack={onBack} stars={{ earned: 1, total: 20 }}>
+        <p>Plateau</p>
+      </AppShell>,
+    );
+
+    const header = screen.getByRole('banner');
+    const heading = within(header).getByRole('heading', { level: 1, name: 'Suites Logiques' });
+    const back = within(header).getByRole('button', { name: 'Retour' });
+    fireEvent.click(back);
+
+    expect(heading).toHaveClass('sr-only');
+    expect(within(back).getByText('Retour')).toHaveClass('sr-only');
+    // Rien ne réaffiche le libellé sur un grand écran.
+    expect(within(back).getByText('Retour')).not.toHaveClass('sm:not-sr-only');
+    expect(onBack).toHaveBeenCalledOnce();
+    // Seuls les textes à lire disparaissent : le reste de l'en-tête et le contenu restent affichés.
+    expect(within(header).getByRole('img', { name: '1 étoile sur 20' })).toBeInTheDocument();
+    expect(within(screen.getByRole('main')).getByText('Plateau')).toBeInTheDocument();
+  });
+
+  it('garde par défaut un titre affiché et « Retour » dès les écrans moyens', () => {
+    render(
+      <AppShell title="Memory" onBack={vi.fn()}>
+        <p>Plateau</p>
+      </AppShell>,
+    );
+
+    const heading = screen.getByRole('heading', { level: 1, name: 'Memory' });
+    const label = within(screen.getByRole('button', { name: 'Retour' })).getByText('Retour');
+
+    expect(heading).not.toHaveClass('sr-only');
+    expect(heading).toHaveClass('flex-1', 'truncate', 'text-fluid-2xl');
+    expect(label).toHaveClass('sr-only', 'sm:not-sr-only');
+  });
+
   it('affiche les aides de la télécommande en pied de page, en mode TV uniquement', () => {
     render(
       <AppShell title="Hub" footerHints={DEFAULT_REMOTE_HINTS}>
@@ -414,7 +452,13 @@ describe('ModalDialog', () => {
     windowKeyDown.mockClear();
   });
 
-  function PauseHarness({ onClose }: { onClose?: () => void }) {
+  function PauseHarness({
+    onClose,
+    restoreFocus,
+  }: {
+    onClose?: () => void;
+    restoreFocus?: boolean;
+  }) {
     const [isOpen, setIsOpen] = useState(false);
     return (
       <>
@@ -429,6 +473,7 @@ describe('ModalDialog', () => {
         <ModalDialog
           isOpen={isOpen}
           title="Jeu en pause"
+          restoreFocus={restoreFocus}
           onClose={() => {
             setIsOpen(false);
             onClose?.();
@@ -488,6 +533,42 @@ describe('ModalDialog', () => {
     expect(dialog).toHaveAccessibleDescription('Étoile #3 gagnée');
     expect(container).not.toContainElement(dialog);
     expect(dialog).toHaveFocus();
+  });
+
+  it('réserve ses titres aux lecteurs d’écran dans une modale sans texte (FEAT-21)', () => {
+    render(
+      <ModalDialog isOpen isTextless title="Bravo !" subtitle="Étoile #3 gagnée">
+        <p>Contenu</p>
+      </ModalDialog>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Bravo !' });
+    const heading = within(dialog).getByRole('heading', { level: 2, name: 'Bravo !' });
+    const subtitle = within(dialog).getByText('Étoile #3 gagnée');
+
+    // Le titre et le sous-titre sont masqués ensemble, par leur conteneur.
+    expect(heading.parentElement).toHaveClass('sr-only');
+    expect(subtitle.parentElement).toBe(heading.parentElement);
+    // Toujours nommée et décrite, par les mêmes éléments.
+    expect(dialog).toHaveAttribute('aria-labelledby', heading.id);
+    expect(dialog).toHaveAttribute('aria-describedby', subtitle.id);
+    expect(dialog).toHaveAccessibleName('Bravo !');
+    expect(dialog).toHaveAccessibleDescription('Étoile #3 gagnée');
+    // Le contenu de la modale, lui, reste affiché.
+    expect(within(dialog).getByText('Contenu').closest('.sr-only')).toBeNull();
+  });
+
+  it('garde ses titres affichés par défaut', () => {
+    render(
+      <ModalDialog isOpen title="Bravo !" subtitle="Étoile #3 gagnée">
+        <p>Contenu</p>
+      </ModalDialog>,
+    );
+
+    const heading = screen.getByRole('heading', { level: 2, name: 'Bravo !' });
+
+    expect(heading.parentElement).not.toHaveClass('sr-only');
+    expect(heading.parentElement).toHaveClass('flex', 'flex-col', 'text-center');
   });
 
   it('impose un choix sans onClose : ni bouton Fermer, ni fermeture, Échap remonte au D-Pad', () => {
@@ -604,5 +685,19 @@ describe('ModalDialog', () => {
       expect(opener).toHaveFocus();
     });
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('laisse l’écran placer le focus à la fermeture avec restoreFocus à faux', async () => {
+    render(<PauseHarness restoreFocus={false} />);
+
+    const opener = screen.getByRole('button', { name: 'Pause' });
+    opener.focus();
+    fireEvent.click(opener);
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Jeu en pause' }), { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(opener).not.toHaveFocus();
   });
 });
