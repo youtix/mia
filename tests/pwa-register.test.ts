@@ -1,4 +1,7 @@
+import { appUpdate } from '@/core/pwa/appUpdate';
 import {
+  deletePrecaches,
+  readServiceWorkerEnvironment,
   registerServiceWorker,
   shouldRegisterServiceWorker,
   shouldUnregisterStaleServiceWorkers,
@@ -8,7 +11,16 @@ import {
 import { ServiceWorkerRegistrar } from '@/core/pwa/ServiceWorkerRegistrar';
 import { render, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type Mock,
+  type MockInstance,
+} from 'vitest';
 
 /** Plateforme simulée : `true` pour l'APK Capacitor. */
 const platform = vi.hoisted(() => ({ native: false }));
@@ -54,6 +66,13 @@ function setReadyState(state: DocumentReadyState): void {
   Object.defineProperty(document, 'readyState', { configurable: true, get: () => state });
 }
 
+/** Laisse s'achever les promesses en cours : sans cela, « jamais appelé » ne prouverait rien. */
+function flushPromises(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 const web: ServiceWorkerEnvironment = {
   nodeEnv: 'production',
   isNativePlatform: false,
@@ -89,6 +108,84 @@ describe('shouldUnregisterStaleServiceWorkers', () => {
     ['sans support des service workers', { nodeEnv: 'development', supportsServiceWorker: false }],
   ])('ne désinscrit rien %s', (_label, overrides: Partial<ServiceWorkerEnvironment>) => {
     expect(shouldUnregisterStaleServiceWorkers({ ...web, ...overrides })).toBe(false);
+  });
+});
+
+describe('readServiceWorkerEnvironment', () => {
+  beforeEach(() => {
+    platform.native = false;
+    stubServiceWorker();
+    vi.stubEnv('NODE_ENV', 'production');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    removeServiceWorker();
+  });
+
+  it('décrit un navigateur Web en production', () => {
+    expect(readServiceWorkerEnvironment()).toEqual(web);
+  });
+
+  it('relit NODE_ENV, la plateforme et le support des service workers à chaque appel', () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(readServiceWorkerEnvironment()).toEqual({ ...web, nodeEnv: 'development' });
+
+    platform.native = true;
+    expect(readServiceWorkerEnvironment()).toEqual({
+      ...web,
+      nodeEnv: 'development',
+      isNativePlatform: true,
+    });
+
+    removeServiceWorker();
+    expect(readServiceWorkerEnvironment()).toEqual({
+      nodeEnv: 'development',
+      isNativePlatform: true,
+      supportsServiceWorker: false,
+    });
+  });
+
+  it('se passe de navigator quand il n’existe pas', () => {
+    vi.stubGlobal('navigator', undefined);
+
+    expect(readServiceWorkerEnvironment()).toEqual({ ...web, supportsServiceWorker: false });
+  });
+});
+
+describe('deletePrecaches', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('ne supprime que les caches mia-precache-*, jamais ceux des autres applications', async () => {
+    const remove = stubCaches([
+      'mia-precache-1a2b3c4d',
+      'autre-cache',
+      'mia-precache-ffffffff',
+      'workbox-precache-v2',
+      'mia-autre',
+      'autre-mia-precache-1a2b3c4d',
+    ]);
+
+    await expect(deletePrecaches()).resolves.toBeUndefined();
+
+    expect(remove.mock.calls).toEqual([['mia-precache-1a2b3c4d'], ['mia-precache-ffffffff']]);
+  });
+
+  it('ne supprime rien quand aucun cache n’appartient à Mia', async () => {
+    const remove = stubCaches(['autre-cache']);
+
+    await expect(deletePrecaches()).resolves.toBeUndefined();
+
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('se passe de CacheStorage quand le navigateur ne l’expose pas (contexte non sécurisé)', async () => {
+    expect(typeof caches).toBe('undefined');
+
+    await expect(deletePrecaches()).resolves.toBeUndefined();
   });
 });
 
@@ -248,6 +345,9 @@ describe('registerServiceWorker', () => {
 });
 
 describe('ServiceWorkerRegistrar', () => {
+  /** Le suivi a ses propres tests (`pwa-update.test.ts`) : seul son démarrage compte ici. */
+  let start: MockInstance<typeof appUpdate.start>;
+
   beforeEach(() => {
     platform.native = false;
     register.mockReset();
@@ -257,10 +357,12 @@ describe('ServiceWorkerRegistrar', () => {
     stubServiceWorker();
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/mia');
+    start = vi.spyOn(appUpdate, 'start').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     removeServiceWorker();
     Reflect.deleteProperty(document, 'readyState');
   });
@@ -310,5 +412,67 @@ describe('ServiceWorkerRegistrar', () => {
       expect(stale.unregister).toHaveBeenCalledOnce();
     });
     expect(register).not.toHaveBeenCalled();
+  });
+
+  describe('suivi des mises à jour', () => {
+    it('démarre avec l’inscription obtenue, une fois la page chargée', async () => {
+      setReadyState('loading');
+      render(createElement(ServiceWorkerRegistrar));
+      await flushPromises();
+      expect(start).not.toHaveBeenCalled();
+
+      window.dispatchEvent(new Event('load'));
+
+      await waitFor(() => {
+        expect(start).toHaveBeenCalledExactlyOnceWith(registration);
+      });
+    });
+
+    it('démarre avec l’inscription obtenue quand la page est déjà chargée', async () => {
+      setReadyState('complete');
+      render(createElement(ServiceWorkerRegistrar));
+
+      await waitFor(() => {
+        expect(start).toHaveBeenCalledExactlyOnceWith(registration);
+      });
+    });
+
+    it('ne démarre pas quand l’enregistrement échoue', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      register.mockRejectedValue(new Error('SecurityError'));
+      setReadyState('complete');
+
+      render(createElement(ServiceWorkerRegistrar));
+      await waitFor(() => {
+        expect(warn).toHaveBeenCalledOnce();
+      });
+      await flushPromises();
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('ne démarre pas en développement', async () => {
+      vi.stubEnv('NODE_ENV', 'development');
+      setReadyState('complete');
+
+      render(createElement(ServiceWorkerRegistrar));
+      await waitFor(() => {
+        expect(getRegistrations).toHaveBeenCalledOnce();
+      });
+      await flushPromises();
+
+      expect(start).not.toHaveBeenCalled();
+    });
+
+    it('ne démarre pas dans l’APK Capacitor', async () => {
+      platform.native = true;
+      setReadyState('complete');
+
+      render(createElement(ServiceWorkerRegistrar));
+      await flushPromises();
+
+      expect(register).not.toHaveBeenCalled();
+      expect(start).not.toHaveBeenCalled();
+    });
   });
 });

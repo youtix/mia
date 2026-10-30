@@ -1,7 +1,7 @@
 'use client';
 
 import type { ZoneRegistry } from '@/components/progression/zone-chain';
-import { FocusableButton, ModalDialog, type FocusableButtonVariant } from '@/components/ui';
+import { FocusableButton, ModalDialog } from '@/components/ui';
 import {
   FOCUS_TRANSITION_CLASSES,
   FOCUS_VISIBLE_CLASSES,
@@ -12,21 +12,15 @@ import { parseBackupJson, useMiaStorage } from '@/core/storage';
 import { cn } from '@/lib/cn';
 import { Capacitor } from '@capacitor/core';
 import { Copy, Download, FolderOpen, Save, Trash2, TriangleAlert, Upload } from 'lucide-react';
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type KeyboardEvent,
-  type ReactNode,
-} from 'react';
+import { useEffect, useId, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { ConfirmActions } from './ConfirmActions';
 import {
   BACKUP_MESSAGES,
   describeBackupProfiles,
   describeDownload,
   getBackupFileName,
 } from './labels';
+import { SettingsFeedback, SettingsGroup, type SettingsFeedbackMessage } from './SettingsGroup';
 import { SettingsSection } from './SettingsSection';
 
 /** Délai avant de révoquer l'URL du Blob téléchargé : certains navigateurs le lisent après le clic. */
@@ -36,11 +30,6 @@ export const EXPORT_URL_REVOKE_DELAY_MS = 1_000;
 type BackupZone = 'export' | 'file' | 'paste' | 'reset';
 
 const BACKUP_ZONES: readonly BackupZone[] = ['export', 'file', 'paste', 'reset'];
-
-interface FeedbackMessage {
-  tone: 'success' | 'error';
-  text: string;
-}
 
 /** Sauvegarde lue (fichier ou collage) et validée, en attente de confirmation. */
 interface PendingImport {
@@ -91,6 +80,8 @@ export interface BackupPanelProps {
   register: ZoneRegistry<'backup'>['register'];
   /** Haut bloqué en haut du panneau : l'écran repasse au réglage précédent */
   onExitUp: () => void;
+  /** Bas bloqué en bas du panneau : l'écran passe à la zone suivante ; absent, le curseur reste là */
+  onExitDown?: () => void;
   /** Un élément du panneau reçoit le focus DOM (Tab, clic) : activer le panneau */
   onFocusZone: () => void;
   /** Retour (Échap, Retour arrière, bouton Android) */
@@ -108,6 +99,7 @@ export function BackupPanel({
   isActive,
   register,
   onExitUp,
+  onExitDown,
   onFocusZone,
   onBack,
   onReset,
@@ -119,8 +111,8 @@ export function BackupPanel({
   const exportCount = isNative ? 1 : 2;
   const copyIndex = exportCount - 1;
   const [zone, setZone] = useState<BackupZone>('export');
-  const [exportFeedback, setExportFeedback] = useState<FeedbackMessage | null>(null);
-  const [importFeedback, setImportFeedback] = useState<FeedbackMessage | null>(null);
+  const [exportFeedback, setExportFeedback] = useState<SettingsFeedbackMessage | null>(null);
+  const [importFeedback, setImportFeedback] = useState<SettingsFeedbackMessage | null>(null);
   const [pasted, setPasted] = useState('');
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   // Même valeur, lue par « Remplacer » : la modale fermée garde ses boutons (et leurs anciennes
@@ -172,18 +164,24 @@ export function BackupPanel({
     const next = BACKUP_ZONES[direction === 'down' ? index + 1 : index - 1];
     if (!next) {
       if (direction === 'up') onExitUp();
+      else onExitDown?.();
       return;
     }
     if (next === 'paste') pasteZone.setFocusedIndex(direction === 'down' ? 0 : 1);
     setZone(next);
   };
 
-  // Arrivée depuis les réglages de l'appareil (par le haut) : premier bouton d'export.
+  // Arrivée par le bas (`last`, depuis la section « Application ») : « Tout effacer ». Toute autre
+  // arrivée vient du haut (réglages au-dessus du panneau) : premier bouton d'export.
   const { setFocusedIndex: setExportIndex } = exportZone;
   useEffect(
     () =>
       register('backup', {
-        enter: () => {
+        enter: (entry) => {
+          if (entry.kind === 'last') {
+            setZone('reset');
+            return;
+          }
           setExportIndex(0);
           setZone('export');
         },
@@ -292,7 +290,7 @@ export function BackupPanel({
 
   return (
     <SettingsSection title="Sauvegarde" icon={<Save className="size-7" />}>
-      <BackupGroup
+      <SettingsGroup
         title="Exporter"
         description="Garde une copie des profils et de leurs étoiles, avant une réinstallation ou pour passer de la tablette à la TV."
       >
@@ -321,10 +319,10 @@ export function BackupPanel({
             Copier
           </FocusableButton>
         </div>
-        <Feedback message={exportFeedback} />
-      </BackupGroup>
+        <SettingsFeedback message={exportFeedback} />
+      </SettingsGroup>
 
-      <BackupGroup
+      <SettingsGroup
         title="Importer"
         description="Restaure une sauvegarde exportée : les profils actuels seront remplacés, les réglages de l’appareil conservés."
       >
@@ -394,10 +392,10 @@ export function BackupPanel({
             Importer
           </FocusableButton>
         </div>
-        <Feedback message={importFeedback} />
-      </BackupGroup>
+        <SettingsFeedback message={importFeedback} />
+      </SettingsGroup>
 
-      <BackupGroup
+      <SettingsGroup
         title="Réinitialiser"
         description="Efface tous les profils, leurs étoiles et les réglages de cet appareil."
       >
@@ -414,7 +412,7 @@ export function BackupPanel({
         >
           Tout effacer
         </FocusableButton>
-      </BackupGroup>
+      </SettingsGroup>
 
       <ModalDialog
         isOpen={pendingImport !== null}
@@ -482,100 +480,5 @@ export function BackupPanel({
         </ModalDialog>
       </ModalDialog>
     </SettingsSection>
-  );
-}
-
-interface BackupGroupProps {
-  title: string;
-  description: string;
-  children: ReactNode;
-}
-
-/** Sous-partie de la sauvegarde (« Exporter », « Importer », « Réinitialiser ») : groupe nommé et décrit. */
-function BackupGroup({ title, description, children }: BackupGroupProps) {
-  const titleId = useId();
-  const descriptionId = useId();
-
-  return (
-    <div
-      role="group"
-      aria-labelledby={titleId}
-      aria-describedby={descriptionId}
-      className="flex flex-col gap-3"
-    >
-      <div className="flex flex-col gap-1">
-        <h3 id={titleId} className="text-fluid-lg font-semibold">
-          {title}
-        </h3>
-        <p id={descriptionId} className="text-fluid-sm text-slate-300">
-          {description}
-        </p>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-/**
- * Confirmation (`role="status"`, région persistante pour être annoncée) ou erreur (`role="alert"`),
- * sur une ligne réservée : la mise en page ne saute pas quand un message apparaît.
- */
-function Feedback({ message }: { message: FeedbackMessage | null }) {
-  return (
-    <div className="min-h-6 text-fluid-sm font-semibold">
-      <p role="status" className="text-emerald-300">
-        {message?.tone === 'success' ? message.text : null}
-      </p>
-      {message?.tone === 'error' ? (
-        <p role="alert" className="text-rose-300">
-          {message.text}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-interface ConfirmActionsProps {
-  scopeId: string;
-  confirmLabel: string;
-  confirmVariant?: FocusableButtonVariant;
-  confirmIcon?: ReactNode;
-  onCancel: () => void;
-  onConfirm: () => void;
-}
-
-/** Zone déclarée dans la modale (elle s'empile au-dessus de l'écran, FEAT-04) ; curseur sur Annuler. */
-function ConfirmActions({
-  scopeId,
-  confirmLabel,
-  confirmVariant = 'primary',
-  confirmIcon,
-  onCancel,
-  onConfirm,
-}: ConfirmActionsProps) {
-  const actions = useGridNavigation({ scopeId, rows: 1, cols: 2 });
-
-  return (
-    <div className="flex flex-wrap justify-center gap-3">
-      <FocusableButton
-        ref={actions.getItemRef(0)}
-        isFocused={actions.isItemFocused(0)}
-        variant="secondary"
-        size="lg"
-        onClick={onCancel}
-      >
-        Annuler
-      </FocusableButton>
-      <FocusableButton
-        ref={actions.getItemRef(1)}
-        isFocused={actions.isItemFocused(1)}
-        variant={confirmVariant}
-        size="lg"
-        leftIcon={confirmIcon}
-        onClick={onConfirm}
-      >
-        {confirmLabel}
-      </FocusableButton>
-    </div>
   );
 }

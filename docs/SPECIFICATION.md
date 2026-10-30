@@ -11,7 +11,7 @@
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
 4. [Conception Détaillée des Jeux (Memory & Traffic Jam)](#4-conception-détaillée-des-jeux-memory--traffic-jam)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-19`)](#6-découpage-en-features-atomiques-feat-01-à-feat-19)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-20`)](#6-découpage-en-features-atomiques-feat-01-à-feat-20)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -31,6 +31,7 @@
    - [FEAT-17.md](./FEAT-17.md) — PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes
    - [FEAT-18.md](./FEAT-18.md) — Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)
    - [FEAT-19.md](./FEAT-19.md) — Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)
+   - [FEAT-20.md](./FEAT-20.md) — Mises à jour de la PWA, Réparation & Écran d'Erreur
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -345,13 +346,18 @@ flowchart TD
     F06 --> F19["FEAT-19 : Réglages de jeu par profil"]
     F11 --> F19
     F18 --> F19
+
+    F17 --> F20["FEAT-20 : Mises à jour PWA, Réparation & Écran d'Erreur"]
+    F18 --> F20
+    F08 --> F20
+    F04 --> F20
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-19`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-20`)
 
-Chacune des 19 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 20 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -374,6 +380,7 @@ Chacune des 19 features possède sa spécification complète et autonome pour l'
 | **17** | [FEAT-17.md](./FEAT-17.md) | **PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes** | `FEAT-01`, `FEAT-02` |
 | **18** | [FEAT-18.md](./FEAT-18.md) | **Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)** | `FEAT-05`, `FEAT-08` |
 | **19** | [FEAT-19.md](./FEAT-19.md) | **Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)** | `FEAT-06`, `FEAT-11`, `FEAT-18` |
+| **20** | [FEAT-20.md](./FEAT-20.md) | **Mises à jour de la PWA, Réparation & Écran d'Erreur** | `FEAT-04`, `FEAT-08`, `FEAT-17`, `FEAT-18` |
 
 ---
 
@@ -526,7 +533,7 @@ Chacune des 19 features possède sa spécification complète et autonome pour l'
 
 ### `FEAT-17` : PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes ([FEAT-17.md](./FEAT-17.md))
 
-* **Objectif** : Rendre la PWA Web (GitHub Pages) installable partout et 100% fonctionnelle hors-ligne : service worker maison sans dépendance runtime qui pré-cache tout l'export `out/` (compatible `basePath`, jamais enregistré dans l'APK Capacitor ni en développement), mises à jour atomiques au lancement suivant, icônes PNG `any`/`maskable` et `apple-touch-icon` générées depuis les SVG de `FEAT-01`.
+* **Objectif** : Rendre la PWA Web (GitHub Pages) installable partout et 100% fonctionnelle hors-ligne : service worker maison sans dépendance runtime qui pré-cache tout l'export `out/` (compatible `basePath`, jamais enregistré dans l'APK Capacitor ni en développement), mises à jour atomiques (jamais deux versions mélangées ; une version prête s'active à la fermeture de toutes les fenêtres, ou à la demande du joueur depuis `FEAT-20`), icônes PNG `any`/`maskable` et `apple-touch-icon` générées depuis les SVG de `FEAT-01`.
 * **Dépendances** : `FEAT-01`, `FEAT-02`.
 
 ---
@@ -544,6 +551,14 @@ Chacune des 19 features possède sa spécification complète et autonome pour l'
 * **Objectif** : Permettre à chaque profil d'ajuster, depuis une section « Jeux » de l'écran Réglages, deux facteurs de temps de *Memory* (× 0,5 à × 2 : temps de mémorisation appliqué au `previewSeconds` du niveau, temps d'affichage des cartes d'une erreur), enregistrés avec le profil (`UserProfile.gameSettings`, sans montée de version du schéma) et appliqués par le plateau sans modifier la progression ni la logique du catalogue, dont les huit étoiles avec aperçu passent à une base uniforme de 5 s.
 * **Dépendances** : `FEAT-06`, `FEAT-11`, `FEAT-18`.
 * **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-19.md](./FEAT-19.md).
+
+---
+
+### `FEAT-20` : Mises à jour de la PWA, Réparation & Écran d'Erreur ([FEAT-20.md](./FEAT-20.md))
+
+* **Objectif** : Faire arriver les nouvelles versions jusqu'à la PWA installée et donner une issue au joueur quand l'application se comporte mal. Une bannière du Hub propose la version prête (le service worker de `FEAT-17` n'appelle toujours pas `skipWaiting()` de lui-même : le joueur accepte, le worker en attente s'active et chaque page ouverte se recharge) ; la recherche part au lancement et à chaque retour au premier plan, au plus une fois par minute. Une section « Application » de l'écran Réglages affiche la version (APK compris), cherche une mise à jour à la demande et répare l'application (désinscrit le service worker de Mia, supprime ses seuls caches, recharge depuis le réseau, sans toucher à la sauvegarde). Un écran d'erreur global (`global-error.tsx`) propose de recharger ou de réparer au lieu de la page d'erreur par défaut de Next.js. L'APK n'est pas concerné : il garde ses mises à jour par F-Droid ou GitHub Releases.
+* **Dépendances** : `FEAT-04`, `FEAT-08`, `FEAT-17`, `FEAT-18`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-20.md](./FEAT-20.md).
 
 ---
 

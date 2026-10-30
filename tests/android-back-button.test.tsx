@@ -4,6 +4,7 @@ import {
   NavigationLayer,
   NavigationProvider,
   useAndroidBackButton,
+  useAndroidBackExit,
   useGridNavigation,
 } from '@/core/navigation';
 import { act, render, renderHook, waitFor } from '@testing-library/react';
@@ -212,5 +213,41 @@ describe('useAndroidBackButton', () => {
     });
 
     expect(app.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('useAndroidBackExit', () => {
+  it('quitte Mia sans NavigationProvider ni routeur, même hors du Hub', () => {
+    goTo('/memory/');
+    renderHook(() => {
+      useAndroidBackExit();
+    });
+
+    pressBack();
+
+    expect(app.exitApp).toHaveBeenCalledOnce();
+    expect(router.replace).not.toHaveBeenCalled();
+  });
+
+  it('ne fait rien hors de l’APK', () => {
+    platform.native = false;
+
+    renderHook(() => {
+      useAndroidBackExit();
+    });
+
+    expect(app.addListener).not.toHaveBeenCalled();
+  });
+
+  it('retire l’écouteur au démontage', async () => {
+    const { unmount } = renderHook(() => {
+      useAndroidBackExit();
+    });
+
+    unmount();
+
+    await waitFor(() => {
+      expect(app.remove).toHaveBeenCalledOnce();
+    });
   });
 });

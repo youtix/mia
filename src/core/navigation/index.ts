@@ -30,7 +30,7 @@ export {
   type NavigationTarget,
   type Point2D,
 } from './types';
-export { isHubPathname, useAndroidBackButton } from './useAndroidBackButton';
+export { isHubPathname, useAndroidBackButton, useAndroidBackExit } from './useAndroidBackButton';
 export { countGridColumns, useGridColumns, type UseGridColumnsResult } from './useGridColumns';
 export {
   useGridNavigation,

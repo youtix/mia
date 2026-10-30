@@ -6,11 +6,13 @@ import { WaitingScreen } from '@/components/progression/WaitingScreen';
 import { useZoneRegistry } from '@/components/progression/zone-chain';
 import { AppShell, DEFAULT_REMOTE_HINTS, FadeIn, FocusableButton } from '@/components/ui';
 import { useGridNavigation } from '@/core/navigation';
+import { useAppUpdateStatus } from '@/core/pwa';
 import { DEFAULT_MEMORY_GAME_SETTINGS, useMiaStorage } from '@/core/storage';
 import { cn } from '@/lib/cn';
 import type { TimeFactor } from '@/types/mia';
 import { Check, Contrast, Smartphone, Tv, Volume2, VolumeX } from 'lucide-react';
-import { useId, useState, type ReactNode, type Ref } from 'react';
+import { useId, useRef, useState, type ReactNode, type Ref } from 'react';
+import { ApplicationSection } from './ApplicationSection';
 import { BackupPanel } from './BackupPanel';
 import { GameSettingsSection } from './GameSettingsSection';
 import { SETTINGS_TEXTS, TIME_FACTOR_OPTIONS, TV_MODE_OPTIONS } from './labels';
@@ -18,10 +20,19 @@ import { SettingsSection } from './SettingsSection';
 
 /**
  * Zones D-Pad de l'écran, de haut en bas : Retour, chaque réglage de l'appareil, les deux
- * sélecteurs de temps de Memory (section « Jeux », présente avec un profil actif), la sauvegarde.
+ * sélecteurs de temps de Memory (section « Jeux », présente avec un profil actif), la sauvegarde,
+ * les boutons de la section « Application » (présents avec un service worker : sans lui, la chaîne
+ * s'arrête à la sauvegarde).
  */
 type SettingsZone =
-  'header' | 'tv' | 'sound' | 'contrast' | 'memoryPreview' | 'memoryMismatch' | 'backup';
+  | 'header'
+  | 'tv'
+  | 'sound'
+  | 'contrast'
+  | 'memoryPreview'
+  | 'memoryMismatch'
+  | 'backup'
+  | 'application';
 
 /** Position d'un facteur dans les sélecteurs de temps (options dans l'ordre de `TIME_FACTORS`). */
 function indexOfTimeFactor(factor: TimeFactor): number {
@@ -33,9 +44,9 @@ function indexOfTimeFactor(factor: TimeFactor): number {
 
 /**
  * Écran Réglages & Sauvegarde (FEAT-18) : réglages de l'appareil (mode TV, son, contraste élevé),
- * réglages de jeu du profil actif (FEAT-19) et sauvegarde (export, import, réinitialisation), au
- * doigt comme à la télécommande ; Retour ramène au Hub. Tant que la sauvegarde n'est pas chargée,
- * un écran d'attente le remplace.
+ * réglages de jeu du profil actif (FEAT-19), sauvegarde (export, import, réinitialisation) et
+ * application (version, mises à jour, réparation, FEAT-20), au doigt comme à la télécommande ;
+ * Retour ramène au Hub. Tant que la sauvegarde n'est pas chargée, un écran d'attente le remplace.
  */
 export function SettingsScreen() {
   const { isLoaded } = useMiaStorage();
@@ -45,6 +56,7 @@ export function SettingsScreen() {
 function SettingsContent() {
   const { state, activeProfile, updateSettings } = useMiaStorage();
   const { backToHub } = useGameNavigation();
+  const appUpdateStatus = useAppUpdateStatus();
   const { tvModeOverride, soundEnabled, highContrastMode } = state.settings;
   const chosenTvIndex = Math.max(
     TV_MODE_OPTIONS.findIndex((option) => option.value === tvModeOverride),
@@ -63,7 +75,8 @@ function SettingsContent() {
   // au-dessus de la sauvegarde. Dérivée au rendu plutôt que corrigée après coup par un effet.
   const isGameZone = activeZone === 'memoryPreview' || activeZone === 'memoryMismatch';
   const zone: SettingsZone = !activeProfile && isGameZone ? 'contrast' : activeZone;
-  const zones = useZoneRegistry<'backup'>();
+  const zones = useZoneRegistry<'backup' | 'application'>();
+  const applicationRef = useRef<HTMLElement>(null);
   const tvLabelId = useId();
   const tvNoteId = useId();
   const soundNoteId = useId();
@@ -161,6 +174,26 @@ function SettingsContent() {
   const enterBackup = () => {
     zones.enter('backup', { kind: 'first' });
     setActiveZone('backup');
+  };
+
+  /** Retour dans la sauvegarde, par le bas : sur « Tout effacer », son dernier bouton. */
+  const returnToBackup = () => {
+    zones.enter('backup', { kind: 'last' });
+    setActiveZone('backup');
+  };
+
+  /** Arrivée dans la section « Application », par le haut : sur son premier bouton. */
+  const enterApplication = () => {
+    zones.enter('application', { kind: 'first' });
+    setActiveZone('application');
+  };
+
+  /**
+   * Sans service worker, la section n'a aucun bouton où poser le curseur : Bas depuis « Tout effacer »
+   * la fait défiler quand même, sinon son numéro de version resterait hors de vue sur une TV.
+   */
+  const revealApplication = () => {
+    applicationRef.current?.scrollIntoView({ block: 'nearest' });
   };
 
   const focusZone = (zone: SettingsZone) => () => {
@@ -266,9 +299,20 @@ function SettingsContent() {
           isActive={zone === 'backup'}
           register={zones.register}
           onExitUp={activeProfile ? enterMemoryMismatch : focusZone('contrast')}
+          onExitDown={appUpdateStatus === 'unsupported' ? revealApplication : enterApplication}
           onFocusZone={focusZone('backup')}
           onBack={backToHub}
           onReset={backToHub}
+        />
+
+        <ApplicationSection
+          ref={applicationRef}
+          status={appUpdateStatus}
+          isActive={zone === 'application'}
+          register={zones.register}
+          onExitUp={returnToBackup}
+          onFocusZone={focusZone('application')}
+          onBack={backToHub}
         />
       </FadeIn>
     </AppShell>

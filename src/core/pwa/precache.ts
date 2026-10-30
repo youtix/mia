@@ -17,6 +17,12 @@ export const CACHE_PREFIX = 'mia-precache-';
 /** Page servie hors-ligne pour une route inconnue (export statique Next : `404.html`). */
 export const NOT_FOUND_KEY = '404.html';
 
+/** Message de la page au worker en attente : le joueur accepte la mise à jour (FEAT-20). */
+export const SKIP_WAITING_MESSAGE = 'mia-skip-waiting';
+
+/** Message de la page au worker actif : refaire le pré-cache s'il a disparu (FEAT-20). */
+export const RESTORE_PRECACHE_MESSAGE = 'mia-restore-precache';
+
 /** Le service worker compilé à la racine de `out/` ne doit jamais se pré-cacher lui-même. */
 const SERVICE_WORKER_FILE = 'sw.js';
 
