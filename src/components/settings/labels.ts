@@ -20,7 +20,8 @@ export const TV_MODE_OPTIONS: readonly TvModeOption[] = [
 export const SETTINGS_TEXTS = {
   tvModeNote:
     'Force la mise en page TV (marges, aides de la télécommande) quand la détection automatique se trompe, par exemple avec une télécommande à pointeur.',
-  soundNote: 'Aucun son pour l’instant : les futurs effets sonores respecteront ce réglage.',
+  soundNote:
+    'Voix de la mascotte et effets sonores des jeux. Voix de synthèse Piper « MLS » (corpus Multilingual LibriSpeech, CC BY 4.0).',
   contrastNote: 'Texte plus clair, bordures et anneau de focus renforcés, fonds opaques.',
 } as const;
 

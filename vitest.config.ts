@@ -44,6 +44,13 @@ export default defineConfig({
           branches: 90,
           statements: 90,
         },
+        // Moteur pur d'Attrape-Piège (FEAT-23) : 90 % exigés, hors composants d'interface (FEAT-24).
+        'src/games/bear-sort/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },

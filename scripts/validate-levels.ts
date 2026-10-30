@@ -1,13 +1,17 @@
 /**
- * `npm run validate:levels` (FEAT-14) : valide tous les catalogues de niveaux de Mia (Memory et
- * Traffic Jam) et affiche un résumé par jeu (niveaux par palier, puis chaque étoile avec sa
+ * `npm run validate:levels` (FEAT-14) : valide tous les catalogues de niveaux de Mia (Memory,
+ * Traffic Jam et Attrape-Piège) et affiche un résumé par jeu (niveaux par palier, puis chaque étoile avec sa
  * configuration : coups optimaux mesurés par le solveur BFS pour Traffic Jam). Code de sortie 1 à
  * la moindre anomalie (`validate:all`, CI). Modules importés directement, jamais les barrels
- * (`@/games/memory` et `@/games/traffic-jam` ré-exportent des composants React) : le script
+ * (`@/games/memory`, `@/games/traffic-jam` et `@/games/bear-sort` ré-exportent des composants
+ * React) : le script
  * s'exécute avec tsx, sans DOM.
  */
 import { DIFFICULTY_TIER_IDS, sortLevels } from '@/core/progression/progression-engine';
 import type { BaseLevelDefinition, CatalogValidationResult } from '@/core/progression/types';
+import { BEAR_SORT_CATALOG, validateBearSortCatalog } from '@/games/bear-sort/catalog';
+import { getRuleLabel } from '@/games/bear-sort/labels';
+import type { BearSortLevelConfig } from '@/games/bear-sort/types';
 import { MEMORY_CATALOG, validateMemoryCatalog } from '@/games/memory/catalog';
 import type { MemoryLevelConfig } from '@/games/memory/types';
 import { TRAFFIC_JAM_CATALOG, validateTrafficJamCatalog } from '@/games/traffic-jam/catalog';
@@ -47,6 +51,13 @@ const TRAFFIC_JAM: CatalogCheck<TrafficJamLevelConfig> = {
     ].join(', '),
 };
 
+const BEAR_SORT: CatalogCheck<BearSortLevelConfig> = {
+  title: 'Attrape-Piège',
+  catalog: BEAR_SORT_CATALOG,
+  validate: () => validateBearSortCatalog(BEAR_SORT_CATALOG),
+  describe: ({ phases }) => phases.map((phase) => getRuleLabel(phase.rule)).join(' → '),
+};
+
 /** Niveaux par palier : « Très Facile 4 · Facile 4 · … ». */
 function describeTiers(catalog: readonly BaseLevelDefinition[]): string {
   return DIFFICULTY_TIER_IDS.map((tier) => {
@@ -83,8 +94,8 @@ function report<TConfig>({ title, catalog, validate, describe }: CatalogCheck<TC
   return errors.length;
 }
 
-const checks = [MEMORY, TRAFFIC_JAM] as const;
-const anomalies = report(MEMORY) + report(TRAFFIC_JAM);
+const checks = [MEMORY, TRAFFIC_JAM, BEAR_SORT] as const;
+const anomalies = report(MEMORY) + report(TRAFFIC_JAM) + report(BEAR_SORT);
 const levelCount = checks.reduce((total, check) => total + check.catalog.length, 0);
 
 if (anomalies > 0) {

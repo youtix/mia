@@ -1,4 +1,4 @@
-Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification.
+Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique, planification, flexibilité mentale et inhibition.
 
 Une seule application pour trois usages :
 
@@ -10,7 +10,10 @@ Les jeux :
 
 - Memory : retrouve les paires (ou les triplets) de cartes identiques ; dans les niveaux avancés, des cartes échangent leur place après tes erreurs.
 - Traffic Jam : libère la voiture rouge du parking en déplaçant les autres véhicules, en un minimum de coups.
+- Attrape-Piège (pour les 3 à 6 ans) : range les ours dans la bonne boîte, par couleur ou par taille, jusqu'à ce qu'un panneau STOP change la règle. La mascotte dit les règles à voix haute, sans aucun texte à lire pendant la partie, et personne ne peut perdre.
 
 Une progression par étoiles sur cinq paliers de difficulté, de Très Facile à Très Difficile : chaque niveau réussi rapporte une étoile, un sans-faute rapporte une couronne. Plusieurs profils peuvent coexister sur le même appareil (famille, salon partagé), chacun avec sa propre progression. La sauvegarde s'exporte et s'importe au format JSON.
 
 Respect de la vie privée : Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqueur et sans service Google. Toutes les données restent sur l'appareil.
+
+Voix de la mascotte : voix de synthèse Piper « MLS » (corpus Multilingual LibriSpeech, CC BY 4.0).

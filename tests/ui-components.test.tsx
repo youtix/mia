@@ -388,6 +388,33 @@ describe('AppShell', () => {
 
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
+
+  it('montre le titre et le libellé de Retour par défaut, dès le palier sm', () => {
+    render(
+      <AppShell title="Memory" onBack={vi.fn()}>
+        <p>Carte</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Memory' })).not.toHaveClass('sr-only');
+    expect(within(screen.getByRole('button', { name: 'Retour' })).getByText('Retour')).toHaveClass(
+      'sr-only',
+      'sm:not-sr-only',
+    );
+  });
+
+  it('réserve le titre et le libellé de Retour aux lecteurs d’écran sur un écran sans texte', () => {
+    render(
+      <AppShell title="Étoile #3" onBack={vi.fn()} isHeaderTextHidden>
+        <p>Plateau</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Étoile #3' })).toHaveClass('sr-only');
+    const label = within(screen.getByRole('button', { name: 'Retour' })).getByText('Retour');
+    expect(label).toHaveClass('sr-only');
+    expect(label).not.toHaveClass('sm:not-sr-only');
+  });
 });
 
 describe('ModalDialog', () => {
@@ -488,6 +515,34 @@ describe('ModalDialog', () => {
     expect(dialog).toHaveAccessibleDescription('Étoile #3 gagnée');
     expect(container).not.toContainElement(dialog);
     expect(dialog).toHaveFocus();
+  });
+
+  it('réserve le titre aux lecteurs d’écran sur demande, en le gardant pour nommer la modale', () => {
+    render(
+      <ModalDialog isOpen title="Étoile #3 gagnée" isTitleHidden subtitle="Bravo">
+        <p>Contenu</p>
+      </ModalDialog>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Étoile #3 gagnée' });
+    const title = within(dialog).getByRole('heading', { level: 2 });
+    expect(title).toHaveClass('sr-only');
+    // Conteneur retiré de la mise en page : ni espace vide, ni sous-titre masqué.
+    expect(title.parentElement).toHaveClass('contents');
+    expect(within(dialog).getByText('Bravo')).not.toHaveClass('sr-only');
+    expect(dialog).toHaveAccessibleDescription('Bravo');
+  });
+
+  it('affiche le titre par défaut', () => {
+    render(
+      <ModalDialog isOpen title="Pause">
+        <p>Contenu</p>
+      </ModalDialog>,
+    );
+
+    const title = screen.getByRole('heading', { level: 2, name: 'Pause' });
+    expect(title).not.toHaveClass('sr-only');
+    expect(title.parentElement).not.toHaveClass('contents');
   });
 
   it('impose un choix sans onClose : ni bouton Fermer, ni fermeture, Échap remonte au D-Pad', () => {

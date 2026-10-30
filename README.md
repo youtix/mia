@@ -3,7 +3,7 @@
 [![CI](https://github.com/youtix/mia/actions/workflows/ci.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/ci.yml)
 [![Release & Deploy](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml)
 
-**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification. Une seule base de code pour trois usages :
+**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique, planification, flexibilité mentale et inhibition. Une seule base de code pour trois usages :
 
 - **Smartphone et tablette** : au doigt (tap, glisser-déposer).
 - **Android TV** : à la télécommande (flèches, OK, Retour), avec de grands boutons, des aides à l'écran et des marges adaptées au téléviseur (« 10-foot UI »).
@@ -21,17 +21,19 @@ Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqu
 - [Ajouter des niveaux (et des étoiles)](#ajouter-des-niveaux-et-des-étoiles)
 - [Ajouter un nouveau jeu](#ajouter-un-nouveau-jeu)
 - [Structure du dépôt](#structure-du-dépôt)
+- [Crédits de la voix](#crédits-de-la-voix)
 - [Documentation et licence](#documentation-et-licence)
 
 ## Fonctionnalités
 
-| Domaine         | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                      |
-| :-------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Memory**      | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu initial (5 s, ajustable par joueur), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs. |
-| **Traffic Jam** | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                  |
-| **Progression** | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne. Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                       |
-| **Profils**     | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                            |
-| **Réglages**    | Mode TV forcé ou automatique, son, contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation.                                                                                                                                      |
+| Domaine           | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| :---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Memory**        | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu initial (5 s, ajustable par joueur), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs.                                                                                                                                |
+| **Traffic Jam**   | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                                                                                                                                                 |
+| **Attrape-Piège** | Pour les 3 à 6 ans : range les ours dans la bonne boîte, par couleur ou par taille, jusqu'à ce qu'un panneau STOP change la règle pendant que d'autres ours attendent ; plus loin, « tous les ours, sauf… ». La mascotte dit les règles à voix haute, aucun texte à lire pendant la partie, et personne ne peut perdre : une étoile en finissant, une couronne sans aucun rebond. Un jeu qui exerce la flexibilité mentale et l'inhibition, sans prétention clinique ni thérapeutique. |
+| **Progression**   | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne. Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                                                                                                                                                      |
+| **Profils**       | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                                                                                                                                                           |
+| **Réglages**      | Mode TV forcé ou automatique, son (voix de la mascotte et effets sonores des jeux), contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, réinitialisation.                                                                                                                                                                                                                    |
 
 ## Architecture
 
@@ -73,6 +75,7 @@ flowchart LR
 - **Framer Motion** et transitions CSS accélérées pour rester fluide sur les boîtiers TV modestes.
 - **Capacitor 8** (`@capacitor/android`, `@capacitor/app` pour le bouton Retour de la télécommande, `@capacitor/preferences` pour la sauvegarde native).
 - **Service worker maison** (aucune dépendance à l'exécution) qui pré-cache tout l'export statique de la PWA.
+- **Web Audio API** (aucune dépendance) : voix de mascotte en clips MP3 embarqués, effets sonores synthétisés.
 - **Vitest + Testing Library**, **ESLint 9** (`strictTypeChecked`, `jsx-a11y` strict), **Prettier**, **Husky**, **commitlint**, **semantic-release**.
 
 ### Un code, trois supports
@@ -131,25 +134,27 @@ npm run dev      # http://localhost:3000
 
 ### Scripts npm
 
-| Script                    | Rôle                                                                                                                |
-| :------------------------ | :------------------------------------------------------------------------------------------------------------------ |
-| `npm run dev`             | Serveur de développement Next.js.                                                                                   |
-| `npm run build`           | Export statique dans `out/` puis génération du service worker (`scripts/build-sw.ts`).                              |
-| `npm start`               | Sert `out/` en local (`npx serve`).                                                                                 |
-| `npm run cap:sync`        | `npm run build` puis `npx cap sync android` : copie `out/` et les plugins dans le projet Android.                   |
-| `npm run icons`           | Régénère les PNG d'installation depuis `public/icons/icon-512.svg` (à lancer seulement si le SVG change).           |
-| `npm run typecheck`       | `tsc --noEmit` sur l'application et sur le programme du service worker.                                             |
-| `npm run lint`            | ESLint strict, 0 avertissement toléré (`npm run lint:fix` corrige ce qui peut l'être).                              |
-| `npm run format:check`    | Prettier (`npm run format` reformate tout le dépôt).                                                                |
-| `npm test`                | Tests Vitest (`npm run test:watch` en continu, `npm run test:coverage` avec la couverture).                         |
-| `npm run validate:levels` | Valide tous les catalogues de niveaux (Memory et Traffic Jam, solveur BFS compris) et affiche un résumé par jeu.    |
-| `npm run validate:all`    | Enchaîne `format:check`, `lint`, `typecheck`, `validate:levels`, `test:coverage` et `build` : ce que la CI exécute. |
+| Script                    | Rôle                                                                                                                          |
+| :------------------------ | :---------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`             | Serveur de développement Next.js.                                                                                             |
+| `npm run build`           | Export statique dans `out/` puis génération du service worker (`scripts/build-sw.ts`).                                        |
+| `npm start`               | Sert `out/` en local (`npx serve`).                                                                                           |
+| `npm run cap:sync`        | `npm run build` puis `npx cap sync android` : copie `out/` et les plugins dans le projet Android.                             |
+| `npm run icons`           | Régénère les PNG d'installation depuis `public/icons/icon-512.svg` (à lancer seulement si le SVG change).                     |
+| `npm run typecheck`       | `tsc --noEmit` sur l'application et sur le programme du service worker.                                                       |
+| `npm run lint`            | ESLint strict, 0 avertissement toléré (`npm run lint:fix` corrige ce qui peut l'être).                                        |
+| `npm run format:check`    | Prettier (`npm run format` reformate tout le dépôt).                                                                          |
+| `npm test`                | Tests Vitest (`npm run test:watch` en continu, `npm run test:coverage` avec la couverture).                                   |
+| `npm run validate:levels` | Valide tous les catalogues de niveaux (Memory, Traffic Jam avec son solveur BFS, Attrape-Piège) et affiche un résumé par jeu. |
+| `npm run validate:all`    | Enchaîne `format:check`, `lint`, `typecheck`, `validate:levels`, `test:coverage` et `build` : ce que la CI exécute.           |
 
 Scripts de la chaîne de release, lancés par `semantic-release` (voir [Release automatique](#release-automatique)) : `node scripts/sync-android-version.mjs <version>` et `node scripts/build-apk.mjs <version>`.
 
+Outil de développement, hors de la chaîne de build : `python scripts/generate-voice-clips.py --model <fichier .onnx>` régénère les phrases de la mascotte (voir [Attrape-Piège](#attrape-piège--un-objet-dans-bear_sort_catalog)).
+
 ### Qualité et hooks Git
 
-- **Couverture** : 80 % minimum (lignes, fonctions, branches, instructions) sur `src/`, 90 % sur les moteurs purs de Memory et de Traffic Jam.
+- **Couverture** : 80 % minimum (lignes, fonctions, branches, instructions) sur `src/`, 90 % sur les moteurs purs de Memory, de Traffic Jam et d'Attrape-Piège.
 - **Hooks Husky** : `pre-commit` (`lint-staged` : ESLint `--fix` puis Prettier sur les fichiers indexés, puis `typecheck`), `commit-msg` (commitlint), `pre-push` (`test:coverage`).
 - **Accessibilité** : règles `jsx-a11y` strictes, tout élément interactif est atteignable au clavier et à la télécommande.
 
@@ -158,7 +163,7 @@ Scripts de la chaîne de release, lancés par `semantic-release` (voir [Release 
 Les messages de commit pilotent les releases : ils doivent respecter **[Conventional Commits](https://www.conventionalcommits.org/fr/)** (`type(scope): description`, description en minuscules, en anglais comme le changelog).
 
 - **Types autorisés** : `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
-- **Scopes autorisés** (facultatif) : `core`, `ui`, `navigation`, `storage`, `profile`, `progression`, `hub`, `settings`, `memory`, `traffic-jam`, `android`, `pwa`, `release`, `quality`, `deps`, `deps-dev`.
+- **Scopes autorisés** (facultatif) : `core`, `ui`, `navigation`, `storage`, `profile`, `progression`, `hub`, `settings`, `memory`, `traffic-jam`, `bear-sort`, `android`, `pwa`, `release`, `quality`, `deps`, `deps-dev`.
 - **Effet sur la version** : `feat` → version mineure, `fix` et `perf` → correctif, `!` après le type ou `BREAKING CHANGE:` en pied → version majeure. Les autres types ne publient rien.
 
 ```text
@@ -238,9 +243,9 @@ Ne lance pas `scripts/sync-android-version.mjs` à la main sur le dépôt : seul
 
 Les catalogues sont de simples tableaux TypeScript, **sans aucune fabrique** : un niveau se copie et s'édite champ par champ. Ajouter un objet ajoute une étoile ; le Hub, la Carte des Étoiles, la sauvegarde et le déblocage suivent automatiquement.
 
-Règles communes aux deux jeux (vérifiées par `npm run validate:levels` et par les tests) :
+Règles communes aux trois jeux (vérifiées par `npm run validate:levels` et par les tests) :
 
-- `id` **unique et immuable** (`mem-021`, `tj-021` : minuscules, chiffres, tirets) : c'est la clé de la sauvegarde des joueurs. Un niveau publié n'est **jamais retiré ni renommé** ; changer son palier ou son `order` est sans risque.
+- `id` **unique et immuable** (`mem-021`, `tj-021`, `bs-021` : minuscules, chiffres, tirets) : c'est la clé de la sauvegarde des joueurs. Un niveau publié n'est **jamais retiré ni renommé** ; changer son palier ou son `order` est sans risque.
 - `tier` : `very_easy`, `easy`, `medium`, `hard` ou `very_hard` ; `order` : position dans le palier, **unique**. Les niveaux initiaux utilisent `10, 20, 30, 40` : un nouveau niveau s'intercale avec un `order` libre (`15`, `25`…) ou s'ajoute à la fin (`50`).
 - `title` : titre court en français (jamais affiché, l'écran indique « Étoile #N »).
 - Le numéro d'étoile est recalculé à partir de l'ordre des paliers puis des `order` : insérer un niveau au début ne bloque jamais un joueur avancé (règle de déblocage hybride du moteur de progression).
@@ -331,12 +336,52 @@ Chaque niveau est dessiné avec `parseTrafficJamAscii(lignes, { optimalMoves })`
 
 Le validateur refuse aussi une grille non carrée ou mal formée (message avec ligne et colonne), un niveau insoluble ou déjà gagné au départ, un `optimalMoves` qui redescend par rapport à l'étoile précédente sur la carte, et un palier dont le `optimalMoves` moyen n'est pas supérieur au palier précédent : place ton niveau là où sa difficulté le mérite. Le solveur explore au plus 50 000 positions (`DEFAULT_MAX_STATES`), largement suffisant pour une grille 6 × 6.
 
+### Attrape-Piège : un objet dans `BEAR_SORT_CATALOG`
+
+1. Ouvre [`src/games/bear-sort/catalog.ts`](./src/games/bear-sort/catalog.ts).
+2. Ajoute un objet dans `BEAR_SORT_CATALOG`, à sa place dans l'ordre de la carte :
+
+```ts
+{
+  id: 'bs-021',
+  gameId: 'bear-sort',
+  tier: 'easy',
+  order: 25, // s'intercale entre bs-006 (20) et bs-007 (30)
+  title: 'Encore une série',
+  config: {
+    zones: [SMALL_BLUE, BIG_YELLOW],
+    phases: [
+      { rule: BY_COLOR, addBears: OPENING_BEARS, placements: 6 },
+      {
+        rule: BY_SIZE,
+        addBears: { 'blue-big': 2, 'yellow-small': 1, 'yellow-big': 1 },
+        placements: null,
+      },
+    ],
+    showGestureHint: false,
+  },
+},
+```
+
+| Champ                 | Valeurs                                                                                              | Règles                                                                                                                                                                           |
+| :-------------------- | :--------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zones`               | Deux boîtes `{ color, size }`, de gauche à droite                                                    | Opposées par la couleur **et** par la taille, fixes pour toute l'étoile.                                                                                                         |
+| `phases[].rule`       | `{ kind: 'sort', feature: 'color' \| 'size' }` ou `{ kind: 'except', forbidden: { color?, size? } }` | Une règle de tri change de caractéristique à chaque STOP ; une règle « sauf » termine toujours l'étoile.                                                                         |
+| `phases[].addBears`   | Nombre d'ours par sorte : `blue-small`, `blue-big`, `yellow-small`, `yellow-big`                     | S'ajoutent aux ours restés. Tri : ils remplissent les deux boîtes, avec au moins un ours en conflit après un changement. « Sauf » : au moins un ours interdit et un ours permis. |
+| `phases[].placements` | Entier ≥ 1, ou `null` à la dernière phase                                                            | Ours à ranger avant le STOP, strictement moins que la réserve : le STOP interrompt toujours des ours qui attendent.                                                              |
+| `showGestureHint`     | `true` ou `false`                                                                                    | Une main montre le geste tant que le premier ours n'est pas rangé (première étoile).                                                                                             |
+
+3. Lance `npm run validate:levels` : `validateBearSortCatalog` signale chaque anomalie avec le nom du niveau.
+
+Les 2 règles de tri et les 8 règles « sauf » ont déjà leur phrase de mascotte. Pour changer une phrase, modifie [`voice-script.json`](./src/games/bear-sort/voice-script.json) puis relance le générateur (Python, avec `piper-tts`, `lameenc` et le modèle de voix : voir l'en-tête de [`scripts/generate-voice-clips.py`](./scripts/generate-voice-clips.py)) ; un test signale un clip dont le texte est périmé. Un MP3 enregistré par une vraie voix peut aussi remplacer un fichier du même nom, sans rien changer au jeu.
+
 ## Ajouter un nouveau jeu
 
 1. Crée `src/games/<nouveau-jeu>/` avec un moteur en TypeScript pur (sans React ni DOM : testable et importable par `validate:levels`), ses composants (`'use client'` pour ceux qui ont un état) et son `catalog.ts` qui exporte un tableau de `BaseLevelDefinition<Config>` et une fonction `validate<Jeu>Catalog` (commence par `validateLevelCatalog(gameId, catalog)` de `@/core/progression/catalog-validator`).
 2. Ajoute l'identifiant au type `GameId` (`src/types/mia.ts`) : le compilateur exige alors son entrée dans `GAME_REGISTRY` (`src/core/progression/game-registry.ts`, titre, faculté travaillée, route, catalogue) et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, `src/core/storage`), sans laquelle sa progression serait écartée au chargement.
 3. Crée la page `src/app/<nouveau-jeu>/page.tsx`, qui rend un écran client `<GameScreen gameId="…" catalog={…} renderLevel={(level, controls) => <TonPlateau … />} />` (`src/components/progression/GameScreen.tsx`) : Carte des Étoiles, déblocage, enregistrement des victoires et navigation sont fournis.
 4. Branche le catalogue dans `scripts/validate-levels.ts`, ajoute une entrée au scope commitlint si nécessaire (`commitlint.config.mjs`) et un seuil de couverture de 90 % pour le moteur dans `vitest.config.ts`.
+5. Si le jeu parle ou sonne, passe par `useGameAudio` (`src/core/audio`) : le réglage Son est appliqué pour lui, et le jeu doit rester jouable sans aucun son. Un média embarqué reste sous licence CC0 ou CC BY : F-Droid signale `NC` et `ND` comme « Non-Free ».
 
 Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent automatiquement en charge le nouveau jeu.
 
@@ -346,28 +391,44 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 .
 ├── .github/workflows/       # ci.yml, pr-title.yml, release-and-deploy.yml
 ├── android/                 # Projet Android Gradle (Capacitor) : manifeste TV, plugin natif TvMode, signature
-├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-19 (spécifications et décisions)
+├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-25 (spécifications et décisions)
 ├── fdroid/                  # Recette fdroiddata (org.mia.braintraining.yml)
 ├── metadata/fr-FR/          # Descriptions F-Droid (format Fastlane)
-├── public/                  # manifest.json, icônes, page WebView obsolète
-├── scripts/                 # build-sw.ts, generate-icons.mjs, validate-levels.ts, sync-android-version.mjs, build-apk.mjs
+├── public/                  # manifest.json, icônes, page WebView obsolète, clips audio (audio/bear-sort/)
+├── scripts/                 # build-sw.ts, generate-icons.mjs, generate-voice-clips.py, validate-levels.ts, sync-android-version.mjs, build-apk.mjs
 ├── src/
-│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /settings
+│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /bear-sort, /settings
 │   ├── components/          # Design system (ui), profils, progression (Hub, Carte des Étoiles), réglages
 │   ├── core/
+│   │   ├── audio/           # Service audio (voix, effets), réglage Son
 │   │   ├── navigation/      # Navigation spatiale D-Pad, bouton Retour Android
 │   │   ├── progression/     # Registre des jeux, moteur de progression, validateur de catalogues
 │   │   ├── pwa/             # Service worker et son enregistrement
 │   │   └── storage/         # Sauvegarde locale, migrations, profils, mode TV
 │   ├── games/
 │   │   ├── memory/          # Moteur, symboles, composants, catalog.ts
-│   │   └── traffic-jam/     # Moteur, parseur ASCII, solveur BFS, composants, catalog.ts
+│   │   ├── traffic-jam/     # Moteur, parseur ASCII, solveur BFS, composants, catalog.ts
+│   │   └── bear-sort/       # Moteur, voix (script, manifeste), composants, catalog.ts
 │   └── types/               # Types partagés (sauvegarde, paliers, jeux)
 ├── tests/                   # Tests Vitest (moteurs, écrans, configuration, Android, PWA, release)
 ├── capacitor.config.ts
 ├── .releaserc.json          # semantic-release (changelog, version, APK, GitHub Release)
 └── package.json
 ```
+
+## Crédits de la voix
+
+La voix de la mascotte d'Attrape-Piège (`public/audio/bear-sort/*.mp3`) est une **voix de synthèse**, sous une licence distincte de celle du code : **[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/deed.fr) (CC BY 4.0)**.
+
+| Élément            | Source                                                                                                                                                                                                                                                                                                            | Licence                             |
+| :----------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------- |
+| Corpus de voix     | _MLS: A Large-Scale Multilingual Dataset for Speech Research_ (Multilingual LibriSpeech), Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert, 2020 ([arXiv:2012.03411](https://arxiv.org/abs/2012.03411), [OpenSLR 94](https://www.openslr.org/94/)), tiré de livres audio de LibriVox | CC BY 4.0                           |
+| Modèle de voix     | [`fr_FR-mls-medium`](https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/mls/medium), projet Piper, entraîné de zéro selon sa fiche                                                                                                                                                                    | CC BY 4.0, selon la fiche du modèle |
+| Moteur de synthèse | [Piper](https://github.com/OHF-Voice/piper1-gpl), outil de développement non livré avec l'application                                                                                                                                                                                                             | GPL-3.0                             |
+
+**Modifications apportées** : chaque phrase de [`voice-script.json`](./src/games/bear-sort/voice-script.json) a été synthétisée par un seul locuteur du modèle, à la suite d'une amorce ensuite coupée, ralentie pour de jeunes enfants puis encodée en MP3 par [`scripts/generate-voice-clips.py`](./scripts/generate-voice-clips.py). Les effets sonores, eux, sont synthétisés à l'exécution par la Web Audio API : aucun fichier, aucune licence à suivre.
+
+L'attribution figure aussi dans l'application (note du réglage Son). Parce que cette voix porte les règles du jeu, seules les licences CC0 et CC BY sont admises pour la remplacer. La voix `siwis`, utilisée au départ, a été écartée pour cette raison : sa fiche indique qu'elle a été affinée à partir de la voix américaine `lessac`, dont le corpus est réservé à la recherche ([FEAT-22 §4](./docs/FEAT-22.md#4-points-dattention)).
 
 ## Documentation et licence
 

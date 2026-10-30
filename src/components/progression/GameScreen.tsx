@@ -91,7 +91,8 @@ function GameScreenContent<TConfig>({ gameId, catalog, renderLevel }: GameScreen
   if (!isLoaded || state.profiles.length === 0) {
     // Sans profil, `ProfileGate` crée « Joueur 1 » : attendre plutôt que d'afficher une carte vide.
     screen = <WaitingScreen title={game.title} />;
-  } else if (level) {
+  } else if (level && hasActiveProfile) {
+    // Avec un profil actif seulement : un plateau jouerait, et parlerait, derrière ce choix.
     const controls: LevelControls<TConfig> = {
       summary,
       playLevel: navigation.replaceLevel,

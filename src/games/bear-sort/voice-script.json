@@ -1,0 +1,20 @@
+{
+  "rule-color": "Les ours bleus dans la boîte bleue, les ours jaunes dans la boîte jaune.",
+  "rule-size": "Les petits ours dans la petite boîte, les grands ours dans la grande boîte.",
+  "rule-except-blue": "Place ici n'importe quel ours, sauf un ours bleu.",
+  "rule-except-yellow": "Place ici n'importe quel ours, sauf un ours jaune.",
+  "rule-except-small": "Place ici n'importe quel ours, sauf un petit ours.",
+  "rule-except-big": "Place ici n'importe quel ours, sauf un grand ours.",
+  "rule-except-small-blue": "Place ici n'importe quel ours, sauf un petit ours bleu.",
+  "rule-except-small-yellow": "Place ici n'importe quel ours, sauf un petit ours jaune.",
+  "rule-except-big-blue": "Place ici n'importe quel ours, sauf un grand ours bleu.",
+  "rule-except-big-yellow": "Place ici n'importe quel ours, sauf un grand ours jaune.",
+  "stop-warning": "Stop ! Attention, ton cerveau risque de te tendre un piège.",
+  "stop-go": "Appuie sur le panneau pour continuer.",
+  "bounce-trap": "Oh, ton cerveau a voulu te piéger.",
+  "hint-look": "Regarde bien.",
+  "hint-here": "Essaie ici.",
+  "nudge-more": "Il reste des ours à placer.",
+  "star-won": "Bravo ! Tu as gagné une étoile.",
+  "crown-won": "Et une couronne, c'est parfait !"
+}

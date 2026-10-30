@@ -985,6 +985,25 @@ describe('Niveau lancé', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Étoile #5' })).toBeInTheDocument();
   });
 
+  it('ne monte le plateau qu’après le choix du joueur : il jouerait derrière ce choix', async () => {
+    const renderLevel = vi.fn((current: EnrichedLevelItem, controls: LevelControls) => (
+      <TestBoard level={current} controls={controls} />
+    ));
+    await renderMemory(
+      familySave({ activeProfileId: null }),
+      '/memory/?level=mem-005',
+      renderLevel,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: SELECTOR_TITLE });
+    expect(renderLevel).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: /^Léo/ }));
+    expect(
+      await screen.findByRole('heading', { name: 'Plateau de l’étoile #5' }),
+    ).toBeInTheDocument();
+  });
+
   it('fournit au plateau la victoire, l’étoile suivante et le retour à la carte', async () => {
     const renderLevel = (current: EnrichedLevelItem, controls: LevelControls) => (
       <TestBoard level={current} controls={controls} />

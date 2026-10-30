@@ -1,6 +1,6 @@
 # Spécification Technique & Fonctionnelle — Projet **Mia**
 
-> **Vision** : **Mia** est une application gratuite et open-source d'entraînement et de développement des capacités cérébrales (mémoire de travail, repérage visuo-spatial, planification logique, inhibition cognitive). Elle est conçue pour fonctionner de manière fluide aussi bien sur **Smartphone et Tablette (tactile)** que sur **Android TV (télécommande D-Pad)** et **Navigateur Web (PWA)**, avec un système de progression par étoiles **extensible à l'infini**.
+> **Vision** : **Mia** est une application gratuite et open-source d'entraînement et de développement des capacités cérébrales (mémoire de travail, repérage visuo-spatial, planification logique, flexibilité mentale, inhibition cognitive). Elle est conçue pour fonctionner de manière fluide aussi bien sur **Smartphone et Tablette (tactile)** que sur **Android TV (télécommande D-Pad)** et **Navigateur Web (PWA)**, avec un système de progression par étoiles **extensible à l'infini**.
 
 ---
 
@@ -9,9 +9,9 @@
 1. [Principes Directeurs & Contraintes](#1-principes-directeurs--contraintes)
 2. [Architecture Technique Globale](#2-architecture-technique-globale)
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
-4. [Conception Détaillée des Jeux (Memory & Traffic Jam)](#4-conception-détaillée-des-jeux-memory--traffic-jam)
+4. [Conception Détaillée des Jeux (Memory, Traffic Jam & Attrape-Piège)](#4-conception-détaillée-des-jeux-memory-traffic-jam--attrape-piège)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-19`)](#6-découpage-en-features-atomiques-feat-01-à-feat-19)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-25`)](#6-découpage-en-features-atomiques-feat-01-à-feat-23)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -31,6 +31,10 @@
    - [FEAT-17.md](./FEAT-17.md) — PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes
    - [FEAT-18.md](./FEAT-18.md) — Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)
    - [FEAT-19.md](./FEAT-19.md) — Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)
+   - [FEAT-22.md](./FEAT-22.md) — Socle Audio (Service, Voix de la Mascotte, Effets Sonores & Réglage Son)
+   - [FEAT-23.md](./FEAT-23.md) — Jeu n°3 (Attrape-Piège) — Moteur Logique Pur
+   - [FEAT-24.md](./FEAT-24.md) — Jeu n°3 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices
+   - [FEAT-25.md](./FEAT-25.md) — Jeu n°3 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -84,6 +88,7 @@ flowchart LR
 * **Styling & Responsive** : **Tailwind CSS** (avec classes utilitaires dédiées aux grands écrans TV `tv:` / `xl:` et gestion des zones sûres `safe-area`).
 * **Animations** : **Framer Motion** + Transitions CSS accélérées matériellement (`transform`, `opacity`) pour garantir 60 FPS sur les processeurs modestes des boîtiers Android TV.
 * **Icônes & Graphismes** : **Lucide React** + SVG vectoriels inline (poids plume, netteté parfaite en 4K sur TV, 0 dépendance externe).
+* **Audio** : **Web Audio API**, sans dépendance : voix de mascotte en clips MP3 embarqués, effets sonores synthétisés, le tout coupé par le réglage Son (`FEAT-22`).
 * **Stockage des Données** :
   * Plugin officiel **`@capacitor/preferences`** (stocke nativement dans les `SharedPreferences` Android sur mobile/TV, évitant tout effacement accidentel du cache WebView par l'OS).
   * Fallback automatique sur **`localStorage`** (avec `navigator.storage.persist()`) lorsque l'application tourne dans un navigateur Web classique.
@@ -124,6 +129,7 @@ export interface MiaSaveState {
 }
 
 export interface DeviceSettings {
+  /** Coupe tout le son des jeux : voix de mascotte et effets sonores (FEAT-22) */
   soundEnabled: boolean;
   highContrastMode: boolean;
   /** Force l'affichage des aides de boutons TV même hors Android TV */
@@ -135,7 +141,7 @@ export interface UserProfile {
   name: string;
   avatarId: string; // ex: "fox", "owl", "robot", "star", "cat", "rocket"
   createdAt: string;
-  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", etc.) */
+  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", "bear-sort") */
   gamesProgress: Record<string, GameProgress>;
   /** Réglages de jeu du joueur (FEAT-19) : toujours complets, réparés aux valeurs par défaut à la lecture */
   gameSettings: ProfileGameSettings;
@@ -153,7 +159,7 @@ export interface MemoryGameSettings {
   mismatchFactor: TimeFactor;
 }
 
-/** Un objet par jeu qui propose des réglages (Traffic Jam n'en a pas encore) */
+/** Un objet par jeu qui propose des réglages (ni Traffic Jam ni Attrape-Piège n'en ont encore) */
 export interface ProfileGameSettings {
   memory: MemoryGameSettings;
 }
@@ -196,7 +202,7 @@ Tous les jeux de **Mia** partagent la même échelle de difficulté à 5 paliers
 
 ---
 
-## 4. Conception Détaillée des Jeux (Memory & Traffic Jam)
+## 4. Conception Détaillée des Jeux (Memory, Traffic Jam & Attrape-Piège)
 
 ### 4.1. Jeu n°1 : Memory (Mémoire visuo-spatiale & Mémoire de travail)
 
@@ -299,6 +305,73 @@ stateDiagram-v2
 
 ---
 
+### 4.3. Jeu n°3 : Attrape-Piège (Flexibilité mentale & Inhibition)
+
+> **But** : stimuler la **flexibilité mentale** et le **contrôle inhibiteur** en adaptant à de jeunes enfants le test de classement de cartes du Wisconsin (*Wisconsin Card Sorting Test*). Sa forme préscolaire, le *Dimensional Change Card Sort* (DCCS), fait trier 6 cartes selon une règle, puis 6 selon l'autre. Le brief d'origine oppose le **Système 1** (l'habitude, rapide et intuitive) au **Système 3** (l'inhibition préfrontale). **Mia exerce, elle ne soigne pas** : aucun effet clinique ou thérapeutique n'est revendiqué.
+
+#### Règles & Ergonomie Comparative (Tactile vs Télécommande Android TV)
+* **Public** : enfants de **3 à 6 ans** pour l'instant. La règle est toujours dite par la mascotte (une chouette violette) et toujours visible en image ; **aucun texte visible** du début d'une étoile à son écran de fin (le Hub et la Carte des Étoiles restent écrits).
+* **Plateau** : des ours petits ou grands, bleus ou jaunes (le rouge est réservé au panneau STOP), et **deux boîtes qui portent chacune une couleur et une taille**, fixes pour toute l'étoile. Face à une petite boîte bleue et une grande boîte jaune, un grand ours bleu tire dans les deux sens : c'est l'**ours en conflit**, le seul qui demande de retenir l'ancienne règle.
+* **Déroulement** : chaque étoile est une séance complète. Une série installe une habitude, le **panneau STOP** l'interrompt pendant que des ours attendent encore : la mascotte met en garde, l'image de la nouvelle règle apparaît, et après une attente forcée d'environ 5 secondes l'enfant repart lui-même en touchant le panneau (ou OK). La mascotte dit alors la nouvelle règle, et les ours restés se rangent selon elle.
+* **Règles** : par couleur, par taille, puis « tous les ours, sauf… » (une caractéristique au palier 4, deux au palier 5). La négation n'a qu'une **boîte ouverte** et se termine d'elle-même dès qu'il ne reste que des ours interdits.
+* **Erreur** : un ours mal placé **rebondit** et attend de nouveau ; personne ne peut perdre. Échelle d'indices sur les rebonds d'affilée : rappel de la règle (précédé de « Oh, ton cerveau a voulu te piéger. » pour une erreur d'ancienne règle), ancien critère estompé, bonne boîte éclairée.
+* **Récompense** : une étoile en finissant, une couronne sans aucun rebond, aucune donnée de plus dans la sauvegarde. Une couronne manquée n'est jamais évoquée devant l'enfant.
+* **Au doigt** : glisser-déposer permissif (tolérance de 40 px autour d'une boîte ; lâché sur la réserve, ou ailleurs, l'ours revient sans rien compter), ou toucher l'ours puis la boîte (TalkBack, clavier).
+* **À la télécommande** : **un appui par ours**. L'ours suivant est mis en évidence automatiquement, une flèche l'envoie dans la boîte de ce côté. Pendant une négation, `Haut` l'envoie dans la boîte ouverte et les autres flèches le laissent. `OK` rejoue la voix, ou repart depuis le panneau STOP.
+* **Son** : voix de synthèse préenregistrée (Piper « MLS », CC BY 4.0) et effets synthétisés ([FEAT-22](./FEAT-22.md)). L'image de la règle reste toujours à l'écran : le jeu se joue aussi avec le Son coupé.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Playing : Étoile lancée (règle dite et affichée en image)
+
+    state "Série sous la règle en vigueur" as Playing {
+        [*] --> WaitingBear
+        WaitingBear --> WaitingBear : Bonne boîte\n(ours rangé)
+        WaitingBear --> Bounce : Mauvaise boîte
+        Bounce --> WaitingBear : Rebond et échelle d'indices
+    }
+
+    state "Panneau STOP (attente forcée)" as Stop
+    state "Étoile gagnée (couronne si aucun rebond)" as Won
+
+    Playing --> Stop : Assez d'ours rangés\n(d'autres attendent encore)
+    Stop --> Playing : Toucher le panneau ou OK\n(nouvelle règle)
+    Playing --> Won : Dernière phase finie
+```
+
+#### Progression Initiale des 20 Étoiles d'Attrape-Piège (MVP)
+
+Chaque flèche est un panneau STOP. **À ranger** varie quand l'étoile finit par une négation : les ours restés du STOP précédent peuvent être permis ou interdits. Le détail de chaque phase (ours ajoutés, ours en conflit, ours à ranger avant le STOP) est dans [FEAT-25 §3.1](./FEAT-25.md#31-catalogue-des-20-étoiles-srcgamesbear-sortcatalogts).
+
+| Étoile | ID Niveau | Palier | Boîtes (gauche / droite) | Règles | À ranger | Caractéristiques |
+| :---: | :--- | :--- | :--- | :--- | :---: | :--- |
+| ⭐ 1 | `bs-001` | Très Facile | Petite bleue / Grande jaune | Couleur | 6 | Apprentissage du geste, main qui le montre. **Seule étoile sans STOP.** |
+| ⭐ 2 | `bs-002` | Très Facile | Petite bleue / Grande jaune | Couleur → Taille | 12 | Premier piège : 6 ours avant, 6 après, comme le DCCS. |
+| ⭐ 3 | `bs-003` | Très Facile | Grande jaune / Petite bleue | Couleur → Taille | 12 | Mêmes boîtes, côtés échangés. |
+| ⭐ 4 | `bs-004` | Très Facile | Petite bleue / Grande jaune | Taille → Couleur | 12 | Le changement en sens inverse. |
+| ⭐ 5 | `bs-005` | Facile | Grande bleue / Petite jaune | Couleur → Taille | 16 | Habitude plus longue (8 ours), 4 nouveaux ours sur 6 en conflit. |
+| ⭐ 6 | `bs-006` | Facile | Petite jaune / Grande bleue | Taille → Couleur | 16 | Idem, la taille d'abord. |
+| ⭐ 7 | `bs-007` | Facile | Petite bleue / Grande jaune | Couleur → Taille | 16 | Presque que des pièges : 5 nouveaux ours sur 6 en conflit. |
+| ⭐ 8 | `bs-008` | Facile | Grande jaune / Petite bleue | Taille → Couleur | 16 | Idem, la taille d'abord. |
+| ⭐ 9 | `bs-009` | Moyen | Petite bleue / Grande jaune | Couleur → Taille → Couleur | 16 | Aller-retour : revenir à la première règle. |
+| ⭐ 10 | `bs-010` | Moyen | Grande bleue / Petite jaune | Taille → Couleur → Taille | 16 | Idem, la taille d'abord. |
+| ⭐ 11 | `bs-011` | Moyen | Petite jaune / Grande bleue | Couleur → Taille → Couleur → Taille | 16 | Trois STOP, séries de 4 ours. |
+| ⭐ 12 | `bs-012` | Moyen | Grande jaune / Petite bleue | Taille → Couleur → Taille → Couleur | 16 | Idem, la taille d'abord. |
+| ⭐ 13 | `bs-013` | Difficile | Petite bleue / Grande jaune | Couleur → Sauf les bleus | 10 à 12 | Première négation : une boîte ouverte, les ours bleus attendent. |
+| ⭐ 14 | `bs-014` | Difficile | Grande bleue / Petite jaune | Taille → Sauf les petits | 10 à 12 | Négation de la taille. |
+| ⭐ 15 | `bs-015` | Difficile | Petite jaune / Grande bleue | Couleur → Taille → Sauf les jaunes | 14 à 16 | Un changement, puis la négation. |
+| ⭐ 16 | `bs-016` | Difficile | Grande jaune / Petite bleue | Taille → Couleur → Sauf les grands | 14 à 16 | Idem, la taille d'abord. |
+| ⭐ 17 | `bs-017` | Très Difficile | Petite bleue / Grande jaune | Couleur → Sauf le petit bleu | 11 à 13 | Négation de deux caractéristiques ; grand bleu et petit jaune restent permis. |
+| ⭐ 18 | `bs-018` | Très Difficile | Grande bleue / Petite jaune | Taille → Sauf le grand jaune | 11 à 13 | Idem, en partant de la taille. |
+| ⭐ 19 | `bs-019` | Très Difficile | Petite jaune / Grande bleue | Couleur → Taille → Sauf le petit jaune | 15 à 17 | Un changement, puis la double négation. |
+| ⭐ 20 | `bs-020` | Très Difficile | Grande bleue / Petite jaune | Couleur → Taille → Couleur → Sauf le grand bleu | 19 à 21 | Le grand piège : deux changements, puis la double négation. |
+
+> **Non vérifié.** Personne n'a encore écouté la voix générée avec un enfant : rythme et compréhension demandent un essai avec un vrai enfant, notamment « sauf un petit ours bleu » à 3 ans. Aucune partie n'a non plus été jouée sur un vrai Android TV ni dans l'APK : ni JDK ni SDK Android en local, seule la CI compile l'APK ([FEAT-22](./FEAT-22.md), [FEAT-24](./FEAT-24.md), [FEAT-25](./FEAT-25.md)).
+>
+> **À relire par le propriétaire.** Arbitrages de Claude pendant l'implémentation : le nom, la faculté et la route ([FEAT-25 §6](./FEAT-25.md#6-décisions-dimplémentation-session-de-cadrage)), la chouette violette, la tolérance de dépôt avec le parcours toucher-puis-toucher, l'image de la règle dans le sens des boîtes et la limite de trois relances d'affilée ([FEAT-24 §6](./FEAT-24.md#6-décisions-dimplémentation-session-de-cadrage)), le texte de la voix ([FEAT-22 §6](./FEAT-22.md#6-décisions-dimplémentation-session-de-cadrage)), et le STOP qui interrompt une série pendant que des ours attendent ([FEAT-23 §6](./FEAT-23.md#6-décisions-dimplémentation-session-de-cadrage)).
+
+---
+
 ## 5. Graphe de Dépendances des Features Atomiques
 
 Chaque feature est conçue pour être **atomique** et décrite dans son propre fichier `FEAT-XX.md` : elle possède un périmètre réduit, des entrées/sorties claires et peut être développée, testée et validée indépendamment avant de passer à la suivante.
@@ -345,13 +418,29 @@ flowchart TD
     F06 --> F19["FEAT-19 : Réglages de jeu par profil"]
     F11 --> F19
     F18 --> F19
+
+    F05 --> F20["FEAT-22 : Socle Audio (Voix, Effets, Réglage Son)"]
+    F17 --> F20
+    F18 --> F20
+
+    F07 --> F21["FEAT-23 : Attrape-Piège — Moteur Logique Pur"]
+    F09 --> F21
+    F21 --> F22["FEAT-24 : Attrape-Piège — UI, Télécommande, STOP & Indices"]
+    F03 --> F22
+    F04 --> F22
+    F08 --> F22
+    F20 --> F22
+    F21 --> F23["FEAT-25 : Attrape-Piège — Catalogue 20 Étoiles & Validateur"]
+    F22 --> F23
+    F08 --> F23
+    F14 --> F23
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-19`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-25`)
 
-Chacune des 19 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 23 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -374,6 +463,10 @@ Chacune des 19 features possède sa spécification complète et autonome pour l'
 | **17** | [FEAT-17.md](./FEAT-17.md) | **PWA Hors-ligne (Service Worker) & Icônes d'Installation Multi-Plateformes** | `FEAT-01`, `FEAT-02` |
 | **18** | [FEAT-18.md](./FEAT-18.md) | **Écran Réglages & Sauvegarde (Mode TV, Son, Contraste, Export / Import)** | `FEAT-05`, `FEAT-08` |
 | **19** | [FEAT-19.md](./FEAT-19.md) | **Réglages de Jeu par Profil (Temps de Mémorisation & d'Affichage des Erreurs de Memory)** | `FEAT-06`, `FEAT-11`, `FEAT-18` |
+| **20** | [FEAT-22.md](./FEAT-22.md) | **Socle Audio (Service, Voix de la Mascotte, Effets Sonores & Réglage Son)** | `FEAT-05`, `FEAT-17`, `FEAT-18` |
+| **21** | [FEAT-23.md](./FEAT-23.md) | **Jeu n°3 (Attrape-Piège) — Moteur Logique Pur** | `FEAT-07`, `FEAT-09` |
+| **22** | [FEAT-24.md](./FEAT-24.md) | **Jeu n°3 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices** | `FEAT-03`, `FEAT-04`, `FEAT-08`, `FEAT-22`, `FEAT-23` |
+| **23** | [FEAT-25.md](./FEAT-25.md) | **Jeu n°3 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur** | `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24` |
 
 ---
 
@@ -547,6 +640,38 @@ Chacune des 19 features possède sa spécification complète et autonome pour l'
 
 ---
 
+### `FEAT-22` : Socle Audio (Service, Voix de la Mascotte, Effets Sonores & Réglage Son) ([FEAT-22.md](./FEAT-22.md))
+
+* **Objectif** : Donner une voix et des effets sonores aux jeux, sans aucune dépendance : un service Web Audio sans React (`src/core/audio/`, une seule `AudioContext`, débloquée au premier geste), 18 phrases de mascotte en MP3 embarquées (voix de synthèse Piper « MLS », CC BY 4.0, ralentie pour de jeunes enfants, remplaçable par une vraie voix sans toucher au jeu), quatre effets synthétisés sans fichier, et un réglage Son de `FEAT-18` qui agit enfin : il coupe la voix et les effets.
+* **Dépendances** : `FEAT-05`, `FEAT-17`, `FEAT-18`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-22.md](./FEAT-22.md).
+
+---
+
+### `FEAT-23` : Jeu n°3 (Attrape-Piège) — Moteur Logique Pur ([FEAT-23.md](./FEAT-23.md))
+
+* **Objectif** : Développer en TypeScript pur le moteur d'*Attrape-Piège*, adaptation du Dimensional Change Card Sort : boîtes à deux caractéristiques fixes pour toute l'étoile, phases séparées par un panneau STOP qui interrompt la série, règle de tri ou de négation, rebonds classés (ancienne règle, autre erreur, ours interdit), échelle d'indices, étoile en finissant et couronne sans rebond, sans nouvelle donnée sauvegardée.
+* **Dépendances** : `FEAT-07`, `FEAT-09`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-23.md](./FEAT-23.md).
+
+---
+
+### `FEAT-24` : Jeu n°3 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices ([FEAT-24.md](./FEAT-24.md))
+
+* **Objectif** : Construire le plateau, sans aucun texte visible du début d'une étoile à son écran de fin, pour des enfants de 3 à 6 ans : mascotte (chouette violette) et image de la règle toujours à l'écran, glisser-déposer permissif et toucher-puis-toucher, un appui de télécommande par ours, panneau STOP à attente forcée que l'enfant touche pour repartir, échelle d'indices à trois échelons qui finit toujours par une réussite, écran de fin en images.
+* **Dépendances** : `FEAT-03`, `FEAT-04`, `FEAT-08`, `FEAT-22`, `FEAT-23`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-24.md](./FEAT-24.md).
+
+---
+
+### `FEAT-25` : Jeu n°3 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur ([FEAT-25.md](./FEAT-25.md))
+
+* **Objectif** : Intégrer les 20 étoiles d'*Attrape-Piège* (`bs-001` à `bs-020`), de la couleur seule à « sauf un petit ours bleu », leur validateur dans `npm run validate:levels`, l'entrée du registre (« Flexibilité mentale & Inhibition », route `/bear-sort`) et l'icône du Hub.
+* **Dépendances** : `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-25.md](./FEAT-25.md).
+
+---
+
 ## 7. Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu
 
 L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi instantané :
@@ -561,10 +686,17 @@ L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi ins
 2. Déclarer le nouveau plateau (soit via la liste des véhicules, soit via une grille ASCII `6x6` lisible).
 3. Lancer `npm run validate:levels` : le solveur BFS vérifie automatiquement que votre niveau est soluble et vous indique son nombre exact de coups optimaux (`optimalMoves`).
 
-### 7.3. Ajouter un 3e, 4e ou 5e jeu cérébral dans le futur
+### 7.3. Ajouter un 4e, 5e ou 6e jeu cérébral dans le futur
 Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.
 3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, FEAT-05), sans laquelle sa progression serait écartée au chargement.
 4. Un jeu qui propose ses propres réglages (`FEAT-19`) ajoute son objet à `ProfileGameSettings` (`src/types/mia.ts`), ses valeurs par défaut à `createDefaultGameSettings` (`src/core/storage/default-state.ts`), son assainisseur dans `src/core/storage/migrations.ts` et son bloc dans la section « Jeux » de l'écran Réglages.
-5. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !
+5. Un jeu qui parle ou qui sonne passe par `useGameAudio` (`src/core/audio`, `FEAT-22`) : le réglage Son est appliqué pour lui, et il doit rester jouable sans aucun son. Une voix ou un son embarqué reste sous licence CC0 ou CC BY (`NC` et `ND` sont signalés « Non-Free » par F-Droid).
+6. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !
+
+### 7.4. Ajouter 1 ou 50 nouveaux niveaux à *Attrape-Piège*
+1. Ouvrir `src/games/bear-sort/catalog.ts`.
+2. Ajouter un objet avec un `id` unique (ex: `"bs-021"`), son palier, son `order` et sa configuration : les deux boîtes (`zones`, opposées par la couleur et par la taille), les phases (`rule`, `addBears`, `placements`) et `showGestureHint`.
+3. Lancer `npm run validate:levels` : `getBearSortConfigErrors` vérifie les boîtes, le contenu de chaque phase, le conflit après un changement et que chaque STOP interrompt bien des ours qui attendent.
+4. Les 2 règles de tri et les 8 règles « sauf » ont déjà leur phrase. Pour changer ou ajouter une phrase de la mascotte, modifier `src/games/bear-sort/voice-script.json` puis relancer `scripts/generate-voice-clips.py` ([FEAT-22](./FEAT-22.md)) : un test signale un clip dont le texte est périmé.

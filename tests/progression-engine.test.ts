@@ -679,10 +679,11 @@ describe('validateLevelCatalog', () => {
 });
 
 describe('Registre des jeux', () => {
-  it('déclare Memory puis Traffic Jam, chacun sous son identifiant', () => {
+  it('déclare Memory, Traffic Jam puis Attrape-Piège, chacun sous son identifiant', () => {
     expect(GAMES.map((game) => [game.id, game.title, game.skill, game.path])).toEqual([
       ['memory', 'Memory', 'Mémoire visuelle & spatiale', '/memory'],
       ['traffic-jam', 'Traffic Jam', 'Planification & Logique séquentielle', '/traffic-jam'],
+      ['bear-sort', 'Attrape-Piège', 'Flexibilité mentale & Inhibition', '/bear-sort'],
     ]);
     for (const [key, game] of Object.entries(GAME_REGISTRY)) expect(game.id).toBe(key);
   });
@@ -723,7 +724,11 @@ describe('Registre des jeux', () => {
   it('résume par défaut les jeux du registre, dans l’ordre du Hub', () => {
     const summary = getProfileProgressSummary(null);
 
-    expect(summary.games.map((game) => game.gameId)).toEqual(['memory', 'traffic-jam']);
+    expect(summary.games.map((game) => game.gameId)).toEqual([
+      'memory',
+      'traffic-jam',
+      'bear-sort',
+    ]);
     expect(summary).toMatchObject({
       earnedStars: 0,
       perfectCount: 0,

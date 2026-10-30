@@ -24,6 +24,11 @@ export const DEFAULT_REMOTE_HINTS: readonly RemoteHint[] = [
 export interface AppShellProps {
   /** Titre de l'écran (`h1`) */
   title: string;
+  /**
+   * Écran sans aucun texte (ex: plateau d'Attrape-Piège, joué avant de savoir lire) : le titre et
+   * « Retour » restent réservés aux lecteurs d'écran, le bouton Retour se réduit à son icône.
+   */
+  isHeaderTextHidden?: boolean;
   /** Affiche le bouton Retour de l'en-tête */
   onBack?: () => void;
   /** Indique si le moteur de navigation D-Pad cible le bouton Retour */
@@ -48,6 +53,7 @@ export interface AppShellProps {
  */
 export function AppShell({
   title,
+  isHeaderTextHidden = false,
   onBack,
   isBackFocused = false,
   backButtonRef,
@@ -71,10 +77,18 @@ export function AppShell({
             onClick={onBack}
             onFocus={onBackFocus}
           >
-            <span className="sr-only sm:not-sr-only">Retour</span>
+            <span className={isHeaderTextHidden ? 'sr-only' : 'sr-only sm:not-sr-only'}>
+              Retour
+            </span>
           </FocusableButton>
         ) : null}
-        <h1 className="min-w-0 flex-1 truncate text-fluid-2xl font-bold">{title}</h1>
+        <h1
+          className={
+            isHeaderTextHidden ? 'sr-only' : 'min-w-0 flex-1 truncate text-fluid-2xl font-bold'
+          }
+        >
+          {title}
+        </h1>
         {profile}
         {stars ? <StarBadge {...stars} /> : null}
       </header>

@@ -1,5 +1,5 @@
 import type { GameId } from '@/types/mia';
-import { CarFront, Grid2x2, type LucideIcon } from 'lucide-react';
+import { CarFront, Grid2x2, PawPrint, type LucideIcon } from 'lucide-react';
 
 export interface GameIcon {
   Icon: LucideIcon;
@@ -14,4 +14,5 @@ export interface GameIcon {
 export const GAME_ICONS: Readonly<Record<GameId, GameIcon>> = {
   memory: { Icon: Grid2x2, badgeClass: 'bg-violet-300' },
   'traffic-jam': { Icon: CarFront, badgeClass: 'bg-amber-300' },
+  'bear-sort': { Icon: PawPrint, badgeClass: 'bg-emerald-300' },
 };

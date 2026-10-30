@@ -234,6 +234,7 @@ describe('Commitlint', () => {
     'fix(deps): bump next from 16.4.3 to 16.5.0',
     'chore(deps-dev): bump the dev group with 3 updates',
     'feat(memory)!: drop legacy save format',
+    'feat(bear-sort): add the sorting game',
   ])('accepte « %s »', SLOW, async (message) => {
     expect((await lintMessage(message)).valid).toBe(true);
   });
@@ -327,6 +328,14 @@ describe('Couverture Vitest', () => {
     expect(vitestConfig.test?.coverage).toMatchObject({
       thresholds: {
         'src/games/traffic-jam/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
+
+  it('impose 90 % de couverture au moteur pur d’Attrape-Piège (FEAT-23)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/bear-sort/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
       },
     });
   });

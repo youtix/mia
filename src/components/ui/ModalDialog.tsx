@@ -20,6 +20,8 @@ import { FocusableButton } from './FocusableButton';
 export interface ModalDialogProps {
   isOpen: boolean;
   title: string;
+  /** Titre réservé aux lecteurs d'écran (ex: fin de partie d'Attrape-Piège, sans aucun texte) */
+  isTitleHidden?: boolean;
   subtitle?: string;
   /**
    * Fermeture par `Échap`, par le fond ou par le bouton ✕, et par Retour (Retour arrière, bouton
@@ -101,6 +103,7 @@ export function ModalDialog({ isOpen, ...dialogProps }: ModalDialogProps) {
 
 function DialogLayer({
   title,
+  isTitleHidden = false,
   subtitle,
   onClose,
   initialFocusRef,
@@ -171,8 +174,18 @@ function DialogLayer({
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
       >
-        <div className={cn('flex flex-col gap-2 text-center', onClose && 'px-10')}>
-          <h2 id={titleId} className="text-fluid-2xl font-bold text-slate-50">
+        {/* Titre masqué : `contents` retire son conteneur, vide à l'écran, de l'espacement. */}
+        <div
+          className={cn(
+            'flex flex-col gap-2 text-center',
+            onClose && 'px-10',
+            isTitleHidden && 'contents',
+          )}
+        >
+          <h2
+            id={titleId}
+            className={cn('text-fluid-2xl font-bold text-slate-50', isTitleHidden && 'sr-only')}
+          >
             {title}
           </h2>
           {subtitle ? (

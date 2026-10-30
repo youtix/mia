@@ -73,7 +73,7 @@ export interface ImportedSave {
 export type BackupParseResult = ImportedSave | ImportFailure;
 
 /** Tables exhaustives (le compilateur exige chaque valeur du type) pour valider les chaînes lues. */
-const KNOWN_GAMES: Record<GameId, true> = { memory: true, 'traffic-jam': true };
+const KNOWN_GAMES: Record<GameId, true> = { memory: true, 'traffic-jam': true, 'bear-sort': true };
 const TV_MODE_OVERRIDES: Record<TvModeOverride, true> = {
   auto: true,
   always_tv: true,
