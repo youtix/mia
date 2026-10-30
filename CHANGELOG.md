@@ -1,3 +1,9 @@
+## [0.14.0](https://github.com/youtix/mia/compare/v0.13.0...v0.14.0) (2026-10-30)
+
+### Features
+
+* **patterns:** add the patterns game ([#16](https://github.com/youtix/mia/issues/16)) ([d0b61e8](https://github.com/youtix/mia/commit/d0b61e8a3ecfffeb77ef6ccaf8efa747f554e6f3))
+
 ## [0.13.0](https://github.com/youtix/mia/compare/v0.12.0...v0.13.0) (2026-10-30)
 
 ### Features
