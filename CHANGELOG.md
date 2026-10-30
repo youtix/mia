@@ -1,3 +1,9 @@
+## [0.15.0](https://github.com/youtix/mia/compare/v0.14.0...v0.15.0) (2026-10-30)
+
+### Features
+
+* **bear-sort:** add the attrape-piège sorting game ([#17](https://github.com/youtix/mia/issues/17)) ([7a79d32](https://github.com/youtix/mia/commit/7a79d32d3f43bd9c9b6d1e9c3929d94068c8f5a6))
+
 ## [0.14.0](https://github.com/youtix/mia/compare/v0.13.0...v0.14.0) (2026-10-30)
 
 ### Features

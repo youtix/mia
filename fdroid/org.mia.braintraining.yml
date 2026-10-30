@@ -18,9 +18,9 @@ RepoType: git
 Repo: https://github.com/youtix/mia.git
 
 Builds:
-  - versionName: 0.14.0
-    versionCode: 1400
-    commit: v0.14.0
+  - versionName: 0.15.0
+    versionCode: 1500
+    commit: v0.15.0
     subdir: android/app
     sudo:
       - apt-get update
@@ -60,5 +60,5 @@ MaintainerNotes: |-
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags ^v[0-9.]+$
-CurrentVersion: 0.14.0
-CurrentVersionCode: 1400
+CurrentVersion: 0.15.0
+CurrentVersionCode: 1500
