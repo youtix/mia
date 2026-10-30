@@ -1472,6 +1472,8 @@ describe('En-tête', () => {
 describe('Page /patterns', () => {
   it('publie le titre du registre et lance le plateau de l’étoile demandée', () => {
     expect(patternsMetadata.title).toBe(GAME_REGISTRY.patterns.title);
+    // `GameScreen` n'ouvre un plateau qu'une fois le joueur choisi.
+    storage.activeProfile = crownedPlayer();
 
     render(<PatternsPage />, { wrapper: NavigationProvider });
 

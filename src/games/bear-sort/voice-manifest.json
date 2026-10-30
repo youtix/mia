@@ -1,0 +1,79 @@
+{
+  "voice": "fr_FR-mls-medium",
+  "speakerId": 55,
+  "lengthScale": 1.2,
+  "clips": {
+    "rule-color": {
+      "text": "Les ours bleus dans la boîte bleue, les ours jaunes dans la boîte jaune.",
+      "seconds": 5.52
+    },
+    "rule-size": {
+      "text": "Les petits ours dans la petite boîte, les grands ours dans la grande boîte.",
+      "seconds": 5.53
+    },
+    "rule-except-blue": {
+      "text": "Place ici n'importe quel ours, sauf un ours bleu.",
+      "seconds": 4.49
+    },
+    "rule-except-yellow": {
+      "text": "Place ici n'importe quel ours, sauf un ours jaune.",
+      "seconds": 4.67
+    },
+    "rule-except-small": {
+      "text": "Place ici n'importe quel ours, sauf un petit ours.",
+      "seconds": 4.83
+    },
+    "rule-except-big": {
+      "text": "Place ici n'importe quel ours, sauf un grand ours.",
+      "seconds": 4.56
+    },
+    "rule-except-small-blue": {
+      "text": "Place ici n'importe quel ours, sauf un petit ours bleu.",
+      "seconds": 5.23
+    },
+    "rule-except-small-yellow": {
+      "text": "Place ici n'importe quel ours, sauf un petit ours jaune.",
+      "seconds": 5.36
+    },
+    "rule-except-big-blue": {
+      "text": "Place ici n'importe quel ours, sauf un grand ours bleu.",
+      "seconds": 4.86
+    },
+    "rule-except-big-yellow": {
+      "text": "Place ici n'importe quel ours, sauf un grand ours jaune.",
+      "seconds": 5.02
+    },
+    "stop-warning": {
+      "text": "Stop ! Attention, ton cerveau risque de te tendre un piège.",
+      "seconds": 4.7
+    },
+    "stop-go": {
+      "text": "Appuie sur le panneau pour continuer.",
+      "seconds": 2.44
+    },
+    "bounce-trap": {
+      "text": "Oh, ton cerveau a voulu te piéger.",
+      "seconds": 2.79
+    },
+    "hint-look": {
+      "text": "Regarde bien.",
+      "seconds": 1.43
+    },
+    "hint-here": {
+      "text": "Essaie ici.",
+      "seconds": 1.31
+    },
+    "nudge-more": {
+      "text": "Il reste des ours à placer.",
+      "seconds": 2.18
+    },
+    "star-won": {
+      "text": "Bravo ! Tu as gagné une étoile.",
+      "seconds": 2.6
+    },
+    "crown-won": {
+      "text": "Et une couronne, c'est parfait !",
+      "seconds": 2.56
+    }
+  }
+}

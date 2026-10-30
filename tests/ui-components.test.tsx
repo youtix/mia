@@ -426,6 +426,20 @@ describe('AppShell', () => {
 
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
+
+  it('montre le titre et le libellé de Retour par défaut, dès le palier sm', () => {
+    render(
+      <AppShell title="Memory" onBack={vi.fn()}>
+        <p>Carte</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Memory' })).not.toHaveClass('sr-only');
+    expect(within(screen.getByRole('button', { name: 'Retour' })).getByText('Retour')).toHaveClass(
+      'sr-only',
+      'sm:not-sr-only',
+    );
+  });
 });
 
 describe('ModalDialog', () => {

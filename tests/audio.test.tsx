@@ -763,9 +763,13 @@ describe('useSoundPlayer', () => {
     const audio = await import('@/core/audio');
 
     expect(Object.keys(audio).sort()).toEqual([
+      'createAudioService',
+      'getAudioService',
       'playSoundBeats',
       'playSoundJingle',
+      'resolveAudioUrl',
       'stopSounds',
+      'useGameAudio',
       'useSoundPlayer',
     ]);
   });

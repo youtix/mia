@@ -36,6 +36,7 @@ const config = {
         'memory',
         'traffic-jam',
         'patterns',
+        'bear-sort',
         'android',
         'pwa',
         'release',

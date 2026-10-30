@@ -1,6 +1,6 @@
 export type DifficultyTier = 'very_easy' | 'easy' | 'medium' | 'hard' | 'very_hard';
 
-export type GameId = 'memory' | 'traffic-jam' | 'patterns';
+export type GameId = 'memory' | 'traffic-jam' | 'patterns' | 'bear-sort';
 
 export type InputMode = 'touch' | 'dpad';
 
@@ -65,7 +65,7 @@ export interface UserProfile {
   /** ex: "fox", "owl", "robot" (catalogue d'avatars de FEAT-06) */
   avatarId: string;
   createdAt: string;
-  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam") */
+  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", "patterns", "bear-sort") */
   gamesProgress: Record<string, GameProgress>;
   /** Réglages de jeu du joueur (FEAT-19) : toujours complets, réparés aux valeurs par défaut à la lecture */
   gameSettings: ProfileGameSettings;

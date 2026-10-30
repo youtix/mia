@@ -63,7 +63,7 @@ const JINGLES: Readonly<Record<JingleKind, readonly JingleNote[]>> = {
 let context: AudioContext | null = null;
 let currentBus: GainNode | null = null;
 
-/** Contexte unique de l'application, créé au premier son et réveillé à chaque lecture. */
+/** Contexte de ces sons, créé au premier son et réveillé à chaque lecture. */
 function getContext(): AudioContext | null {
   if (typeof AudioContext === 'undefined') return null;
   try {
