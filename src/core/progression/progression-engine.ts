@@ -119,7 +119,7 @@ function summarizeTier<T>(
  * Progression d'un profil dans un jeu : niveaux triés et enrichis, sous-totaux des 5 paliers,
  * totaux et prochain niveau à jouer. Sans profil, rien n'est réussi. Seuls les niveaux du catalogue
  * comptent : la réussite d'un niveau inconnu (sauvegarde d'une version plus récente) reste dans la
- * sauvegarde sans rapporter d'étoile ni débloquer de niveau.
+ * sauvegarde sans rapporter d'étoile ni débloquer de niveau ; de même pour tout un jeu inconnu.
  */
 export function getGameProgressSummary<T>(
   gameId: GameId,
@@ -188,12 +188,12 @@ function mergeVictory(
 }
 
 /**
- * Enregistre une partie gagnée dans le profil actif : l'étoile, la couronne (définitive), les
- * meilleurs scores, le nombre de victoires et le dernier niveau joué ; `completedAt` garde la date
- * de la première victoire. Un `moves` ou un `timeSeconds` invalide (non fini ou négatif) ne devient
- * jamais un meilleur score, mais l'étoile est enregistrée. Sans profil actif ou avec un `levelId`
- * vide, renvoie `state` lui-même (`updateState` n'écrit rien). À appliquer par
- * `updateState((state) => recordLevelVictory(state, params))`.
+ * Enregistre une partie gagnée dans le profil `options.profileId`, le profil actif par défaut :
+ * l'étoile, la couronne (définitive), les meilleurs scores, le nombre de victoires et le dernier
+ * niveau joué ; `completedAt` garde la date de la première victoire. Un `moves` ou un `timeSeconds`
+ * invalide (non fini ou négatif) ne devient jamais un meilleur score, mais l'étoile est enregistrée.
+ * Sans ce profil ou avec un `levelId` vide, renvoie `state` lui-même (`updateState` n'écrit rien). À
+ * appliquer par `updateState((state) => recordLevelVictory(state, params))`.
  */
 export function recordLevelVictory(
   state: MiaSaveState,
@@ -201,7 +201,8 @@ export function recordLevelVictory(
   options: RecordVictoryOptions = {},
 ): MiaSaveState {
   const { gameId, levelId } = params;
-  const profileIndex = state.profiles.findIndex((profile) => profile.id === state.activeProfileId);
+  const profileId = options.profileId ?? state.activeProfileId;
+  const profileIndex = state.profiles.findIndex((profile) => profile.id === profileId);
   const profile = state.profiles[profileIndex];
   if (!profile || levelId === '') return state;
 

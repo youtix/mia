@@ -1,6 +1,6 @@
 'use client';
 
-import { DifficultyPill, FocusableButton } from '@/components/ui';
+import { DifficultyPill, FocusableButton, useHasOverflow } from '@/components/ui';
 import { cn } from '@/lib/cn';
 import type { DifficultyTier } from '@/types/mia';
 import { Crown, Footprints, Lightbulb, RotateCcw, Undo2 } from 'lucide-react';
@@ -114,7 +114,9 @@ const ACTION_ICONS: Record<HudAction, ReactNode> = {
 /**
  * Barre d'état de Traffic Jam : palier, compteur de coups, objectif de la couronne, puis les
  * boutons Annuler, Indice et Recommencer (zone D-Pad partagée avec le Retour d'`AppShell`).
- * Bandeau au-dessus du plateau en portrait, colonne à sa gauche en paysage.
+ * Bandeau au-dessus du plateau en portrait, colonne à sa gauche en paysage : sur un écran bas, elle
+ * défile au doigt (`data-touch-scroll`), seule exception au verrou tactile du plateau, et seulement
+ * quand son contenu déborde : sinon, une main posée qui glisse dessus figerait tout l'écran.
  */
 export function TrafficJamHud({
   moves,
@@ -132,9 +134,15 @@ export function TrafficJamHud({
   className,
 }: TrafficJamHudProps) {
   const handlers: Record<HudAction, () => void> = { undo: onUndo, hint: onHint, reset: onReset };
+  const [hudRef, hasOverflow] = useHasOverflow<HTMLElement>();
 
   return (
-    <section aria-label="État de la partie" className={cn('flex flex-col gap-2', className)}>
+    <section
+      ref={hudRef}
+      aria-label="État de la partie"
+      data-touch-scroll={hasOverflow || undefined}
+      className={cn('flex flex-col gap-2', className)}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <DifficultyPill tier={tier} size="sm" />
         <HudChip icon={<Footprints className="size-4" />}>

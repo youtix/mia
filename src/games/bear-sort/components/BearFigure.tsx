@@ -1,6 +1,15 @@
 import { cn } from '@/lib/cn';
 import type { BearColor, BearSize, SortFeature } from '../types';
-import { FADE_TRANSITION_CLASSES, getArtPalette, INK } from './art-tokens';
+import {
+  ART_STYLE_PRECEDENCE,
+  ART_TONES,
+  FADE_PROPERTIES,
+  FADE_STYLE_ID,
+  FADE_TRANSITION_CLASSES,
+  getArtPalette,
+  getArtToneStyle,
+  INK,
+} from './art-tokens';
 
 /** Échelle dans le carré parent : l'écart de taille se voit au premier coup d'œil. */
 const BEAR_SCALES: Readonly<Record<BearSize, number>> = { big: 1, small: 0.62 };
@@ -21,23 +30,26 @@ interface BearDrawingProps {
  * reconnaît encore à quelques dizaines de pixels.
  */
 export function BearDrawing({ color, size, fadedFeature = null }: BearDrawingProps) {
-  const palette = getArtPalette(color, fadedFeature);
   const scale = fadedFeature === 'size' ? FADED_SIZE_SCALE : BEAR_SCALES[size];
 
   return (
     <g
-      stroke={palette.outline}
+      stroke={ART_TONES.outline}
       strokeWidth={2.6}
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ transform: `scale(${String(scale)})`, transformOrigin: '50px 100px' }}
+      style={{
+        ...getArtToneStyle(getArtPalette(color, fadedFeature)),
+        transform: `scale(${String(scale)})`,
+        transformOrigin: '50px 100px',
+      }}
       className={FADE_TRANSITION_CLASSES}
     >
       {/* Oreilles */}
-      <circle cx={26} cy={16} r={11.5} fill={palette.body} />
-      <circle cx={74} cy={16} r={11.5} fill={palette.body} />
-      <circle cx={27} cy={17} r={6} fill={palette.light} stroke="none" />
-      <circle cx={73} cy={17} r={6} fill={palette.light} stroke="none" />
+      <circle cx={26} cy={16} r={11.5} fill={ART_TONES.body} />
+      <circle cx={74} cy={16} r={11.5} fill={ART_TONES.body} />
+      <circle cx={27} cy={17} r={6} fill={ART_TONES.light} stroke="none" />
+      <circle cx={73} cy={17} r={6} fill={ART_TONES.light} stroke="none" />
 
       {/* Bras, sortant de derrière le corps */}
       <rect
@@ -47,7 +59,7 @@ export function BearDrawing({ color, size, fadedFeature = null }: BearDrawingPro
         height={27}
         rx={7}
         transform="rotate(58 21 66)"
-        fill={palette.body}
+        fill={ART_TONES.body}
       />
       <rect
         x={72}
@@ -56,12 +68,12 @@ export function BearDrawing({ color, size, fadedFeature = null }: BearDrawingPro
         height={27}
         rx={7}
         transform="rotate(-58 79 66)"
-        fill={palette.body}
+        fill={ART_TONES.body}
       />
 
       {/* Corps et ventre */}
-      <ellipse cx={50} cy={71} rx={24} ry={24} fill={palette.body} />
-      <ellipse cx={50} cy={73} rx={15} ry={16} fill={palette.light} stroke="none" />
+      <ellipse cx={50} cy={71} rx={24} ry={24} fill={ART_TONES.body} />
+      <ellipse cx={50} cy={73} rx={15} ry={16} fill={ART_TONES.light} stroke="none" />
 
       {/* Pieds, coussinets clairs vers l'avant */}
       <ellipse
@@ -70,7 +82,7 @@ export function BearDrawing({ color, size, fadedFeature = null }: BearDrawingPro
         rx={13.5}
         ry={10.5}
         transform="rotate(-10 31.5 86.5)"
-        fill={palette.body}
+        fill={ART_TONES.body}
       />
       <ellipse
         cx={68.5}
@@ -78,13 +90,13 @@ export function BearDrawing({ color, size, fadedFeature = null }: BearDrawingPro
         rx={13.5}
         ry={10.5}
         transform="rotate(10 68.5 86.5)"
-        fill={palette.body}
+        fill={ART_TONES.body}
       />
-      <ellipse cx={30.5} cy={87} rx={7.5} ry={5.8} fill={palette.light} stroke="none" />
-      <ellipse cx={69.5} cy={87} rx={7.5} ry={5.8} fill={palette.light} stroke="none" />
+      <ellipse cx={30.5} cy={87} rx={7.5} ry={5.8} fill={ART_TONES.light} stroke="none" />
+      <ellipse cx={69.5} cy={87} rx={7.5} ry={5.8} fill={ART_TONES.light} stroke="none" />
 
       {/* Tête, reflet et museau */}
-      <ellipse cx={50} cy={34} rx={27.5} ry={25} fill={palette.body} />
+      <ellipse cx={50} cy={34} rx={27.5} ry={25} fill={ART_TONES.body} />
       <path
         d="M29 27c3-8 11-13 20-13"
         fill="none"
@@ -92,7 +104,7 @@ export function BearDrawing({ color, size, fadedFeature = null }: BearDrawingPro
         strokeOpacity={0.35}
         strokeWidth={4}
       />
-      <ellipse cx={50} cy={44} rx={13.5} ry={10} fill={palette.light} stroke="none" />
+      <ellipse cx={50} cy={44} rx={13.5} ry={10} fill={ART_TONES.light} stroke="none" />
 
       {/* Grands yeux, nez et sourire */}
       <circle cx={37} cy={31} r={4.6} fill={INK} stroke="none" />
@@ -125,16 +137,21 @@ export interface BearFigureProps extends BearDrawingProps {
  */
 export function BearFigure({ color, size, fadedFeature = null, className }: BearFigureProps) {
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="xMidYMax meet"
-      data-color={color}
-      data-size={size}
-      data-faded={fadedFeature ?? undefined}
-      className={cn('size-full', className)}
-    >
-      <BearDrawing color={color} size={size} fadedFeature={fadedFeature} />
-    </svg>
+    <>
+      <style href={FADE_STYLE_ID} precedence={ART_STYLE_PRECEDENCE}>
+        {FADE_PROPERTIES}
+      </style>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="xMidYMax meet"
+        data-color={color}
+        data-size={size}
+        data-faded={fadedFeature ?? undefined}
+        className={cn('size-full', className)}
+      >
+        <BearDrawing color={color} size={size} fadedFeature={fadedFeature} />
+      </svg>
+    </>
   );
 }

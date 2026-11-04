@@ -1,7 +1,7 @@
 'use client';
 
 import { FocusableButton, ModalDialog } from '@/components/ui';
-import { useGridNavigation } from '@/core/navigation';
+import { END_SCREEN_GUARD_MS, useGridNavigation } from '@/core/navigation';
 import { ArrowRight, MapIcon, RotateCcw, type LucideIcon } from 'lucide-react';
 import { StarAward } from './StarAward';
 
@@ -17,10 +17,15 @@ export interface BearSortEndScreenProps {
   onExitToMap: () => void;
 }
 
+/** Phrase réservée aux lecteurs d'écran : la couronne n'est qu'un dessin. */
+const CROWN_SENTENCE = 'Tu as la couronne !';
+
 /**
  * Fin de partie, sans aucun texte : une grande étoile, sa couronne si elle est gagnée, et trois
  * grands boutons-icônes. Choix imposé (ni ✕, ni fond, ni Échap : Retour mène à la Carte des
- * Étoiles). Ni coups ni erreurs : l'enfant finit toujours sur son étoile.
+ * Étoiles). Ni coups ni erreurs : l'enfant finit toujours sur son étoile. Boutons sans effet pendant
+ * que l'étoile se pose : un enfant qui tape encore, au même endroit, ne saute pas sa récompense.
+ * Paysage très bas : l'étoile à côté des boutons, qui resteraient sinon en partie sous le bord.
  */
 export function BearSortEndScreen({
   isOpen,
@@ -43,8 +48,10 @@ export function BearSortEndScreen({
     <ModalDialog
       isOpen={isOpen}
       title={`Étoile #${String(starNumber)} gagnée`}
+      subtitle={hasCrown ? CROWN_SENTENCE : undefined}
       isTextless
-      className="items-center"
+      inputGuardMs={END_SCREEN_GUARD_MS}
+      className="items-center landscape:[@media(max-height:24rem)]:max-w-2xl landscape:[@media(max-height:24rem)]:flex-row landscape:[@media(max-height:24rem)]:justify-center"
     >
       <div data-star-award="true" data-crown={hasCrown || undefined}>
         <StarAward hasCrown={hasCrown} className="size-[clamp(8rem,42vmin,18rem)]" />

@@ -12,10 +12,13 @@ const config: CapacitorConfig = {
   backgroundColor: '#0f172a',
   android: {
     // Tailwind v4 / Next 16 exigent Chrome 111+ (FEAT-01 §6) : en dessous, `server.errorPath`.
+    // `minHuaweiWebViewVersion` garde sa valeur par défaut : Huawei numérote autrement sa WebView.
     minWebViewVersion: 111,
   },
   server: {
-    // Affichée à la place de l'application si la WebView est trop ancienne (page autonome).
+    // Affichée à la place de l'application si la WebView est trop ancienne (page autonome). Avant
+    // Android 8, Capacitor ne lit jamais la version de `com.google.android.webview` et conclut à
+    // tort à une WebView trop ancienne : la page relit la vraie version et rend la main à Mia.
     errorPath: 'webview-obsolete.html',
   },
   plugins: {
@@ -26,6 +29,9 @@ const config: CapacitorConfig = {
     // de mise en page au lancement : le layout déclare toujours `cover`.
     SystemBars: {
       initialViewportFitValueHint: 'cover',
+      // Icônes claires sur le fond sombre de Mia : `DEFAULT` suivrait le thème de l'appareil et
+      // donnerait des icônes sombres en thème clair.
+      style: 'DARK',
     },
   },
 };

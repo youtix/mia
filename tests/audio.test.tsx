@@ -115,6 +115,7 @@ class FakeAudioContext {
   readonly sampleRate = 48_000;
   readonly destination = new FakeNode();
   resume: () => Promise<void> = vi.fn(() => Promise.resolve());
+  suspend: () => Promise<void> = vi.fn(() => Promise.resolve());
   readonly oscillators: FakeOscillator[] = [];
   readonly gains: FakeGain[] = [];
   readonly filters: FakeFilter[] = [];
@@ -207,7 +208,13 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  Reflect.deleteProperty(document, 'hidden');
 });
+
+function setPageHidden(hidden: boolean): void {
+  Object.defineProperty(document, 'hidden', { configurable: true, value: hidden });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
 
 describe('Sans AudioContext (navigateur ancien, tests)', () => {
   it('ne plante pas et ne joue rien', async () => {
@@ -551,6 +558,68 @@ describe('stopSounds', () => {
     expect(liveBus(context)).not.toBe(stopped);
     expect(AudioContextMock).toHaveBeenCalledOnce();
   });
+
+  it('libère la sortie audio : le contexte est suspendu, sans être fermé', async () => {
+    const { context } = installAudioContext();
+    const { playSoundBeats, stopSounds } = await loadSynth();
+
+    playSoundBeats(['bell'], 550);
+    stopSounds();
+
+    expect(context.suspend).toHaveBeenCalledOnce();
+  });
+
+  it('réveille le contexte au son suivant, même si sa suspension n’a pas encore eu lieu', async () => {
+    const { context } = installAudioContext();
+    const { playSoundBeats, stopSounds } = await loadSynth();
+    playSoundBeats(['bell'], 550);
+    vi.mocked(context.resume).mockClear();
+
+    // `state` dit encore `running` : c'est le cas dans Firefox tant que `suspend()` n'a pas abouti.
+    stopSounds();
+    expect(context.state).toBe('running');
+    playSoundBeats(['bell'], 550);
+
+    expect(context.resume).toHaveBeenCalledOnce();
+    expect(vi.mocked(context.suspend).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(context.resume).mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it('ne suspend pas le contexte quand une lecture remplace la précédente', async () => {
+    const { context } = installAudioContext();
+    const { playSoundBeats, playSoundJingle } = await loadSynth();
+
+    playSoundBeats(['bell'], 550);
+    playSoundJingle('round');
+    playSoundBeats(['drum'], 550);
+
+    expect(context.suspend).not.toHaveBeenCalled();
+  });
+
+  it('ne laisse aucun rejet sans suite quand la suspension est refusée', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const { context } = installAudioContext();
+    // Un vrai rejet, pas `mockRejectedValue`, qui traiterait lui-même le rejet.
+    context.suspend = () => Promise.reject(new Error('Contexte fermé'));
+    const { playSoundBeats, stopSounds } = await loadSynth();
+
+    try {
+      playSoundBeats(['bell'], 550);
+      expect(() => {
+        stopSounds();
+      }).not.toThrow();
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off('unhandledRejection', unhandled);
+    }
+  });
 });
 
 describe('Contexte audio', () => {
@@ -569,7 +638,7 @@ describe('Contexte audio', () => {
     expect(AudioContextMock).toHaveBeenCalledOnce();
   });
 
-  it('réveille un contexte suspendu à chaque lecture, tant qu’il le reste', async () => {
+  it('réveille le contexte à chaque lecture : `state` ne suffit pas à savoir s’il dort', async () => {
     const { context } = installAudioContext({ state: 'suspended' });
     const { playSoundBeats, playSoundJingle } = await loadSynth();
 
@@ -579,18 +648,19 @@ describe('Contexte audio', () => {
     playSoundJingle('round');
     expect(context.resume).toHaveBeenCalledTimes(2);
 
+    // Sans effet s'il tourne vraiment. Juste après `suspend()`, cet appel le remet en route.
     context.state = 'running';
     playSoundBeats(['bell'], 550);
-    expect(context.resume).toHaveBeenCalledTimes(2);
+    expect(context.resume).toHaveBeenCalledTimes(3);
   });
 
-  it('ne réveille pas un contexte déjà actif', async () => {
-    const { context } = installAudioContext();
+  it('réveille un contexte interrompu par le système (`interrupted` sur iOS)', async () => {
+    const { context } = installAudioContext({ state: 'interrupted' });
     const { playSoundBeats } = await loadSynth();
 
     playSoundBeats(['bell'], 550);
 
-    expect(context.resume).not.toHaveBeenCalled();
+    expect(context.resume).toHaveBeenCalledOnce();
   });
 
   it('ne laisse aucun rejet sans suite quand le réveil est refusé, et programme quand même', async () => {
@@ -688,23 +758,37 @@ describe('useSoundPlayer', () => {
     expect(context.oscillators).toHaveLength(3);
   });
 
-  it('stop coupe le son en cours, y compris une fois le son coupé', async () => {
+  it('stop coupe le son en cours, et garde la sortie audio pour la partie suivante', async () => {
+    const { context } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const { result } = renderHook(() => useSoundPlayer());
+
+    result.current.playBeats(['bell'], 550);
+    const bus = liveBus(context);
+
+    result.current.stop();
+    expect(bus.disconnectCount).toBe(1);
+    expect(context.suspend).not.toHaveBeenCalled();
+  });
+
+  it('couper le réglage coupe le son en cours et libère la sortie audio (FEAT-22 §5)', async () => {
     const { context } = installAudioContext();
     const useSoundPlayer = await loadPlayer();
     const { result, rerender } = renderHook(() => useSoundPlayer());
 
     result.current.playBeats(['bell'], 550);
     const bus = liveBus(context);
+    expect(context.suspend).not.toHaveBeenCalled();
 
     storage.soundEnabled = false;
     rerender();
-    expect(bus.disconnectCount).toBe(0);
 
-    result.current.stop();
     expect(bus.disconnectCount).toBe(1);
+    expect(context.suspend).toHaveBeenCalledOnce();
   });
 
-  it('se tait au démontage', async () => {
+  it('se tait au démontage, et libère la sortie audio si rien ne sonne dans les 3 s', async () => {
+    vi.useFakeTimers();
     const { context } = installAudioContext();
     const useSoundPlayer = await loadPlayer();
     const { result, unmount } = renderHook(() => useSoundPlayer());
@@ -714,8 +798,109 @@ describe('useSoundPlayer', () => {
     expect(bus.disconnectCount).toBe(0);
 
     unmount();
-
     expect(bus.disconnectCount).toBe(1);
+    vi.advanceTimersByTime(2999);
+    expect(context.suspend).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(context.suspend).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('niveau suivant : le nouvel écran qui sonne aussitôt garde la sortie audio ouverte', async () => {
+    vi.useFakeTimers();
+    const { context } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const first = renderHook(() => useSoundPlayer());
+    first.result.current.playBeats(['bell'], 550);
+
+    first.unmount();
+    const next = renderHook(() => useSoundPlayer());
+    vi.advanceTimersByTime(500);
+    next.result.current.playBeats(['drum'], 550);
+    vi.advanceTimersByTime(5000);
+
+    // Pas de reprise à attendre : la première note du niveau suivant n'est pas coupée.
+    expect(context.suspend).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('page masquée : coupe le son en cours et libère la sortie audio', async () => {
+    const { context } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const { result } = renderHook(() => useSoundPlayer());
+    result.current.playBeats(['bell', 'drum'], 550);
+    const bus = liveBus(context);
+
+    setPageHidden(true);
+
+    // Débranchées, les notes déjà programmées ne repartiront pas quand le contexte se réveillera.
+    expect(bus.disconnectCount).toBe(1);
+    expect(context.suspend).toHaveBeenCalledOnce();
+  });
+
+  it('page masquée : les minuteurs du plateau ne réveillent rien et ne jouent rien', async () => {
+    const { context } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const { result } = renderHook(() => useSoundPlayer());
+    result.current.playBeats(['bell'], 550);
+    setPageHidden(true);
+    const scheduled = context.oscillators.length;
+    vi.mocked(context.resume).mockClear();
+
+    result.current.playBeats(['bell', 'drum'], 550);
+    result.current.playJingle('star');
+
+    expect(context.oscillators).toHaveLength(scheduled);
+    expect(context.resume).not.toHaveBeenCalled();
+    expect(context.gains.filter((gain) => gain.outputs.includes(context.destination))).toEqual([]);
+  });
+
+  it('page masquée dès le premier son : n’ouvre pas de contexte', async () => {
+    const { AudioContextMock } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const { result } = renderHook(() => useSoundPlayer());
+    setPageHidden(true);
+
+    result.current.playJingle('round');
+
+    expect(AudioContextMock).not.toHaveBeenCalled();
+  });
+
+  it('au retour : ne rejoue rien, le son suivant réveille le contexte', async () => {
+    const { context } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const { result } = renderHook(() => useSoundPlayer());
+    result.current.playBeats(['bell'], 550);
+    setPageHidden(true);
+    const scheduled = context.oscillators.length;
+    vi.mocked(context.resume).mockClear();
+
+    setPageHidden(false);
+    expect(context.resume).not.toHaveBeenCalled();
+    expect(context.oscillators).toHaveLength(scheduled);
+    expect(context.suspend).toHaveBeenCalledOnce();
+
+    result.current.playBeats(['bell'], 550);
+    expect(context.resume).toHaveBeenCalledOnce();
+    expect(context.oscillators).toHaveLength(scheduled * 2);
+    expect(liveBus(context).disconnectCount).toBe(0);
+  });
+
+  it('n’écoute plus la page après le démontage', async () => {
+    vi.useFakeTimers();
+    const { context } = installAudioContext();
+    const useSoundPlayer = await loadPlayer();
+    const { result, unmount } = renderHook(() => useSoundPlayer());
+    result.current.playBeats(['bell'], 550);
+    unmount();
+    vi.advanceTimersByTime(3000);
+    expect(context.suspend).toHaveBeenCalledOnce();
+
+    setPageHidden(true);
+
+    expect(context.suspend).toHaveBeenCalledOnce();
+    vi.useRealTimers();
   });
 
   it('un démontage sans lecture n’ouvre pas de contexte', async () => {

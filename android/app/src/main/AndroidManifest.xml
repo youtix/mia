@@ -6,8 +6,12 @@
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
+    <!-- Les données restent sur l'appareil : ni sauvegarde automatique, ni transfert vers un autre
+         téléphone. Dès Android 12, `allowBackup` ne couvre plus le transfert : les règles XML le
+         refusent aussi. Pour changer d'appareil, la sauvegarde s'exporte depuis Réglages. -->
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:banner="@drawable/tv_banner"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

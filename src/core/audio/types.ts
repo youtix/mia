@@ -7,8 +7,9 @@ export type SoundEffect = 'success' | 'bounce' | 'stop' | 'victory';
  */
 export interface AudioService {
   /**
-   * Applique le réglage « Son » ; le couper interrompt la voix en cours et libère la sortie audio. Un
-   * écran de jeu qui disparaît coupe le son de la même façon : le suivant réapplique le réglage.
+   * Applique le réglage « Son » ; le couper interrompt la voix et les effets en cours et libère la
+   * sortie audio. Un écran de jeu qui disparaît coupe le son de la même façon : le suivant réapplique
+   * le réglage.
    */
   setEnabled: (enabled: boolean) => void;
   /**
@@ -21,12 +22,16 @@ export interface AudioService {
    * à la fin de la séquence, à son interruption, ou aussitôt quand il n'y a rien à jouer (son coupé,
    * API absente, page masquée). Avant le premier geste de l'utilisateur, le navigateur peut bloquer
    * le son : la promesse est alors résolue aussitôt et la séquence part au premier geste, si rien ne
-   * l'a remplacée entre-temps. Un clip illisible, ou trop long à charger, est sauté.
+   * l'a remplacée entre-temps ; `onDeferredStart` reçoit alors la promesse de sa fin (une mascotte
+   * mime cette voix-là). Un clip illisible, ou trop long à charger, est sauté.
    */
-  playClips: (paths: readonly string[]) => Promise<void>;
+  playClips: (
+    paths: readonly string[],
+    onDeferredStart?: (voice: Promise<void>) => void,
+  ) => Promise<void>;
   /** Interrompt la voix en cours ou en attente du premier geste */
   stopClips: () => void;
-  /** Joue un effet par-dessus la voix ; sans effet si le son est coupé ou encore bloqué */
+  /** Joue un effet par-dessus la voix ; sans effet si le son est coupé ou encore bloqué, ou la page masquée */
   playEffect: (effect: SoundEffect) => void;
 }
 

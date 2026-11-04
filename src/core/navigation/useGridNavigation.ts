@@ -94,6 +94,19 @@ export function useGridNavigation(options: UseGridNavigationOptions): UseGridNav
     if (isFocusVisible) revealElement(itemsRef.current?.get(focusedIndex));
   }, [isFocusVisible, focusedIndex]);
 
+  // Élément remplacé sous le curseur (cartes permutées, grille tournée) : le focus DOM le suit, sinon
+  // l'ancien élément garderait son anneau `:focus-visible` à côté de celui du curseur.
+  useEffect(() => {
+    if (!isFocusVisible) return;
+    const items = itemsRef.current;
+    const cursorElement = items?.get(focusedIndex);
+    const active = document.activeElement;
+    if (!items || !cursorElement || active === cursorElement) return;
+    if (Array.from(items.values()).some((item) => item === active)) {
+      cursorElement.focus({ preventScroll: true });
+    }
+  });
+
   // Focus DOM (Tab, clic) → curseur.
   useEffect(() => {
     const onFocusIn = (event: FocusEvent) => {

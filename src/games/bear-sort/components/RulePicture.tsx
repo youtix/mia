@@ -24,9 +24,6 @@ const ANY_COLOR: BearColor = 'blue';
 
 const OTHER_COLOR: Readonly<Record<BearColor, BearColor>> = { blue: 'yellow', yellow: 'blue' };
 
-/** Boîte de gauche par défaut, hors d'un plateau. */
-const DEFAULT_LEFT_BOX: BearTraits = { color: 'blue', size: 'small' };
-
 interface PlacedBearProps {
   color: BearColor;
   size: BearSize;
@@ -138,7 +135,7 @@ function ExceptRule({ forbidden }: { forbidden: ForbiddenBears }) {
 export interface RulePictureProps {
   rule: BearSortRule;
   /** Boîte de gauche : son critère est dessiné à gauche, pour ne pas contredire les boîtes */
-  leftBox?: BearTraits;
+  leftBox: BearTraits;
   /** Attire l'œil (rappel de la règle après un rebond ou une inaction) */
   isPulsing?: boolean;
   className?: string;
@@ -148,12 +145,7 @@ export interface RulePictureProps {
  * Image de la règle, toujours à l'écran : elle porte seule la consigne quand le son est coupé. Carte
  * arrondie au format 8:5 par défaut ; son dessin garde ses proportions dans n'importe quel parent.
  */
-export function RulePicture({
-  rule,
-  leftBox = DEFAULT_LEFT_BOX,
-  isPulsing = false,
-  className,
-}: RulePictureProps) {
+export function RulePicture({ rule, leftBox, isPulsing = false, className }: RulePictureProps) {
   return (
     <>
       <style href={PULSE_STYLE_ID} precedence={ART_STYLE_PRECEDENCE}>

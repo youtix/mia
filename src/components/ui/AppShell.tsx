@@ -1,6 +1,9 @@
+'use client';
+
+import { guardActivations } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import { ArrowLeft, Move, Undo2 } from 'lucide-react';
-import { type ReactNode, type Ref } from 'react';
+import { useEffect, type ReactNode, type Ref } from 'react';
 import { FocusableButton } from './FocusableButton';
 import { StarBadge, type StarBadgeProps } from './StarBadge';
 
@@ -64,9 +67,14 @@ export function AppShell({
   children,
   className,
 }: AppShellProps) {
+  // Écran qui arrive : le second tap d'un double tap n'atteint pas ce qui apparaît sous le doigt.
+  useEffect(() => {
+    guardActivations();
+  }, []);
+
   return (
     <div className={cn('flex h-dvh flex-col gap-3 tv-safe-container md:gap-4', className)}>
-      <header className="flex shrink-0 items-center gap-3">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1">
         {onBack ? (
           <FocusableButton
             ref={backButtonRef}
@@ -80,20 +88,27 @@ export function AppShell({
             <span className={isTextless ? 'sr-only' : 'sr-only sm:not-sr-only'}>Retour</span>
           </FocusableButton>
         ) : null}
+        {/* Largeur du titre réservée : sur téléphone, le profil et les étoiles passent à la ligne
+            plutôt que de le réduire à quelques lettres (« Attra… »). */}
         <h1
           className={cn(
-            'min-w-0 flex-1 truncate text-fluid-2xl font-bold',
-            isTextless && 'sr-only',
+            'flex-1 truncate text-fluid-2xl font-bold',
+            isTextless ? 'sr-only' : 'max-w-full min-w-min',
           )}
         >
           {title}
         </h1>
-        {profile}
-        {stars ? <StarBadge {...stars} /> : null}
+        <div className={cn('flex min-w-0 items-center gap-3', isTextless ? 'flex-1' : 'ml-auto')}>
+          {profile}
+          {stars ? <StarBadge {...stars} /> : null}
+        </div>
       </header>
 
-      {/* Marge interne compensée : l'anneau de focus zoomé n'est pas rogné par le défilement. */}
-      <main className="-mx-3 flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-2">
+      {/* Marge interne compensée et `scroll-padding` : l'anneau de focus zoomé n'est pas rogné par le
+          défilement, ni au bord quand le curseur l'y amène (`scrollIntoView`).
+          `relative` : les éléments absolus du contenu (`.sr-only`) restent dans ce défilement, sinon
+          ils allongeraient le document, et la page entière défilerait, en-tête compris. */}
+      <main className="relative -mx-3 flex min-h-0 flex-1 scroll-p-4 flex-col overflow-y-auto px-3 py-2">
         {children}
       </main>
 

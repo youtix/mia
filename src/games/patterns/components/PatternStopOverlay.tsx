@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/cn';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Hand } from 'lucide-react';
 import { useState } from 'react';
 
@@ -63,8 +63,15 @@ function StopSign() {
 /** Rotation d'une tape : la mascotte gigote, rien de plus (une pause n'est pas une punition). */
 const MASCOT_WOBBLE = [0, -16, 13, -8, 4, 0];
 
+/**
+ * Animations réduites : la rotation ne joue pas (`MotionConfig reducedMotion="user"`), une brève baisse
+ * d'opacité montre la tape, comme le rebond d'une erreur.
+ */
+const MASCOT_REDUCED_WOBBLE = [1, 0.45, 1];
+
 /** Petite mascotte amicale, dessinée ici : deux oreilles, de grands yeux et un sourire. */
 function StopMascot({ wobbleTick, isWobbling }: { wobbleTick: number; isWobbling: boolean }) {
+  const isMotionReduced = useReducedMotion() === true;
   return (
     <motion.svg
       // Clé : la même animation repart à chaque tape, même rapprochée.
@@ -73,9 +80,12 @@ function StopMascot({ wobbleTick, isWobbling }: { wobbleTick: number; isWobbling
       data-wobble-tick={wobbleTick}
       data-wobbling={isWobbling || undefined}
       viewBox="0 0 64 64"
-      className="absolute aspect-square -translate-x-1/2 portrait:bottom-[66%] portrait:left-[74%] portrait:w-[clamp(3rem,11dvh,5rem)] landscape:top-[20%] landscape:left-2/3 landscape:h-3/5"
+      className="absolute aspect-square -translate-x-1/2 portrait:bottom-[76%] portrait:left-[74%] portrait:w-[clamp(3rem,11dvh,5rem)] landscape:top-[20%] landscape:left-2/3 landscape:h-3/5"
       initial={{ rotate: 0 }}
-      animate={{ rotate: isWobbling ? MASCOT_WOBBLE : 0 }}
+      animate={{
+        rotate: isWobbling ? MASCOT_WOBBLE : 0,
+        opacity: isWobbling && isMotionReduced ? MASCOT_REDUCED_WOBBLE : 1,
+      }}
       transition={{ duration: 0.6, ease: 'easeInOut' }}
     >
       <path d="M10 18 19 5l8 13ZM54 18 45 5l-8 13Z" className="fill-emerald-300" />
@@ -107,7 +117,8 @@ export interface PatternStopOverlayProps {
  * STOP : panneau et mascotte au-dessus des propositions, assombries mais visibles : l'enfant doit
  * pouvoir réfléchir à sa réponse, rien ne cache leurs icônes. En paysage, ils se placent entre deux
  * propositions ; en portrait, les colonnes sont trop étroites : ils sortent par le haut, dans l'espace
- * libre sous la ligne. Le calque laisse passer les tapes pour qu'elles soient comptées
+ * libre sous la ligne (bas à 76 % de la zone : sur tablette, où les icônes sont bornées par la hauteur,
+ * 66 % en couvrait le haut). Le calque laisse passer les tapes pour qu'elles soient comptées
  * (`impulsiveTaps`) ; monté uniquement pendant `stop`. Décoratif : le STOP est annoncé par la région
  * `role="status"` du plateau.
  */
@@ -124,7 +135,7 @@ export function PatternStopOverlay({ stopSeconds, wobbleTick }: PatternStopOverl
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2, ease: 'easeOut' }}
     >
-      <span className="absolute aspect-square -translate-x-1/2 portrait:bottom-[66%] portrait:left-[42%] portrait:w-[clamp(5rem,18dvh,8rem)] landscape:top-[3%] landscape:left-1/3 landscape:h-[94%]">
+      <span className="absolute aspect-square -translate-x-1/2 portrait:bottom-[76%] portrait:left-[42%] portrait:w-[clamp(5rem,18dvh,8rem)] landscape:top-[3%] landscape:left-1/3 landscape:h-[94%]">
         <StopRing seconds={stopSeconds} />
         <StopSign />
       </span>

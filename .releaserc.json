@@ -1,8 +1,25 @@
 {
   "branches": ["main"],
   "plugins": [
-    ["@semantic-release/commit-analyzer", { "preset": "conventionalcommits" }],
-    ["@semantic-release/release-notes-generator", { "preset": "conventionalcommits" }],
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [{ "type": "revert", "release": "patch" }],
+        "parserOpts": {
+          "revertPattern": "^[Rr]evert:?\\s\"?([\\s\\S]+?)\"?\\s*(?:\\(#\\d+\\)\\s*)?(?:This reverts commit (\\w*)\\.[\\s\\S]*)?$"
+        }
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "parserOpts": {
+          "revertPattern": "^[Rr]evert:?\\s\"?([\\s\\S]+?)\"?\\s*(?:\\(#\\d+\\)\\s*)?(?:This reverts commit (\\w*)\\.[\\s\\S]*)?$"
+        }
+      }
+    ],
     ["@semantic-release/changelog", { "changelogFile": "CHANGELOG.md" }],
     ["@semantic-release/npm", { "npmPublish": false }],
     [

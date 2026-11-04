@@ -22,6 +22,12 @@ import type {
  * jamais : un rebond rend l'ours à la réserve, et l'étoile s'obtient en finissant.
  */
 
+/**
+ * Ours dans la réserve au début d'une phase, au plus : ils tiennent sur une rangée en paysage et deux
+ * en portrait (FEAT-24). Au-delà, la rangée de plus prendrait sa place aux boîtes et à la règle.
+ */
+export const MAX_RESERVE_BEARS = 10;
+
 /** Les quatre sortes d'ours, dans l'ordre où `addBears` les crée (avant mélange). */
 export const BEAR_KINDS: readonly BearKind[] = [
   'blue-small',
@@ -159,6 +165,11 @@ function getPhaseErrors({ zones, phases }: BearSortLevelConfig): string[] {
         : getExceptPhaseErrors(phase, isLast)),
     );
     waiting += countBears(phase.addBears);
+    if (Number.isFinite(waiting) && waiting > MAX_RESERVE_BEARS) {
+      phaseErrors.push(
+        `${String(waiting)} ours dans la réserve (${String(MAX_RESERVE_BEARS)} au plus, sur une rangée en paysage)`,
+      );
+    }
     phaseErrors.push(...getPlacementErrors(phase, isLast, waiting));
     waiting -= phase.placements ?? 0;
     errors.push(...phaseErrors.map((error) => `${name} : ${error}`));
@@ -265,7 +276,7 @@ export function dropBear(
       moves: state.moves + 1,
       mistakes: state.mistakes + 1,
       errorStreak: state.errorStreak + 1,
-      lastBounce: { bearUid, zoneId, kind: classifyBounce(state, bear, zoneId) },
+      lastBounce: { bearUid, kind: classifyBounce(state, bear, zoneId) },
     };
   }
 

@@ -12,7 +12,7 @@ import {
   SettingsSection,
   TIME_FACTOR_OPTIONS,
 } from '@/components/settings';
-import { NavigationProvider } from '@/core/navigation';
+import { CONFIRM_GUARD_MS, installActivationGuard, NavigationProvider } from '@/core/navigation';
 import { GAME_REGISTRY } from '@/core/progression';
 import {
   createDefaultSaveState,
@@ -33,7 +33,17 @@ import {
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import type { ReactNode } from 'react';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi, type Mock } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+  type Mock,
+} from 'vitest';
 
 /** Plateforme simulée : `true` pour l'APK Capacitor (export par le presse-papiers seulement). */
 const platform = vi.hoisted(() => ({ native: false }));
@@ -266,6 +276,34 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Garde d'activation installée, comme dans l'application, sur une horloge conduite par le test
+ * (`tick`) : les minuteries restent réelles pour les attentes de Testing Library.
+ */
+function installGuardWithClock(): (ms: number) => void {
+  onTestFinished(installActivationGuard());
+  let now = 1_000;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  return (ms) => {
+    now += ms;
+  };
+}
+
+/** Laisse s'achever les écritures en cours : un clic ignoré n'en a lancé aucune. */
+async function settle(): Promise<void> {
+  await act(
+    () =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      }),
+  );
+}
+
+/** Sauvegarde avec une entrée illisible de plus dans la liste des profils : import avec pertes. */
+function damagedBackup(save: MiaSaveState): string {
+  return JSON.stringify({ ...save, profiles: [...save.profiles, 'illisible'] });
+}
+
 /** Monte l'écran sur la sauvegarde donnée et attend la fin de l'attente. */
 async function renderSettings(save: MiaSaveState = familySave()): Promise<void> {
   storeSave(save);
@@ -458,6 +496,40 @@ describe('Réglages de l’appareil', () => {
         tvModeOverride: 'always_touch',
       });
     });
+  });
+
+  it('sous 640 px, chaque zone D-Pad suit la grille empilée : Bas descend d’une option', async () => {
+    const lists = new Set<string>();
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    vi.stubGlobal('matchMedia', (query: string) => {
+      lists.add(query);
+      return { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    });
+    await renderSettingsOnTv();
+    expect(lists).toContain('(min-width: 40rem)');
+    expect(getRadio('Toujours TV')).toHaveFocus();
+
+    // Mode TV : une colonne de trois options.
+    press('ArrowDown');
+    expect(getRadio('Toujours tactile')).toHaveFocus();
+    press('ArrowRight');
+    expect(getRadio('Toujours tactile')).toHaveFocus();
+    press('ArrowDown');
+    expect(getSwitch('Son')).toHaveFocus();
+    press('ArrowDown');
+    expect(getSwitch('Contraste élevé')).toHaveFocus();
+
+    // Temps de Memory : deux rangées de deux.
+    press('ArrowDown');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Normal')).toHaveFocus();
+    press('ArrowDown');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Très long')).toHaveFocus();
+    press('ArrowLeft');
+    expect(getFactorRadio(PREVIEW_GROUP, 'Long')).toHaveFocus();
+    press('ArrowDown');
+    expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
   });
 
   it('active la zone de l’élément qui reçoit le focus DOM (Tab, clic)', async () => {
@@ -730,7 +802,7 @@ describe('Sauvegarde', () => {
     expect(link).toMatchObject({ download: 'mia-sauvegarde-2026-10-29.json', href: 'blob:mia' });
     expect(link?.isConnected).toBe(false);
     expect(within(getGroup('Exporter')).getByRole('status')).toHaveTextContent(
-      'Sauvegarde téléchargée : mia-sauvegarde-2026-10-29.json',
+      'Téléchargement lancé : mia-sauvegarde-2026-10-29.json. Si aucun fichier n’apparaît, utilise « Copier ».',
     );
     expect(revoke).not.toHaveBeenCalled();
     act(() => {
@@ -831,6 +903,163 @@ describe('Sauvegarde', () => {
     });
     expect(document.documentElement.dataset.tv).toBe('on');
     expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+  });
+
+  it('prévient d’un fichier en partie illisible avant de remplacer les profils, puis après', async () => {
+    await renderSettings();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    pasteBackup(damagedBackup(tabletSave()));
+    fireEvent.click(getButton('Importer'));
+
+    const dialog = await findDialog(IMPORT_TITLE);
+    expect(within(dialog).getByText(/Cette sauvegarde contient 1 profil\./)).toHaveTextContent(
+      BACKUP_MESSAGES.partialFile,
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remplacer' }));
+
+    const alert = await within(getGroup('Importer')).findByRole('alert');
+    expect(alert).toHaveTextContent(BACKUP_MESSAGES.restoredPartially);
+    expect(within(getGroup('Importer')).getByRole('status')).toBeEmptyDOMElement();
+    expect(getPasteField()).toHaveValue('');
+    expect(readSave().profiles.map((profile) => profile.name)).toEqual(['Papi']);
+    expect(warn).toHaveBeenCalledOnce();
+  });
+
+  it('ne prévient de rien pour un fichier intact, même avec un jeu inconnu de cette version', async () => {
+    const [papi] = tabletSave().profiles as [UserProfile];
+    const chess = {
+      gameId: 'chess',
+      levels: { 'che-001': won('che-001') },
+      lastPlayedLevelId: null,
+    };
+    const fromNewerVersion: MiaSaveState = {
+      ...tabletSave(),
+      profiles: [{ ...papi, gamesProgress: { ...papi.gamesProgress, chess } }],
+    };
+    await renderSettings();
+
+    pasteBackup(exportSaveJson(fromNewerVersion));
+    fireEvent.click(getButton('Importer'));
+
+    const dialog = await findDialog(IMPORT_TITLE);
+    expect(within(dialog).queryByText(new RegExp(BACKUP_MESSAGES.partialFile))).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remplacer' }));
+
+    await waitFor(() => {
+      expect(within(getGroup('Importer')).getByRole('status')).toHaveTextContent(
+        BACKUP_MESSAGES.restored,
+      );
+    });
+    expect(readSave().profiles[0]?.gamesProgress.chess).toEqual(chess);
+  });
+
+  it('dit qu’une sauvegarde n’a pas pu être enregistrée : les profils ne changent pas', async () => {
+    await renderSettings();
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    pasteBackup(exportSaveJson(tabletSave()));
+    fireEvent.click(getButton('Importer'));
+    const dialog = await findDialog(IMPORT_TITLE);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Remplacer' }));
+
+    const alert = await within(getGroup('Importer')).findByRole('alert');
+    expect(alert).toHaveTextContent(IMPORT_FAILURE_MESSAGES.write_failed);
+    expect(within(getGroup('Importer')).getByRole('status')).toBeEmptyDOMElement();
+    // L'écran affiche toujours le profil d'avant, et le contenu collé reste pour réessayer.
+    expect(screen.getByText('Réglages de Léo')).toBeInTheDocument();
+    expect(getPasteField()).not.toHaveValue('');
+    expect(readSave()).toEqual(familySave());
+  });
+
+  it('ramène à l’écran le message de chaque action, une seule fois par action', async () => {
+    stubClipboard(() => Promise.resolve());
+    await renderSettings();
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const lastScrolled = () => scrollIntoView.mock.contexts.at(-1);
+
+    fireEvent.click(getButton('Copier'));
+    const copied = within(getGroup('Exporter')).getByRole('status');
+    await waitFor(() => {
+      expect(copied).toHaveTextContent(BACKUP_MESSAGES.copied);
+    });
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+    expect(lastScrolled()).toContainElement(copied);
+
+    // Même texte, nouvelle action : le joueur a pu faire défiler l'écran entre-temps.
+    scrollIntoView.mockClear();
+    fireEvent.click(getButton('Copier'));
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledOnce();
+    });
+
+    fireEvent.click(getButton('Importer'));
+    expect(lastScrolled()).toContainElement(within(getGroup('Importer')).getByRole('alert'));
+
+    // Un autre rendu de l'écran ne fait pas sauter la page vers les messages déjà affichés.
+    scrollIntoView.mockClear();
+    fireEvent.click(getSwitch('Son'));
+    await waitFor(() => {
+      expect(getSwitch('Son')).not.toBeChecked();
+    });
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('garde « Remplacer » sans effet 1 s : un double tap lent n’atteint pas la confirmation', async () => {
+    const tick = installGuardWithClock();
+    await renderSettings();
+    tick(CONFIRM_GUARD_MS);
+
+    pasteBackup(exportSaveJson(tabletSave()));
+    fireEvent.click(getButton('Importer'));
+    const dialog = await findDialog(IMPORT_TITLE);
+    const replace = within(dialog).getByRole('button', { name: 'Remplacer' });
+
+    tick(CONFIRM_GUARD_MS - 1);
+    fireEvent.click(replace);
+    await settle();
+    expect(screen.getByRole('dialog', { name: IMPORT_TITLE })).toBeInTheDocument();
+    expect(readSave()).toEqual(familySave());
+
+    tick(1);
+    fireEvent.click(replace);
+    await waitFor(() => {
+      expect(readSave().profiles.map((profile) => profile.name)).toEqual(['Papi']);
+    });
+  });
+
+  it('garde chaque étape de la réinitialisation sans effet 1 s : un double tap lent n’efface rien', async () => {
+    const tick = installGuardWithClock();
+    await renderSettings();
+    tick(CONFIRM_GUARD_MS);
+
+    fireEvent.click(getButton('Tout effacer'));
+    const first = await findDialog(RESET_TITLE);
+    const proceed = within(first).getByRole('button', { name: 'Continuer' });
+
+    tick(CONFIRM_GUARD_MS - 1);
+    fireEvent.click(proceed);
+    await settle();
+    expect(screen.queryByRole('dialog', { name: FINAL_RESET_TITLE })).not.toBeInTheDocument();
+
+    tick(1);
+    fireEvent.click(proceed);
+    const final = await findDialog(FINAL_RESET_TITLE);
+    const erase = within(final).getByRole('button', { name: 'Tout effacer définitivement' });
+
+    tick(CONFIRM_GUARD_MS - 1);
+    fireEvent.click(erase);
+    await settle();
+    expect(readSave()).toEqual(familySave());
+
+    tick(1);
+    fireEvent.click(erase);
+    await waitFor(() => {
+      expect(readSave()).toEqual(createDefaultSaveState());
+    });
   });
 
   it('n’importe qu’une fois quand « Remplacer » est pressé deux fois de suite', async () => {
@@ -980,6 +1209,41 @@ describe('Sauvegarde', () => {
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('au D-Pad, traverse le champ de collage clavier virtuel fermé ; OK l’autorise, le quitter le referme', async () => {
+    await renderSettingsOnTv();
+    focusElement(getButton('Choisir un fichier'));
+
+    press('ArrowDown');
+    expect(getPasteField()).toHaveFocus();
+    expect(getPasteField()).toHaveAttribute('inputmode', 'none');
+
+    // OK : Entrée reste native, le champ reprend le focus sans `inputmode` (Chromium ouvre le clavier).
+    const blur = vi.fn();
+    getPasteField().addEventListener('blur', blur);
+    expect(fireEvent.keyDown(getPasteField(), { key: 'Enter' })).toBe(true);
+    expect(getPasteField()).toHaveFocus();
+    expect(getPasteField()).not.toHaveAttribute('inputmode');
+    expect(blur).toHaveBeenCalledOnce();
+
+    // Un second OK ne refait rien : le clavier est déjà autorisé.
+    fireEvent.keyDown(getPasteField(), { key: 'Enter' });
+    expect(blur).toHaveBeenCalledOnce();
+
+    press('ArrowDown');
+    expect(getButton('Importer')).toHaveFocus();
+    press('ArrowUp');
+    expect(getPasteField()).toHaveFocus();
+    expect(getPasteField()).toHaveAttribute('inputmode', 'none');
+  });
+
+  it('au doigt, le champ de collage garde le clavier virtuel', async () => {
+    await renderSettings();
+
+    focusElement(getPasteField());
+
+    expect(getPasteField()).not.toHaveAttribute('inputmode');
   });
 
   it('réinitialise après une double confirmation, puis revient au Hub', async () => {
@@ -1204,8 +1468,37 @@ describe('Libellés', () => {
     expect(TIME_FACTOR_OPTIONS.map((option) => option.value)).toEqual([...TIME_FACTORS]);
   });
 
+  it.each([
+    ['Léo', 'Réglages de Léo'],
+    ['Mia', 'Réglages de Mia'],
+    ['Joueur 1', 'Réglages de Joueur 1'],
+    ['Parents', 'Réglages de Parents'],
+    ['Yann', 'Réglages de Yann'],
+    ['🦊', 'Réglages de 🦊'],
+    ['Alice', 'Réglages d’Alice'],
+    ['Enfants', 'Réglages d’Enfants'],
+    ['Invité', 'Réglages d’Invité'],
+    ['élodie', 'Réglages d’élodie'],
+    ['Émile', 'Réglages d’Émile'],
+    ['Hugo', 'Réglages d’Hugo'],
+    ['Yves', 'Réglages d’Yves'],
+  ])('élide « de » devant un prénom qui l’appelle : %s', (name, title) => {
+    expect(describeProfileSettings(name)).toBe(title);
+  });
+
+  it('crédite la voix dans la note du réglage Son : auteurs, licence et son adresse, modification', () => {
+    const credit = [
+      'Voix générée avec le modèle Piper « MLS »',
+      'corpus Multilingual LibriSpeech',
+      'Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert',
+      'puis modifiée : coupée et ralentie',
+      'Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/',
+    ];
+
+    for (const part of credit) expect(SETTINGS_TEXTS.soundNote).toContain(part);
+  });
+
   it('titre les réglages du profil et reprend le nom du jeu du registre', () => {
-    expect(describeProfileSettings('Léo')).toBe('Réglages de Léo');
     expect(GAME_SETTINGS_TEXTS.memoryTitle).toBe(GAME_REGISTRY.memory.title);
     expect(GAME_SETTINGS_TEXTS.previewLabel).toBe(PREVIEW_GROUP);
     expect(GAME_SETTINGS_TEXTS.mismatchLabel).toBe(MISMATCH_GROUP);

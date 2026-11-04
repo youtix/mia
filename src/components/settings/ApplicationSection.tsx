@@ -94,8 +94,12 @@ function ApplicationActions({
   // props) le temps de l'animation de sortie, un second appui ne doit pas réparer deux fois.
   const isRepairDialogOpenRef = useRef(false);
   const isRepairingRef = useRef(false);
+  const [isRepairing, setIsRepairing] = useState(false);
   const [repairFeedback, setRepairFeedback] = useState<SettingsFeedbackMessage | null>(null);
-  const isReady = status === 'ready';
+  // La réparation installe une copie neuve, que le suivi voit comme une mise à jour : téléchargée,
+  // puis prête. Ce n'en est pas une à proposer, et la page se recharge d'elle-même.
+  const updateStatus = isRepairing ? 'idle' : status;
+  const isReady = updateStatus === 'ready';
 
   // Une version prête clôt la dernière recherche (état ajusté pendant le rendu, sans effet) : sinon
   // le bref retour à `idle` avant le rechargement, une fois la mise à jour acceptée (ici ou dans un
@@ -137,10 +141,12 @@ function ApplicationActions({
     if (!isRepairDialogOpenRef.current) return;
     updateRepairDialog(false);
     isRepairingRef.current = true;
-    setRepairFeedback(null);
+    setIsRepairing(true);
+    setRepairFeedback({ tone: 'info', text: APPLICATION_TEXTS.repairRunning });
     const result = await repairApp();
     if (result === 'unreachable') {
       isRepairingRef.current = false;
+      setIsRepairing(false);
       setRepairFeedback({ tone: 'error', text: APPLICATION_TEXTS.repairUnreachable });
     }
   };
@@ -169,7 +175,7 @@ function ApplicationActions({
         >
           {isReady ? APPLICATION_TEXTS.applyAction : APPLICATION_TEXTS.checkAction}
         </FocusableButton>
-        <SettingsFeedback message={describeAppUpdate(status, lastCheck, isChecking)} />
+        <SettingsFeedback message={describeAppUpdate(updateStatus, lastCheck, isChecking)} />
       </SettingsGroup>
 
       <SettingsGroup

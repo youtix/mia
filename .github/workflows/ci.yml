@@ -38,3 +38,45 @@ jobs:
       - run: npm run validate:levels
       - run: npm run test:coverage
       - run: npm run build
+
+  # Compile l'APK sur les PR : une erreur Gradle ou Java se voit avant le merge, plus à la release.
+  # Job à part, en parallèle : `verify` garde son nom de check requis et sa durée. Sur main, le job
+  # `release` compile déjà l'APK : `github.event_name` y vaut `push`, ce job est sauté.
+  android:
+    name: android
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HUSKY: 0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # Même clé de cache que le job `release`, dont les PR peuvent relire le cache (branche main).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+          cache-dependency-path: |
+            android/build.gradle
+            android/settings.gradle
+            android/variables.gradle
+            android/capacitor.settings.gradle
+            android/app/capacitor.build.gradle
+            android/gradle/wrapper/gradle-wrapper.properties
+
+      - run: npm ci
+      - run: npm run cap:sync
+
+      # Sans clé de release : signé avec la clé de débogage, rien n'est publié.
+      - name: Compile the APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon

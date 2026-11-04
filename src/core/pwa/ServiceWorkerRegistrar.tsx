@@ -14,7 +14,7 @@ export function ServiceWorkerRegistrar(): null {
   useEffect(() => {
     const register = (): void => {
       void registerServiceWorker().then((registration) => {
-        if (registration) appUpdate.start(registration);
+        appUpdate.start(registration);
       });
     };
     if (document.readyState === 'complete') {

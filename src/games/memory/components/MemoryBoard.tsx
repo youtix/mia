@@ -1,14 +1,24 @@
 'use client';
 
 import type { LevelControls } from '@/components/progression';
+// Module direct, pas le barrel : le JS de la page d'un jeu se limite à ce qu'elle affiche (FEAT-08).
+import { useLevelPlayer } from '@/components/progression/GameScreen';
 import { AppShell, DEFAULT_REMOTE_HINTS, FocusableButton } from '@/components/ui';
 import { useGridColumns, useGridNavigation, useNavigation } from '@/core/navigation';
 import type { EnrichedLevelItem } from '@/core/progression';
-import { DEFAULT_MEMORY_GAME_SETTINGS, useMiaStorage } from '@/core/storage';
+import { DEFAULT_MEMORY_GAME_SETTINGS } from '@/core/storage';
 import { cn } from '@/lib/cn';
 import { MotionConfig, motion } from 'framer-motion';
 import { RotateCcw } from 'lucide-react';
-import { useEffect, useEffectEvent, useMemo, useRef, useState, type CSSProperties } from 'react';
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+} from 'react';
 import {
   createMemoryGame,
   endPreviewPhase,
@@ -44,6 +54,28 @@ interface Announcement {
   text: string;
 }
 
+/** Page cachée (autre onglet, appel, téléphone verrouillé), lue par `useSyncExternalStore`. */
+function subscribeToVisibility(listener: () => void): () => void {
+  document.addEventListener('visibilitychange', listener);
+  return () => {
+    document.removeEventListener('visibilitychange', listener);
+  };
+}
+
+const readIsPageHidden = () => document.hidden;
+
+const readIsPageHiddenOnServer = () => false;
+
+/**
+ * Secondes de jeu à la résolution du dernier groupe, `MATCH_DELAY_MS` après la carte qui le complète :
+ * même mesure que les meilleurs temps déjà enregistrés. Hors du composant : `react-hooks/purity` prend
+ * un gestionnaire de clic capturé par le JSX enfant pour du code de rendu, et y refuse `performance.now()`.
+ */
+function getWinSeconds(startedAt: number | null): number {
+  if (startedAt === null) return 0;
+  return Math.round((performance.now() + MATCH_DELAY_MS - startedAt) / 1000);
+}
+
 /** Forme de la grille configurée : une grille large tourne en portrait, une haute en paysage. */
 function getGridShape({ cols, rows }: MemoryLevelConfig): 'wide' | 'tall' | 'square' {
   if (cols === rows) return 'square';
@@ -69,11 +101,12 @@ export interface MemoryBoardProps {
 export function MemoryBoard({ level, controls }: MemoryBoardProps) {
   const { config: levelConfig, tier } = level.definition;
   const { inputMode } = useNavigation();
-  const { activeProfile } = useMiaStorage();
-  // Réglages du joueur (FEAT-19), suivis par leurs valeurs : `activeProfile` est un nouvel objet
-  // après chaque sauvegarde (`recordVictory`), et la configuration jouée ne doit changer qu'avec le
-  // niveau ou un facteur, jamais pour une identité (la partie et ses minuteurs y survivent).
-  const settings = activeProfile?.gameSettings.memory ?? DEFAULT_MEMORY_GAME_SETTINGS;
+  // Réglages du joueur qui a lancé le niveau (FEAT-19), même si un autre onglet change de joueur. Suivis
+  // par leurs valeurs : le profil est un nouvel objet après chaque sauvegarde (`recordVictory`), et la
+  // configuration jouée ne doit changer qu'avec le niveau ou un facteur, jamais pour une identité (la
+  // partie et ses minuteurs y survivent).
+  const player = useLevelPlayer();
+  const settings = player?.gameSettings.memory ?? DEFAULT_MEMORY_GAME_SETTINGS;
   const { previewFactor, mismatchFactor } = settings;
   const config = useMemo(
     () => applyMemorySettings(levelConfig, { previewFactor, mismatchFactor }),
@@ -92,6 +125,11 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
   // à `Date.now()` qui recule si l'horloge du téléviseur est réglée pendant la partie.
   const startedAtRef = useRef<number | null>(null);
   const [gridRef, shownCols] = useGridColumns<HTMLDivElement>(config.cols);
+  const isPageHidden = useSyncExternalStore(
+    subscribeToVisibility,
+    readIsPageHidden,
+    readIsPageHiddenOnServer,
+  );
 
   // La feuille de style décide de la rotation ; le D-Pad suit les colonnes affichées.
   const isRotated = config.cols !== config.rows && shownCols === config.rows;
@@ -141,56 +179,64 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
     },
   });
 
-  /** Fin de partie : résultat figé pour la modale et, en cas de victoire, étoile enregistrée. */
-  const finish = (ended: MemoryGameState) => {
-    const isPerfect = isPerfectWin(ended);
+  /** Partie terminée : résultat figé pour la modale, couronne lue avant que la victoire ne la change. */
+  const freezeResult = (ended: MemoryGameState) => {
     setResult({
       outcome: ended.phase === 'won' ? 'won' : 'lost',
       moves: ended.moves,
       mistakes: ended.mistakes,
       matchedGroups: ended.matchedGroups,
       totalGroups: ended.totalGroups,
-      isPerfect,
+      isPerfect: isPerfectWin(ended),
       hadCrown: level.isPerfect,
     });
-    if (ended.phase !== 'won') return;
-    const startedAt = startedAtRef.current;
-    const timeSeconds = startedAt === null ? 0 : Math.round((performance.now() - startedAt) / 1000);
-    void controls.recordVictory({ moves: ended.moves, timeSeconds, isPerfect });
+  };
+
+  /**
+   * Dernière carte du dernier groupe : l'étoile est gagnée dès ce geste, le joueur peut quitter avant
+   * la modale sans la perdre. Enregistrée ici, une seule fois, jamais par un effet rejoué.
+   */
+  const recordWin = (won: MemoryGameState) => {
+    freezeResult(won);
+    void controls.recordVictory({
+      moves: won.moves,
+      timeSeconds: getWinSeconds(startedAtRef.current),
+      isPerfect: isPerfectWin(won),
+    });
   };
 
   // Calculé hors de `setGame` : la résolution tire au hasard (permutations) et ne doit être
-  // jouée qu'une fois ; la victoire est enregistrée ici, jamais par un effet rejoué.
+  // jouée qu'une fois.
   const settle = useEffectEvent((evaluated: MemoryGameState) => {
     const next = resolveEvaluation(evaluated);
     setGame(next);
-    const { maxMistakes } = next.config;
-    if (next.lastSwappedPair) {
-      announce('Attention : deux cartes ont échangé leur place !');
-    } else if (
+    const isLastTry =
       next.phase === 'playing' &&
       next.mistakes > evaluated.mistakes &&
-      next.mistakes === maxMistakes
-    ) {
-      announce('Dernier essai !');
-    }
-    if (next.phase === 'won' || next.phase === 'lost') finish(next);
+      next.mistakes === next.config.maxMistakes;
+    // Une permutation peut tomber sur la même erreur que le dernier essai : les deux sont dits.
+    const messages: string[] = [];
+    if (next.lastSwappedPair) messages.push('Attention : deux cartes ont échangé leur place !');
+    if (isLastTry) messages.push('Dernier essai !');
+    if (messages.length > 0) announce(messages.join(' '));
+    if (next.phase === 'lost') freezeResult(next);
   });
 
   // Aperçu : les cartes se cachent au bout du `previewSeconds` joué (déjà multiplié par
   // `previewFactor`), ou plus tôt, par un tap ou OK. Lu dans `game.config`, comme le compte à
   // rebours du HUD : une partie joue jusqu'au bout la configuration de sa création, même si le
-  // profil actif (donc le facteur) change pendant l'aperçu (choix du joueur imposé, autre onglet) ;
-  // le nouveau facteur vaut pour la partie suivante (Recommencer, étoile suivante).
+  // profil actif (donc le facteur) change pendant l'aperçu (autre onglet) ; le nouveau facteur vaut
+  // pour la partie suivante (Recommencer, étoile suivante). Page cachée (appel, téléphone verrouillé) :
+  // personne ne regarde, l'aperçu repart en entier au retour, avec son compte à rebours.
   useEffect(() => {
-    if (game.phase !== 'preview') return;
+    if (game.phase !== 'preview' || isPageHidden) return;
     const timer = setTimeout(() => {
       setGame(endPreviewPhase);
     }, game.config.previewSeconds * 1000);
     return () => {
       clearTimeout(timer);
     };
-  }, [game]);
+  }, [game, isPageHidden]);
 
   // Évaluation : 350 ms (groupe) ou 900 ms × `mismatchFactor` (erreur), puis résolution du coup.
   useEffect(() => {
@@ -220,17 +266,25 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
     };
   }, [game.lastSwappedPair]);
 
-  /** Tap, clic ou OK sur une carte : termine l'aperçu, sinon retourne la carte. */
+  /**
+   * Tap, clic ou OK sur une carte : termine l'aperçu, sinon retourne la carte. Lit l'état du dernier
+   * rendu : après la fin de l'aperçu ou d'une évaluation, une tape tombée avant ce rendu ne réécrit
+   * rien de faux (fin d'aperçu identique, évaluation qui ignore les tapes).
+   */
   const selectAt = (index: number) => {
-    setGame((current) =>
-      current.phase === 'preview' ? endPreviewPhase(current) : selectCard(current, index),
-    );
+    const next = game.phase === 'preview' ? endPreviewPhase(game) : selectCard(game, index);
+    if (next === game) return;
+    setGame(next);
+    // Un groupe trouvé se résout sans hasard : `settle` retrouvera ce résultat à la fin du délai.
+    const outcome = isEvaluationMatch(next) ? resolveEvaluation(next) : next;
+    if (outcome.phase === 'won') recordWin(outcome);
   };
 
   /** « Recommencer », « Rejouer », « Réessayer » : nouveaux symboles, nouvelles positions. */
   const restart = () => {
     startedAtRef.current = null;
     setGame(createMemoryGame(config));
+    setResult(null);
     setRound((value) => value + 1);
     setActiveZone('grid');
   };
@@ -274,8 +328,11 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
         <MemoryHud
           game={game}
           tier={tier}
-          hasCrown={level.isPerfect}
+          // Couronne d'avant cette partie : la victoire, enregistrée à la dernière carte, ne change pas
+          // le HUD sous les yeux du joueur.
+          hasCrown={result?.hadCrown ?? level.isPerfect}
           isSwapping={swapPair !== null}
+          isPreviewPaused={isPageHidden}
           round={round}
           inputMode={inputMode}
           className="shrink-0 landscape:w-52 landscape:overflow-y-auto md:landscape:w-60"

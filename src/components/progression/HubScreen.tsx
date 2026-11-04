@@ -6,6 +6,7 @@ import { SETTINGS_PATH } from '@/components/settings/labels';
 import { AppShell, DEFAULT_REMOTE_HINTS, FadeIn, FocusableButton } from '@/components/ui';
 import {
   coordToIndex,
+  guardActivations,
   indexToCoord,
   moveInGrid,
   useGridColumns,
@@ -187,6 +188,8 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
 
   const openGame = (game: GameManifest, href: string) => {
     rememberLastGame(game.id);
+    // Dès le clic, avant l'arrivée de l'écran : un second tap ne l'ouvrirait pas deux fois.
+    guardActivations();
     router.push(href);
   };
 
@@ -231,6 +234,7 @@ function HubContent({ games, onOpenSelector }: HubContentProps) {
             aria-label="Réglages"
             leftIcon={<Settings className="size-6" />}
             onClick={() => {
+              guardActivations();
               router.push(SETTINGS_PATH);
             }}
             onFocus={focusProfile}

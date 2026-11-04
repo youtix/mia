@@ -1,7 +1,7 @@
 'use client';
 
 import { FocusableButton, ModalDialog } from '@/components/ui';
-import { useGridNavigation } from '@/core/navigation';
+import { CONFIRM_GUARD_MS, useGridNavigation } from '@/core/navigation';
 import { countProfileStars, DEFAULT_PROFILE_NAME } from '@/core/storage';
 import type { UserProfile } from '@/types/mia';
 import { Trash2 } from 'lucide-react';
@@ -38,9 +38,12 @@ export function DeleteProfileModal({
   return (
     <ModalDialog
       isOpen={profile !== null}
+      inputGuardMs={CONFIRM_GUARD_MS}
       title={profile ? `Supprimer « ${profile.name} » ?` : ''}
       subtitle={profile ? describeProfileLoss(profile, isLastProfile) : undefined}
       onClose={onCancel}
+      // Un long prénom sans espace passe à la ligne plutôt que d'être coupé par le panneau.
+      className="wrap-anywhere"
     >
       {profile ? (
         <DeleteActions

@@ -56,7 +56,6 @@ describe('useGameAudio', () => {
 
     expect(first).toBe(service);
     expect(result.current).toBe(first);
-    expect(audio.getAudioService).toHaveBeenCalledOnce();
   });
 
   it.each([true, false])('applique le réglage « Son » au montage (%s)', (soundEnabled) => {

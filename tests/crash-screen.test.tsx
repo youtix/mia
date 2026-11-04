@@ -89,6 +89,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete document.documentElement.dataset.tv;
+  delete document.documentElement.dataset.contrast;
   vi.restoreAllMocks();
 });
 
@@ -181,6 +182,18 @@ describe('CrashScreen', () => {
     expect(getRepair()).toHaveFocus();
   });
 
+  it('montre la réparation en cours jusqu’au rechargement : elle peut télécharger un moment', async () => {
+    const finish = holdRepair();
+    renderScreen('idle');
+
+    fireEvent.click(getRepair());
+    expect(screen.getByRole('status')).toHaveTextContent('Réparation en cours…');
+
+    await finish('reloading');
+    expect(screen.getByRole('status')).toHaveTextContent('Réparation en cours…');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('annonce le refus sans réseau, puis laisse réessayer', async () => {
     const finish = holdRepair();
     renderScreen('idle');
@@ -188,6 +201,7 @@ describe('CrashScreen', () => {
     fireEvent.click(getRepair());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await finish('unreachable');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Réparation impossible : pas de connexion. Réessaie une fois connecté.',
     );
@@ -292,12 +306,14 @@ describe('global-error', () => {
     expect(html).toContain(CRASH_SCREEN_TEXTS.title);
   });
 
-  it('journalise l’erreur et guide la télécommande sur un <html> vidé de `data-tv`', () => {
+  it('journalise l’erreur et garde le mode TV et le contraste élevé de <html>', () => {
     update.status = 'idle';
     const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const error = new Error('Chunk introuvable');
-    // Posé hors de React (script inline du layout) : React l'efface en prenant possession de <html>.
+    // Posés hors de React (script inline du layout, `StorageProvider`) : React efface les attributs
+    // qu'il ne connaît pas en prenant possession de <html>.
     document.documentElement.dataset.tv = 'on';
+    document.documentElement.dataset.contrast = 'high';
     const root = createRoot(document);
 
     try {
@@ -305,7 +321,8 @@ describe('global-error', () => {
         root.render(<GlobalError error={error} />);
       });
 
-      expect(document.documentElement).not.toHaveAttribute('data-tv');
+      expect(document.documentElement).toHaveAttribute('data-tv', 'on');
+      expect(document.documentElement).toHaveAttribute('data-contrast', 'high');
       expect(document.documentElement).toHaveAttribute('lang', 'fr');
       expect(document.title).toBe('Mia');
       expect(log).toHaveBeenCalledWith('[Mia]', error);
@@ -313,6 +330,26 @@ describe('global-error', () => {
 
       press('ArrowRight');
       expect(getRepair()).toHaveFocus();
+    } finally {
+      act(() => {
+        root.unmount();
+      });
+    }
+  });
+
+  it('n’ajoute rien quand <html> n’avait ni mode TV forcé ni contraste élevé', () => {
+    update.status = 'unsupported';
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const root = createRoot(document);
+
+    try {
+      act(() => {
+        root.render(<GlobalError error={new Error('boum')} />);
+      });
+
+      expect(document.documentElement).not.toHaveAttribute('data-tv');
+      expect(document.documentElement).not.toHaveAttribute('data-contrast');
+      expect(getReload()).toHaveFocus();
     } finally {
       act(() => {
         root.unmount();

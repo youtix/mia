@@ -49,10 +49,13 @@ jobs:
           echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
           echo "email=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
 
+      # Le token de l'App ne reste pas sur le disque pendant `npm ci` et le build : semantic-release
+      # et @semantic-release/git poussent avec GITHUB_TOKEN, placé dans leur propre URL Git.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: false
 
       - uses: actions/setup-node@v7
         with:
@@ -60,14 +63,19 @@ jobs:
           cache: npm
 
       # JDK 21 (exigé par Capacitor 8) et cache Gradle : semantic-release compile l'APK pendant la
-      # release (prepareCmd de .releaserc.json).
+      # release (prepareCmd de .releaserc.json). La clé de cache ne lit pas android/app/build.gradle :
+      # chaque release y écrit sa version, et le cache ne servirait jamais.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: gradle
           cache-dependency-path: |
-            android/**/*.gradle*
+            android/build.gradle
+            android/settings.gradle
+            android/variables.gradle
+            android/capacitor.settings.gradle
+            android/app/capacitor.build.gradle
             android/gradle/wrapper/gradle-wrapper.properties
 
       # Le SDK Android est préinstallé sur ubuntu-latest (ANDROID_HOME) et le plugin Android Gradle
@@ -83,24 +91,34 @@ jobs:
 
       - run: npm ci
 
-      # Signature de release facultative : le secret MIA_KEYSTORE_BASE64 (keystore encodé en
-      # base64) est décodé hors du dépôt et son chemin transmis à Gradle par MIA_KEYSTORE_PATH.
-      # Sans ce secret, l'APK de release est signé avec la clé de débogage et reste installable.
+      # Signature de release : le secret MIA_KEYSTORE_BASE64 (keystore encodé en base64) est décodé
+      # hors du dépôt et son chemin transmis à Gradle par MIA_KEYSTORE_PATH. Sans ce secret, la release
+      # se fait sans APK (scripts/build-apk.mjs) : la clé de débogage du runner change à chaque build,
+      # et Android refuserait la mise à jour. Une clé sans ses mots de passe arrête tout ici, avant
+      # que Gradle n'échoue plus loin avec un message moins clair.
       - name: Prepare release keystore
         env:
           MIA_KEYSTORE_BASE64: ${{ secrets.MIA_KEYSTORE_BASE64 }}
+          MIA_KEYSTORE_PASSWORD: ${{ secrets.MIA_KEYSTORE_PASSWORD }}
+          MIA_KEY_ALIAS: ${{ secrets.MIA_KEY_ALIAS }}
+          MIA_KEY_PASSWORD: ${{ secrets.MIA_KEY_PASSWORD }}
         run: |
           if [ -n "$MIA_KEYSTORE_BASE64" ]; then
+            if [ -z "$MIA_KEYSTORE_PASSWORD" ] || [ -z "$MIA_KEY_ALIAS" ] || [ -z "$MIA_KEY_PASSWORD" ]; then
+              echo "::error::MIA_KEYSTORE_BASE64 is set but MIA_KEYSTORE_PASSWORD, MIA_KEY_ALIAS or MIA_KEY_PASSWORD is missing: nothing was released (README.md, « Signature de l'APK »)"
+              exit 1
+            fi
             printf '%s' "$MIA_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/mia-release.jks"
             echo "MIA_KEYSTORE_PATH=$RUNNER_TEMP/mia-release.jks" >> "$GITHUB_ENV"
             echo "Release keystore configured"
           else
-            echo "No MIA_KEYSTORE_BASE64 secret: the APK will be signed with the debug key"
+            echo "No MIA_KEYSTORE_BASE64 secret: a release from this run attaches no APK"
           fi
 
       # prepareCmd : version Android synchronisée, build + cap sync, APK copié dans dist-apk/ puis
       # attaché à la GitHub Release par @semantic-release/github.
       - name: Run semantic-release
+        id: semantic-release
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GIT_AUTHOR_NAME: ${{ steps.bot.outputs.name }}
@@ -118,32 +136,60 @@ jobs:
 
       # @semantic-release/git crée le commit de release localement puis le tague :
       # HEAD porte un tag v* et diffère du commit déclencheur seulement si une version est publiée.
+      # L'étape tourne aussi après un échec : une fois le tag poussé, la version existe et la PWA doit
+      # suivre, même si la GitHub Release n'a pas abouti.
+      # Une relance repart du commit déclencheur et semantic-release, en retard sur le dépôt, ne fait
+      # rien : la version de ce déclencheur est alors le dernier tag, si son commit a pour parent
+      # GITHUB_SHA. Un tag plus récent a son propre déploiement : le refaire ici ferait reculer la PWA.
+      # Hors du cas nominal, rien ne recréera une GitHub Release absente : l'erreur le dit. Et un tag
+      # créé ici dont le push a échoué n'est pas une version : rien n'est déployé.
       - name: Detect published release
         id: result
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEMANTIC_RELEASE_OUTCOME: ${{ steps.semantic-release.outcome }}
         run: |
           tag="$(git tag --points-at HEAD --list 'v*' | head -n 1)"
-          if [ -n "$tag" ] && [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "tag=$tag" >> "$GITHUB_OUTPUT"
-            echo "Published $tag"
-          else
+          nominal="$SEMANTIC_RELEASE_OUTCOME"
+          if [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ]; then
+            tag=""
+            nominal=""
+            latest="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
+            if [ "$GITHUB_RUN_ATTEMPT" -gt 1 ] && [ -n "$latest" ] && [ "$(git rev-parse "$latest^" 2>/dev/null)" = "$GITHUB_SHA" ]; then
+              tag="$latest"
+            fi
+          fi
+          if [ -z "$tag" ]; then
             echo "published=false" >> "$GITHUB_OUTPUT"
             echo "No new release"
+            exit 0
+          fi
+          if [ "$nominal" != "success" ] && ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" > /dev/null; then
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::error::$tag was created by this run but never reached GitHub: nothing was deployed (README.md, « Release automatique »)"
+            exit 1
+          fi
+          echo "published=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Published $tag"
+          if [ "$nominal" != "success" ] && ! gh release view "$tag" > /dev/null; then
+            echo "::error::$tag has no published GitHub Release, and a re-run will not create it (README.md, « Release automatique »)"
+            exit 1
           fi
 
-  deploy-pwa:
-    name: deploy-pwa
+  # Compilation à part, sans droit sur Pages : le code des dépendances (`npm ci`, `next build`) ne
+  # tourne jamais avec `pages: write` ni `id-token: write`, réservés au job de déploiement.
+  build-pwa:
+    name: build-pwa
     needs: release
-    if: needs.release.outputs.published == 'true'
+    # always() : une release en échec après son tag déploie quand même la version publiée.
+    if: always() && needs.release.outputs.published == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      pages: read
     env:
       HUSKY: 0
     steps:
@@ -174,6 +220,19 @@ jobs:
         with:
           path: out
 
+  deploy-pwa:
+    name: deploy-pwa
+    needs: [release, build-pwa]
+    if: always() && needs.build-pwa.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

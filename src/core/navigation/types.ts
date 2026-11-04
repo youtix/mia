@@ -27,8 +27,8 @@ export interface NavigationTarget extends Point2D {
  * touche au navigateur : ni `preventDefault()`, ni action.
  */
 export interface NavigationScope {
-  /** Flèche, répétée tant que la touche est maintenue. */
-  onDirection?: (direction: Direction) => void;
+  /** Flèche, répétée tant que la touche est maintenue (`isRepeat` pour les répétitions). */
+  onDirection?: (direction: Direction, isRepeat: boolean) => void;
   /** OK / Entrée / Espace, une seule fois par appui. */
   onSelect?: () => void;
   /** Retour : Échap, Retour arrière ou bouton Retour Android (`dispatchBack`). */

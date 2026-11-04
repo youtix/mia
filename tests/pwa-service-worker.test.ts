@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { RESTORE_PRECACHE_MESSAGE, SKIP_WAITING_MESSAGE } from '@/core/pwa/precache';
 import { build } from 'esbuild';
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext } from 'node:vm';
@@ -16,17 +17,36 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SCOPE = 'https://youtix.github.io/mia/';
 const CACHE_NAME = 'mia-precache-test';
 
+/** Même empreinte que scripts/build-sw.ts : 8 premiers caractères hexadécimaux du SHA-256. */
+function revisionOf(body: string): string {
+  return createHash('sha256').update(body).digest('hex').slice(0, 8);
+}
+
+/** Corps d'un fichier dans le réseau simulé : distinct par URL, pour tracer d'où vient ce qui est servi. */
+function networkBody(url: string): string {
+  return `contenu de ${url}`;
+}
+
+/** Entrée dont la révision est celle du fichier servi par le réseau simulé, comme dans un vrai build. */
+function exactEntry(url: string): { url: string; revision: string } {
+  return { url, revision: revisionOf(networkBody(new URL(url, SCOPE).href)) };
+}
+
 /** Manifeste réduit, injecté comme le ferait scripts/build-sw.ts à partir de l'export statique. */
 const PRECACHE_ENTRIES = [
-  { url: '404.html', revision: '404a404a' },
-  { url: '_next/static/chunks/app.js', revision: 'a1b2c3d4' },
-  { url: 'icons/icon-192.png', revision: '19219219' },
-  { url: 'index.html', revision: '1ndex000' },
-  { url: 'index.txt', revision: '1ndex777' },
-  { url: 'memory/index.html', revision: 'mem00000' },
-  { url: 'memory/index.txt', revision: 'mem77777' },
-  { url: 'settings/index.html', revision: '5e771ng5' },
+  exactEntry('404.html'),
+  exactEntry('_next/static/chunks/app.js'),
+  exactEntry('icons/icon-192.png'),
+  exactEntry('index.html'),
+  exactEntry('index.txt'),
+  exactEntry('memory/index.html'),
+  exactEntry('memory/index.txt'),
+  { url: 'sans-revision.json', revision: '' },
+  exactEntry('settings/index.html'),
 ];
+
+/** Deux fichiers que les tests de copie placent dans le cache d'une autre version. */
+const COPYABLE_URLS = ['_next/static/chunks/app.js', 'icons/icon-192.png'];
 
 type FetchMock = Mock<(request: Request) => Promise<Response>>;
 type Listener = (event: unknown) => void;
@@ -35,14 +55,14 @@ function absoluteUrl(key: string): string {
   return new URL(key, SCOPE).href;
 }
 
-/** Réponse du réseau simulé : corps distinct par URL, pour tracer d'où vient ce qui est servi. */
+/** Réponse du réseau simulé. */
 function networkResponse(request: Request): Response {
-  return new Response(`contenu de ${request.url}`, { headers: { 'content-type': 'text/html' } });
+  return new Response(networkBody(request.url), { headers: { 'content-type': 'text/html' } });
 }
 
 /** Corps d'une entrée telle que pré-cachée à l'installation (voir `networkResponse`). */
 function precachedBody(key: string): string {
-  return `contenu de ${absoluteUrl(key)}`;
+  return networkBody(absoluteUrl(key));
 }
 
 /** `redirected` est en lecture seule et ne se construit pas : simulé sur une vraie `Response`. */
@@ -81,34 +101,23 @@ function describeResponse(response: Response | null) {
 interface MemoryCache {
   /** Réponses stockées par URL absolue. */
   responses: Map<string, Response>;
-  /** Requêtes passées à `addAll` (URL absolues, option `cache`). */
-  requests: Request[];
-  addAll(requests: Request[]): Promise<void>;
+  put(url: string, response: Response): Promise<void>;
   match(url: string | Request): Promise<Response | undefined>;
   keys(): Promise<string[]>;
 }
 
-/** Cache en mémoire : comme l'API Cache, `match` rend un clone et `addAll` est atomique. */
-function createMemoryCache(fetchImpl: FetchMock): MemoryCache {
+/**
+ * Cache en mémoire : comme l'API Cache, `match` rend un clone, et `put` refuse une réponse dont le
+ * corps a déjà été lu (le worker doit vérifier les octets d'une copie, pas de l'original).
+ */
+function createMemoryCache(): MemoryCache {
   const responses = new Map<string, Response>();
-  const requests: Request[] = [];
   return {
     responses,
-    requests,
-    async addAll(batch) {
-      const fetched = await Promise.all(batch.map((request) => fetchImpl(request)));
-      const failed = fetched.findIndex((response) => !response.ok);
-      if (failed !== -1) {
-        throw new TypeError(
-          `addAll : ${batch[failed]?.url ?? '?'} a répondu ${String(fetched[failed]?.status)}`,
-        );
-      }
-      batch.forEach((request, index) => {
-        const response = fetched[index];
-        if (!response) return;
-        requests.push(request);
-        responses.set(request.url, response);
-      });
+    put(url, response) {
+      if (response.bodyUsed) return Promise.reject(new TypeError('Corps de la réponse déjà lu'));
+      responses.set(url, response);
+      return Promise.resolve();
     },
     match(url) {
       const stored = responses.get(typeof url === 'string' ? url : url.url);
@@ -127,11 +136,11 @@ interface MemoryCacheStorage {
   delete(name: string): Promise<boolean>;
 }
 
-function createCacheStorage(fetchImpl: FetchMock, log: string[]): MemoryCacheStorage {
+function createCacheStorage(log: string[]): MemoryCacheStorage {
   const store = new Map<string, MemoryCache>();
   return {
     open(name) {
-      const cache = store.get(name) ?? createMemoryCache(fetchImpl);
+      const cache = store.get(name) ?? createMemoryCache();
       store.set(name, cache);
       return Promise.resolve(cache);
     },
@@ -191,17 +200,21 @@ function createHarness(): ServiceWorkerHarness {
   const listeners = new Map<string, Listener[]>();
   const log: string[] = [];
   const fetchMock: FetchMock = vi.fn();
-  const cacheStorage = createCacheStorage(fetchMock, log);
+  const cacheStorage = createCacheStorage(log);
+  const thisWorker = { name: 'ce worker' };
+  const registration = { scope: SCOPE, active: thisWorker as object };
   const claim = vi.fn(() => {
+    // Comme la spécification : seul le worker actif peut réclamer les pages.
+    if (registration.active !== thisWorker) {
+      return Promise.reject(new DOMException('Worker non actif', 'InvalidStateError'));
+    }
     log.push('claim');
     return Promise.resolve();
   });
   const skipWaiting = vi.fn(() => Promise.resolve());
-  const thisWorker = { name: 'ce worker' };
-  const registration = { scope: SCOPE, active: thisWorker as object };
+  // Comme Firefox, sans `self.serviceWorker` : le worker ne sait pas lui-même s'il est l'actif.
   const workerGlobal = {
     registration,
-    serviceWorker: thisWorker,
     clients: { claim },
     skipWaiting,
     addEventListener(type: string, listener: Listener) {
@@ -212,6 +225,7 @@ function createHarness(): ServiceWorkerHarness {
     self: workerGlobal,
     caches: cacheStorage,
     fetch: fetchMock,
+    crypto,
     Request,
     Response,
     Headers,
@@ -278,6 +292,22 @@ async function installedWorker(): Promise<ServiceWorkerHarness> {
   return worker;
 }
 
+/** Requêtes reçues par le réseau simulé, dans l'ordre. */
+function fetchedRequests(worker: ServiceWorkerHarness): Request[] {
+  return worker.fetchMock.mock.calls.map(([request]) => request);
+}
+
+/** Réseau simulé qui sert `body` à l'adresse de `key`, et le fichier du build partout ailleurs. */
+function serveInstead(worker: ServiceWorkerHarness, key: string, body: string): void {
+  worker.fetchMock.mockImplementation((request) =>
+    Promise.resolve(
+      request.url === absoluteUrl(key)
+        ? new Response(body, { headers: { 'content-type': 'text/html' } })
+        : networkResponse(request),
+    ),
+  );
+}
+
 describe('install', () => {
   it('pré-cache chaque entrée sous le scope, en contournant le cache HTTP (cache: "reload")', async () => {
     const worker = createHarness();
@@ -286,13 +316,33 @@ describe('install', () => {
     await worker.install();
 
     const expectedUrls = PRECACHE_ENTRIES.map((entry) => absoluteUrl(entry.url));
+    const requests = fetchedRequests(worker);
+    expect(requests.map((request) => request.url)).toEqual(expectedUrls);
+    expect(requests.every((request) => request.cache === 'reload')).toBe(true);
+    expect(requests.every((request) => request.method === 'GET')).toBe(true);
     const cache = await worker.precache();
-    expect(cache.requests.map((request) => request.url)).toEqual(expectedUrls);
-    expect(cache.requests.every((request) => request.cache === 'reload')).toBe(true);
-    expect(cache.requests.every((request) => request.method === 'GET')).toBe(true);
     expect([...cache.responses.keys()]).toEqual(expectedUrls);
-    expect(worker.fetchMock).toHaveBeenCalledTimes(PRECACHE_ENTRIES.length);
     await expect(cacheStorageKeys(worker)).resolves.toEqual([CACHE_NAME]);
+  });
+
+  it('refuse un fichier dont les octets ne sont pas ceux du build (CDN encore sur l’ancienne version) : rien n’est stocké', async () => {
+    const worker = createHarness();
+    serveInstead(worker, 'index.html', 'ancienne page');
+
+    await expect(worker.install()).rejects.toThrow(
+      'index.html ne correspond pas à cette version (CDN pas encore à jour)',
+    );
+    expect((await worker.precache()).responses.size).toBe(0);
+  });
+
+  it('garde tel quel le fichier d’une entrée sans révision : rien ne permet de le vérifier', async () => {
+    const worker = createHarness();
+    serveInstead(worker, 'sans-revision.json', '{"autre":"contenu"}');
+
+    await worker.install();
+
+    const stored = await (await worker.precache()).match(absoluteUrl('sans-revision.json'));
+    await expect(stored?.text()).resolves.toBe('{"autre":"contenu"}');
   });
 
   it('propage à waitUntil l’échec d’une entrée (réponse non-2xx) : rien n’est stocké', async () => {
@@ -323,6 +373,138 @@ describe('install', () => {
 function cacheStorageKeys(worker: ServiceWorkerHarness): Promise<string[]> {
   return worker.cacheStorage.keys();
 }
+
+describe('install : fichiers identiques à ceux d’une autre version', () => {
+  const OLD_CACHE = 'mia-precache-0ld0ld0l';
+
+  /** Worker dont le réseau répond, avec un cache de la version précédente garni de ces fichiers. */
+  async function workerWithCache(
+    files: Record<string, Response>,
+    name = OLD_CACHE,
+  ): Promise<{ worker: ServiceWorkerHarness; old: MemoryCache }> {
+    const worker = createHarness();
+    worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
+    const old = await worker.cacheStorage.open(name);
+    for (const [url, response] of Object.entries(files)) {
+      old.responses.set(absoluteUrl(url), response);
+    }
+    return { worker, old };
+  }
+
+  const identical = (url: string): Response =>
+    new Response(precachedBody(url), { headers: { 'content-type': 'image/png' } });
+
+  const fetchedUrls = (worker: ServiceWorkerHarness): string[] =>
+    fetchedRequests(worker).map((request) => request.url);
+
+  it('recopie ce qui a le même contenu, télécharge le reste en contournant le cache HTTP', async () => {
+    const { worker } = await workerWithCache({
+      [COPYABLE_URLS[0] ?? '']: identical(COPYABLE_URLS[0] ?? ''),
+      [COPYABLE_URLS[1] ?? '']: identical(COPYABLE_URLS[1] ?? ''),
+      // Même adresse, autre contenu : une page change à chaque version.
+      'index.html': new Response('ancienne page'),
+    });
+
+    await worker.install();
+
+    const copied = COPYABLE_URLS.map(absoluteUrl);
+    const expected = PRECACHE_ENTRIES.map((entry) => absoluteUrl(entry.url)).filter(
+      (url) => !copied.includes(url),
+    );
+    expect(fetchedUrls(worker)).toEqual(expected);
+    expect(fetchedRequests(worker).every((request) => request.cache === 'reload')).toBe(true);
+    const cache = await worker.precache();
+    expect([...cache.responses.keys()].sort()).toEqual(
+      PRECACHE_ENTRIES.map((entry) => absoluteUrl(entry.url)).sort(),
+    );
+    for (const entry of PRECACHE_ENTRIES) {
+      const stored = await cache.match(absoluteUrl(entry.url));
+      await expect(stored?.text()).resolves.toBe(precachedBody(entry.url));
+    }
+  });
+
+  it('garde les en-têtes de la copie, et ne touche pas à l’ancien cache', async () => {
+    const url = COPYABLE_URLS[0] ?? '';
+    const { worker, old } = await workerWithCache({ [url]: identical(url) });
+
+    await worker.install();
+
+    const copy = await (await worker.precache()).match(absoluteUrl(url));
+    expect(copy?.headers.get('content-type')).toBe('image/png');
+    const kept = await old.match(absoluteUrl(url));
+    await expect(kept?.text()).resolves.toBe(precachedBody(url));
+  });
+
+  it('retélécharge une copie abîmée : la révision de son contenu ne correspond pas', async () => {
+    const url = COPYABLE_URLS[0] ?? '';
+    const { worker } = await workerWithCache({ [url]: new Response('contenu abîmé') });
+
+    await worker.install();
+
+    expect(fetchedUrls(worker)).toContain(absoluteUrl(url));
+    const stored = await (await worker.precache()).match(absoluteUrl(url));
+    await expect(stored?.text()).resolves.toBe(precachedBody(url));
+  });
+
+  it('ne fait jamais confiance à la copie d’un fichier sans révision', async () => {
+    const url = 'sans-revision.json';
+    const { worker } = await workerWithCache({ [url]: identical(url) });
+
+    await worker.install();
+
+    expect(fetchedUrls(worker)).toContain(absoluteUrl(url));
+  });
+
+  it('retélécharge une copie illisible', async () => {
+    const url = COPYABLE_URLS[0] ?? '';
+    const { worker, old } = await workerWithCache({});
+    vi.spyOn(old, 'match').mockImplementation((requested) =>
+      requested === absoluteUrl(url)
+        ? Promise.reject(new Error('Entrée de cache illisible'))
+        : Promise.resolve(undefined),
+    );
+
+    await worker.install();
+
+    expect(fetchedUrls(worker)).toContain(absoluteUrl(url));
+    const stored = await (await worker.precache()).match(absoluteUrl(url));
+    await expect(stored?.text()).resolves.toBe(precachedBody(url));
+  });
+
+  it('ignore les caches des autres applications de l’origine', async () => {
+    const url = COPYABLE_URLS[0] ?? '';
+    const { worker } = await workerWithCache({ [url]: identical(url) }, 'autre-cache');
+
+    await worker.install();
+
+    expect(fetchedUrls(worker)).toContain(absoluteUrl(url));
+  });
+
+  it('réseau en échec : le nouveau cache reste vide, aucune copie à moitié installée', async () => {
+    const url = COPYABLE_URLS[0] ?? '';
+    const { worker } = await workerWithCache({ [url]: identical(url) });
+    worker.fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+
+    await expect(worker.install()).rejects.toThrow('Failed to fetch');
+
+    expect((await worker.precache()).responses.size).toBe(0);
+  });
+
+  it('même version réinstallée (réparation) : seul le fichier abîmé repart du réseau', async () => {
+    const worker = await installedWorker();
+    const damaged = COPYABLE_URLS[0] ?? '';
+    const cache = await worker.precache();
+    cache.responses.set(absoluteUrl(damaged), new Response('contenu abîmé'));
+    worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
+
+    await worker.install();
+
+    expect(fetchedUrls(worker)).toContain(absoluteUrl(damaged));
+    expect(fetchedUrls(worker)).not.toContain(absoluteUrl(COPYABLE_URLS[1] ?? ''));
+    const repaired = await cache.match(absoluteUrl(damaged));
+    await expect(repaired?.text()).resolves.toBe(precachedBody(damaged));
+  });
+});
 
 describe('activate', () => {
   it('purge les caches mia-precache-* des autres versions, épargne les autres préfixes, puis réclame les clients', async () => {
@@ -413,10 +595,25 @@ describe('message RESTORE_PRECACHE_MESSAGE', () => {
 
       const cache = await worker.precache();
       expect(cache.responses.size).toBe(PRECACHE_ENTRIES.length);
-      expect(cache.requests.every((request) => request.cache === 'reload')).toBe(true);
+      expect(fetchedRequests(worker)).toHaveLength(PRECACHE_ENTRIES.length);
+      expect(fetchedRequests(worker).every((request) => request.cache === 'reload')).toBe(true);
       expect(worker.claim).toHaveBeenCalledOnce();
     },
   );
+
+  it('pré-cache incomplet : le complète, puis réclame la page', async () => {
+    const worker = await installedWorker();
+    const cache = await worker.precache();
+    cache.responses.delete(absoluteUrl('memory/index.html'));
+    worker.claim.mockClear();
+    worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
+
+    await restore(worker);
+
+    expect(cache.responses.has(absoluteUrl('memory/index.html'))).toBe(true);
+    expect(cache.responses.size).toBe(PRECACHE_ENTRIES.length);
+    expect(worker.claim).toHaveBeenCalledOnce();
+  });
 
   it('téléchargement échoué : l’échec va à waitUntil, aucune page réclamée', async () => {
     const worker = await installedWorker();
@@ -428,7 +625,7 @@ describe('message RESTORE_PRECACHE_MESSAGE', () => {
     expect(worker.claim).not.toHaveBeenCalled();
   });
 
-  it('worker en attente : le refait sans réclamer de page, ce que seul l’actif peut faire', async () => {
+  it('worker en attente : le refait, et le refus de réclamer la page ne remonte pas', async () => {
     const worker = createHarness();
     worker.becomeWaiting();
     worker.fetchMock.mockImplementation((request) => Promise.resolve(networkResponse(request)));
@@ -436,7 +633,7 @@ describe('message RESTORE_PRECACHE_MESSAGE', () => {
     await restore(worker);
 
     expect((await worker.precache()).responses.size).toBe(PRECACHE_ENTRIES.length);
-    expect(worker.claim).not.toHaveBeenCalled();
+    expect(worker.log).not.toContain('claim');
   });
 });
 
@@ -578,6 +775,21 @@ describe('fetch : assets et requêtes laissées au navigateur', () => {
 
     await expect(bodyOf(response)).resolves.toBe(precachedBody(key));
     expect(worker.fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('stockage en erreur : la page et ses assets passent par le réseau au lieu d’échouer', async () => {
+    vi.spyOn(worker.cacheStorage, 'open').mockRejectedValue(
+      new DOMException('Stockage indisponible', 'UnknownError'),
+    );
+    worker.fetchMock.mockImplementation((request) =>
+      Promise.resolve(new Response(`en ligne : ${new URL(request.url).pathname}`)),
+    );
+
+    const page = await worker.dispatchFetch(navigation('/mia/memory/'));
+    const chunk = await worker.dispatchFetch(asset('/mia/_next/static/chunks/app.js'));
+
+    await expect(bodyOf(page)).resolves.toBe('en ligne : /mia/memory/');
+    await expect(bodyOf(chunk)).resolves.toBe('en ligne : /mia/_next/static/chunks/app.js');
   });
 
   it('asset pré-caché absent du cache : réseau en secours', async () => {

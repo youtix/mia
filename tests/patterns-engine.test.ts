@@ -1228,6 +1228,60 @@ describe('tapChoice pendant un STOP', () => {
   });
 });
 
+describe('tapChoice jugé sur la phase de son appui', () => {
+  it('doigt posé pendant un STOP, levé après : geste impulsif, pas une réponse', () => {
+    const choosing = endStop(gameIn('stop'), T0 + 2000);
+
+    expect(tapChoice(choosing, RIGHT, T0 + 2100, 'stop')).toEqual({
+      ...choosing,
+      impulsiveTaps: 1,
+    });
+  });
+
+  it('doigt posé pendant un STOP, levé après, sur un son : ni écoute ni validation', () => {
+    const choosing = endStop(gameIn('stop', 'sound'), T0 + 2000);
+
+    expect(tapChoice(choosing, RIGHT, T0 + 2100, 'stop')).toEqual({
+      ...choosing,
+      impulsiveTaps: 1,
+    });
+  });
+
+  it.each<PatternPhase>(['intro', 'choosing', 'listening', 'success'])(
+    'doigt posé en %s, levé pendant un STOP : rien de compté',
+    (pressPhase) => {
+      const stop = gameIn('stop');
+
+      expect(tapChoice(stop, RIGHT, T0 + 500, pressPhase)).toBe(stop);
+    },
+  );
+
+  it.each<PatternPhase>(['intro', 'listening', 'success', 'won'])(
+    'doigt posé en %s, levé déverrouillé : ni réponse, ni écoute',
+    (pressPhase) => {
+      for (const mode of ['visual', 'sound'] as const) {
+        const choosing = gameIn('choosing', mode);
+
+        expect(tapChoice(choosing, RIGHT, T0 + 500, pressPhase)).toBe(choosing);
+      }
+    },
+  );
+
+  it('doigt posé et levé déverrouillé : réponse, comme sans appui connu', () => {
+    const choosing = gameIn('choosing');
+
+    expect(tapChoice(choosing, RIGHT, T0 + 100, 'choosing')).toEqual(
+      tapChoice(choosing, RIGHT, T0 + 100),
+    );
+  });
+
+  it('hors des propositions : ignorée, même posée pendant un STOP', () => {
+    const choosing = endStop(gameIn('stop'), T0 + 2000);
+
+    expect(tapChoice(choosing, -1, T0 + 2100, 'stop')).toBe(choosing);
+  });
+});
+
 describe('Réponses en sons : écouter, puis valider', () => {
   it('la première tape écoute et arme, sans valider, même sur la bonne suite', () => {
     const choosing = gameIn('choosing', 'sound');

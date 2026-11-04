@@ -1,7 +1,20 @@
-import { NavigationProvider } from '@/core/navigation';
-import { getGameProgressSummary, type BaseLevelDefinition } from '@/core/progression';
+import {
+  END_SCREEN_GUARD_MS,
+  installActivationGuard,
+  NavigationProvider,
+  VIEW_CHANGE_GUARD_MS,
+} from '@/core/navigation';
+import {
+  getGameProgressSummary,
+  recordLevelVictory,
+  type BaseLevelDefinition,
+} from '@/core/progression';
 import type * as MiaStorage from '@/core/storage';
-import { DEFAULT_MEMORY_GAME_SETTINGS, type StorageContextValue } from '@/core/storage';
+import {
+  createDefaultSaveState,
+  DEFAULT_MEMORY_GAME_SETTINGS,
+  type StorageContextValue,
+} from '@/core/storage';
 import {
   getMemoryCardLabel,
   MATCH_DELAY_MS,
@@ -21,9 +34,10 @@ import {
   getDefeatTitle,
   getSwapRuleLabel,
 } from '@/games/memory/components/labels';
-import type { MemoryGameSettings, TimeFactor, UserProfile } from '@/types/mia';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import type { MemoryGameSettings, MiaSaveState, TimeFactor, UserProfile } from '@/types/mia';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
+import { useState } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -146,6 +160,49 @@ function renderBoard({ config = {}, levelIndex = 0, profile = null }: BoardOptio
     view.rerender(<MemoryBoard level={level} controls={controls} />);
   };
   return { ...controls, rerender };
+}
+
+/**
+ * Comme `GameScreen` avec la vraie sauvegarde : la victoire enregistrée recalcule aussitôt le résumé et
+ * le niveau passés au plateau, sans le remonter. Mia n'a encore aucune couronne.
+ */
+function renderLiveBoard() {
+  const player = playerWithSettings({});
+  const catalog = [definition('mem-001', 10, BASE_CONFIG), definition('mem-002', 20, BASE_CONFIG)];
+  const initialState: MiaSaveState = {
+    ...createDefaultSaveState(),
+    profiles: [player],
+    activeProfileId: player.id,
+  };
+  storage.activeProfile = player;
+  const recordVictory = vi.fn();
+
+  function LiveBoard() {
+    const [save, setSave] = useState(initialState);
+    const summary = getGameProgressSummary('memory', catalog, save.profiles[0] ?? null);
+    const level = summary.allLevels[0];
+    if (!level) throw new Error('Niveau absent du catalogue de test');
+    return (
+      <MemoryBoard
+        level={level}
+        controls={{
+          summary,
+          playLevel: vi.fn(),
+          exitToMap: vi.fn(),
+          recordVictory: (result) => {
+            recordVictory(result);
+            setSave((prev) =>
+              recordLevelVictory(prev, { ...result, gameId: 'memory', levelId: 'mem-001' }),
+            );
+            return Promise.resolve();
+          },
+        }}
+      />
+    );
+  }
+
+  render(<LiveBoard />, { wrapper: NavigationProvider });
+  return { recordVictory };
 }
 
 /** Mode TV forcé avant le montage : le moteur D-Pad démarre en mode `dpad`. */
@@ -404,6 +461,131 @@ describe('Partie au doigt', () => {
   });
 });
 
+describe('Enregistrement de la victoire', () => {
+  it('enregistre une seule fois, dès la dernière carte, avec le temps de sa résolution', () => {
+    const controls = renderBoard();
+
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2);
+    expect(controls.recordVictory).not.toHaveBeenCalled();
+
+    clickCards(3);
+    // Enregistrée au geste, délai du groupe compris : 350 ms + 350 ms = 0,7 s
+    expect(controls.recordVictory).toHaveBeenCalledExactlyOnceWith({
+      moves: 2,
+      timeSeconds: 1,
+      isPerfect: true,
+    });
+
+    // La dernière paire reste affichée le temps prévu avant la modale.
+    advance(MATCH_DELAY_MS - 1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(getCard(3)).toHaveAttribute('data-state', 'flipped');
+    advance(1);
+    expect(screen.getByRole('dialog', { name: 'Étoile #1 gagnée !' })).toBeInTheDocument();
+
+    advance(10_000);
+    expect(controls.recordVictory).toHaveBeenCalledOnce();
+  });
+
+  it('attend la dernière carte d’un triplet', () => {
+    const controls = renderBoard({ config: { cols: 3, matchSize: 3 } });
+
+    clickCards(0, 1, 2);
+    advance(MATCH_DELAY_MS);
+    clickCards(3, 4);
+    expect(controls.recordVictory).not.toHaveBeenCalled();
+    clickCards(5);
+    expect(controls.recordVictory).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ moves: 2, isPerfect: true }),
+    );
+  });
+
+  it('n’enregistre rien sur un dernier coup raté', () => {
+    const controls = renderBoard({ config: { cols: 3, maxMistakes: 0 } });
+
+    clickCards(0, 2);
+    expect(controls.recordVictory).not.toHaveBeenCalled();
+    advance(MISMATCH_DELAY_MS);
+
+    expect(screen.getByRole('dialog', { name: /^Trop d’erreurs/ })).toBeInTheDocument();
+    expect(controls.recordVictory).not.toHaveBeenCalled();
+  });
+
+  it('garde l’étoile si le joueur quitte avant la modale', () => {
+    const controls = renderBoard();
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+
+    fireEvent.click(getButton('Retour'));
+    expect(controls.exitToMap).toHaveBeenCalledOnce();
+    expect(controls.recordVictory).toHaveBeenCalledOnce();
+
+    // Plateau démonté par la navigation : pas de seconde victoire.
+    cleanup();
+    advance(10_000);
+    expect(controls.recordVictory).toHaveBeenCalledOnce();
+  });
+
+  it('garde l’étoile si le joueur recommence avant la modale, et enregistre la partie suivante', () => {
+    const controls = renderBoard();
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+
+    fireEvent.click(getButton('Recommencer'));
+    expect(controls.recordVictory).toHaveBeenCalledOnce();
+    advance(MATCH_DELAY_MS);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(getHud()).toHaveTextContent('Paires : 0 / 2');
+
+    clickCards(0, 2);
+    advance(MISMATCH_DELAY_MS);
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+    expect(controls.recordVictory).toHaveBeenCalledTimes(2);
+    expect(controls.recordVictory).toHaveBeenLastCalledWith(
+      expect.objectContaining({ moves: 3, isPerfect: false }),
+    );
+    advance(MATCH_DELAY_MS);
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription('3 coups · 1 erreur');
+  });
+
+  it('fige la couronne au moment d’enregistrer : HUD et modale la disent gagnée, puis acquise', async () => {
+    const { recordVictory } = renderLiveBoard();
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    const lastCard = getCard(3);
+    clickCards(2, 3);
+    expect(recordVictory).toHaveBeenCalledOnce();
+
+    // La sauvegarde a déjà remplacé le niveau : rien ne bouge sous les yeux du joueur.
+    expect(within(getHud()).getByText('Sans erreur')).toBeInTheDocument();
+    expect(getCard(3)).toBe(lastCard);
+    advance(MATCH_DELAY_MS - 1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    advance(1);
+
+    const dialog = screen.getByRole('dialog', { name: 'Étoile #1 gagnée !' });
+    expect(within(dialog).getByText('Parfait ! Couronne gagnée')).toBeInTheDocument();
+
+    // Rejouer : la couronne est acquise, et cette victoire s'enregistre normalement.
+    fireEvent.click(getButton('Rejouer'));
+    await advanceAsync(1000);
+    expect(within(getHud()).getByText('Couronne déjà gagnée')).toBeInTheDocument();
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+    advance(MATCH_DELAY_MS);
+
+    expect(recordVictory).toHaveBeenCalledTimes(2);
+    expect(within(screen.getByRole('dialog')).getByText('Parfait !')).toBeInTheDocument();
+  });
+});
+
 describe('Partie à la télécommande', () => {
   it('se joue avec les flèches et OK jusqu’à la modale de victoire', () => {
     forceTvMode();
@@ -507,7 +689,7 @@ describe('Partie à la télécommande', () => {
 });
 
 describe('Fin de partie depuis l’en-tête', () => {
-  it('rejoue sans planter quand le curseur est monté sur Retour avant la victoire', async () => {
+  it('rejoue sur la grille quand le curseur est monté sur Retour avant la victoire', async () => {
     forceTvMode();
     renderBoard();
     clickCards(0, 1);
@@ -528,8 +710,155 @@ describe('Fin de partie depuis l’en-tête', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
-    expect(getButton('Retour')).toHaveFocus();
-    expect(getButton('Retour')).toHaveAttribute('data-focused', 'true');
+    // Une nouvelle partie ramène le curseur sur la grille : OK y retourne une carte, sans quitter.
+    expect(getCard(0)).toHaveFocus();
+    expect(getCard(0)).toHaveAttribute('data-focused', 'true');
+    expect(getButton('Retour')).not.toHaveAttribute('data-focused');
+    press('Enter');
+    expect(getCard(0)).toHaveAttribute('data-state', 'flipped');
+  });
+
+  it('rejoue sur la grille depuis la modale d’une partie jouée à la télécommande', async () => {
+    forceTvMode();
+    renderBoard();
+    press('Enter');
+    press('ArrowRight');
+    press('Enter');
+    advance(MATCH_DELAY_MS);
+    press('ArrowDown');
+    press('Enter');
+    press('ArrowLeft');
+    press('Enter');
+    advance(MATCH_DELAY_MS);
+
+    press('ArrowDown');
+    expect(getButton('Rejouer')).toHaveFocus();
+    press('Enter');
+    await advanceAsync(1000);
+
+    // Curseur laissé sur la dernière carte retournée, dans la nouvelle grille.
+    expect(getCard(2)).toHaveFocus();
+    expect(getCard(2)).toHaveAttribute('data-focused', 'true');
+  });
+});
+
+describe('Garde d’activation', () => {
+  let removeGuard: () => void;
+
+  beforeEach(() => {
+    removeGuard = installActivationGuard();
+  });
+
+  afterEach(() => {
+    removeGuard();
+  });
+
+  it('un double tap qui lance le niveau ne coupe pas son aperçu', () => {
+    renderBoard({ config: { previewSeconds: 5 } });
+
+    // Le second tap tombe sur une carte du plateau tout juste affiché.
+    clickCards(0);
+    advance(VIEW_CHANGE_GUARD_MS - 1);
+    clickCards(0);
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+
+    // Passé ce délai, c'est un vrai geste : il termine l'aperçu.
+    advance(1);
+    clickCards(0);
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+  });
+
+  it('un OK répété qui lance le niveau ne coupe pas son aperçu', () => {
+    forceTvMode();
+    renderBoard({ config: { previewSeconds: 5 } });
+
+    press('Enter');
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+
+    advance(VIEW_CHANGE_GUARD_MS);
+    press('Enter');
+    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+  });
+
+  /** Modale de victoire à peine ouverte ; avant : assez d'attente pour la garde d'arrivée sur le plateau. */
+  function reachEndModal() {
+    const controls = renderBoard();
+    advance(VIEW_CHANGE_GUARD_MS);
+    clickCards(0, 1);
+    advance(MATCH_DELAY_MS);
+    clickCards(2, 3);
+    advance(MATCH_DELAY_MS);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    return controls;
+  }
+
+  it('la modale de fin ignore les tapes le temps de s’afficher', () => {
+    const controls = reachEndModal();
+    const next = getButton('Étoile Suivante (#2)');
+
+    // Le second tap d'un double tap sur la dernière carte tombe sur ce bouton.
+    fireEvent.click(next);
+    advance(END_SCREEN_GUARD_MS - 1);
+    fireEvent.click(next);
+    fireEvent.click(getButton('Rejouer'));
+    fireEvent.click(getButton('Carte des Étoiles'));
+    expect(controls.playLevel).not.toHaveBeenCalled();
+    expect(controls.exitToMap).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    advance(1);
+    fireEvent.click(next);
+    expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('mem-002');
+  });
+
+  it('la modale de fin ignore OK le temps de s’afficher, pas les flèches ni Retour', () => {
+    forceTvMode();
+    const controls = renderBoard();
+    advance(VIEW_CHANGE_GUARD_MS);
+    press('Enter');
+    press('ArrowRight');
+    press('Enter');
+    advance(MATCH_DELAY_MS);
+    press('ArrowDown');
+    press('Enter');
+    press('ArrowLeft');
+    press('Enter');
+    advance(MATCH_DELAY_MS);
+    const next = getButton('Étoile Suivante (#2)');
+    expect(next).toHaveFocus();
+
+    press('Enter');
+    advance(END_SCREEN_GUARD_MS - 1);
+    press('Enter');
+    expect(controls.playLevel).not.toHaveBeenCalled();
+
+    press('ArrowDown');
+    expect(getButton('Rejouer')).toHaveFocus();
+    press('ArrowUp');
+    advance(1);
+    press('Enter');
+    expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('mem-002');
+
+    press('Backspace');
+    expect(controls.exitToMap).toHaveBeenCalledOnce();
+  });
+
+  it('une défaite garde aussi sa modale le temps de s’afficher', () => {
+    renderBoard({ config: { cols: 3, maxMistakes: 0 } });
+    advance(VIEW_CHANGE_GUARD_MS);
+    clickCards(0, 2);
+    advance(MISMATCH_DELAY_MS);
+
+    // Plus longtemps que la garde d'un écran ordinaire : rien n'est encore rejoué.
+    const card = getCard(0);
+    advance(VIEW_CHANGE_GUARD_MS);
+    fireEvent.click(getButton('Réessayer'));
+    expect(getCard(0)).toBe(card);
+
+    advance(END_SCREEN_GUARD_MS - VIEW_CHANGE_GUARD_MS);
+    fireEvent.click(getButton('Réessayer'));
+    // Nouvelle partie : la grille est remontée.
+    expect(getCard(0)).not.toBe(card);
   });
 });
 
@@ -572,6 +901,61 @@ describe('Aperçu', () => {
 
     press('Backspace');
     expect(controls.exitToMap).toHaveBeenCalledOnce();
+  });
+
+  describe('page cachée', () => {
+    function setPageHidden(isHidden: boolean): void {
+      vi.spyOn(document, 'hidden', 'get').mockReturnValue(isHidden);
+      act(() => {
+        document.dispatchEvent(new Event('visibilitychange'));
+      });
+    }
+
+    function getBanner(): HTMLElement | null {
+      return screen.getByText('Mémorise les cartes !').closest('p');
+    }
+
+    it('suspend l’aperçu et le reprend en entier au retour', () => {
+      renderBoard({ config: { previewSeconds: 3 } });
+      advance(2000);
+      expect(getBanner()).toHaveTextContent('1 seconde');
+
+      setPageHidden(true);
+      advance(60_000);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+
+      setPageHidden(false);
+      expect(getBanner()).toHaveTextContent('3 secondes');
+      advance(1000);
+      expect(getBanner()).toHaveTextContent('2 secondes');
+      advance(1999);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+      advance(1);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    });
+
+    it('n’entame pas l’aperçu d’un niveau ouvert dans un onglet caché', () => {
+      vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+      renderBoard({ config: { previewSeconds: 3 } });
+      advance(60_000);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+
+      setPageHidden(false);
+      advance(3000);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    });
+
+    it('ne change rien à une partie déjà commencée', () => {
+      renderBoard({ config: { previewSeconds: 3 } });
+      advance(3000);
+      clickCards(0, 2);
+
+      setPageHidden(true);
+      advance(MISMATCH_DELAY_MS);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+      setPageHidden(false);
+      expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    });
   });
 
   it('mesure le temps de jeu à partir de la fin de l’aperçu', () => {
@@ -816,6 +1200,28 @@ describe('Limite d’erreurs', () => {
 });
 
 describe('Permutation', () => {
+  it('annonce à la fois la permutation et le dernier essai tombés sur la même erreur', () => {
+    renderBoard({ config: { cols: 3, maxMistakes: 2, swapEveryNMistakes: 2 } });
+
+    clickCards(0, 2);
+    advance(MISMATCH_DELAY_MS);
+    expect(getStatus()).toBeEmptyDOMElement();
+
+    clickCards(0, 2);
+    advance(MISMATCH_DELAY_MS);
+    expect(getStatus()).toHaveTextContent(
+      'Attention : deux cartes ont échangé leur place ! Dernier essai !',
+    );
+
+    // Une fois seulement : un groupe trouvé sur ce dernier essai ne le répète pas.
+    clickCards(4, 5);
+    advance(MATCH_DELAY_MS);
+    expect(getHud()).toHaveTextContent('Dernier essai !');
+    expect(getStatus()).toHaveTextContent(
+      'Attention : deux cartes ont échangé leur place ! Dernier essai !',
+    );
+  });
+
   it('signale les deux cartes échangées pendant 1 s', () => {
     renderBoard({ config: { cols: 3, maxMistakes: 3, swapEveryNMistakes: 1 } });
     const swapRule = within(getHud())
@@ -865,6 +1271,45 @@ describe('Barre d’état', () => {
 
     for (const text of texts) expect(getHud()).toHaveTextContent(text);
     expect(screen.getByText('Très Facile')).toBeInTheDocument();
+  });
+
+  describe('hauteur', () => {
+    function getMistakesLine(): HTMLElement | null | undefined {
+      return within(getHud())
+        .getByText(/^Erreurs/)
+        .closest('[data-tone]')?.parentElement;
+    }
+
+    it('garde sa ligne au compteur d’erreurs qui annoncera le dernier essai : le plateau ne bouge pas', () => {
+      renderBoard({ config: { cols: 3, maxMistakes: 1 } });
+      expect(getMistakesLine()).toHaveClass('basis-full');
+
+      clickCards(0, 2);
+      advance(MISMATCH_DELAY_MS);
+      expect(getHud()).toHaveTextContent('Dernier essai !');
+      expect(getMistakesLine()).toHaveClass('basis-full');
+      // Dernier des compteurs : c'est lui, seul, qui s'allonge.
+      expect(getMistakesLine()?.nextElementSibling).toBeNull();
+    });
+
+    it('n’en réserve aucune sans limite d’erreurs : rien ne l’allongera', () => {
+      renderBoard();
+
+      expect(getMistakesLine()).not.toHaveClass('basis-full');
+    });
+  });
+
+  it('ne défile au doigt, sous le verrou du plateau, que quand son contenu déborde', () => {
+    renderBoard();
+    // Sans mise en page (jsdom), rien ne déborde : une main posée qui glisse ne fige rien.
+    expect(getHud()).not.toHaveAttribute('data-touch-scroll');
+
+    // Colonne d'un écran bas : le contenu dépasse, le HUD défile au doigt.
+    vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(480);
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    fireEvent.click(screen.getByRole('button', { name: 'Recommencer' }));
+
+    expect(getHud()).toHaveAttribute('data-touch-scroll');
   });
 
   it('dimensionne la grille selon sa forme configurée', () => {

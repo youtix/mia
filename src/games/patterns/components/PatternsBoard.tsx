@@ -21,7 +21,7 @@ import {
   isPerfectWin,
   tapChoice,
 } from '../engine';
-import type { PatternGameState, PatternLevelConfig, PatternRound } from '../types';
+import type { PatternGameState, PatternLevelConfig, PatternPhase, PatternRound } from '../types';
 import {
   ANNOUNCEMENTS,
   CHOICES_LABEL,
@@ -48,6 +48,12 @@ export const LISTEN_TAIL_MS = 250;
 /** Célébration avant le défi suivant (après la révélation pour un défi sonore). */
 export const SUCCESS_MS = 1300;
 
+/**
+ * Mémoire d'un appui sur le plateau. Au-delà, un clic ne vient plus de lui (doigt parti en glissant,
+ * puis OK ou Entrée) : un tap qui dure plus d'une seconde ne produit plus de clic.
+ */
+const PRESS_MEMORY_MS = 1500;
+
 /** Position du curseur D-Pad à chaque nouveau défi : la proposition du milieu. */
 const MIDDLE_CHOICE = Math.floor(CHOICE_COUNT / 2);
 
@@ -58,6 +64,12 @@ interface Announcement {
   /** Change à chaque message, même identique : il est de nouveau vocalisé. */
   id: number;
   text: string;
+}
+
+/** Doigt ou souris posés sur le plateau : la phase d'alors juge la tape, pas celle du relâchement. */
+interface Press {
+  phase: PatternPhase;
+  atMs: number;
 }
 
 function nextAnnouncement(previous: Announcement | null, text: string): Announcement {
@@ -85,11 +97,22 @@ function getChoiceState(
 }
 
 /**
- * Tap à l'instant présent. Hors du composant : `react-hooks/purity` prend un gestionnaire de clic
- * capturé par le JSX enfant pour du code de rendu, et y refuse `performance.now()`.
+ * Horloge de la partie, monotone. Hors du composant, comme ce qui suit : `react-hooks/purity` prend un
+ * gestionnaire de clic capturé par le JSX enfant pour du code de rendu, et y refuse `performance.now()`.
  */
-function tapChoiceNow(game: PatternGameState, index: number): PatternGameState {
-  return tapChoice(game, index, performance.now());
+function readClock(): number {
+  return performance.now();
+}
+
+/** Tap à l'instant présent, jugé sur la phase de son appui ; sans appui récent (OK, Entrée), l'actuelle. */
+function tapChoiceNow(
+  game: PatternGameState,
+  index: number,
+  press: Press | null,
+): PatternGameState {
+  const nowMs = readClock();
+  const isRecent = press !== null && nowMs - press.atMs < PRESS_MEMORY_MS;
+  return tapChoice(game, index, nowMs, isRecent ? press.phase : game.phase);
 }
 
 export interface PatternsBoardProps {
@@ -123,6 +146,7 @@ export function PatternsBoard({ level, controls }: PatternsBoardProps) {
   // Début de la partie (première phase `choosing`) : `performance.now()` est monotone, contrairement
   // à `Date.now()` qui recule si l'horloge du téléviseur est réglée pendant la partie.
   const startedAtRef = useRef<number | null>(null);
+  const pressRef = useRef<Press | null>(null);
 
   const { phase, round, roundIndex } = game;
   const helpLevel = getHelpLevel(game);
@@ -162,14 +186,20 @@ export function PatternsBoard({ level, controls }: PatternsBoardProps) {
     announce(ANNOUNCEMENTS.wellDone);
   };
 
-  /** Fin de partie : résultat figé pour la modale, étoile enregistrée, jingle. */
-  const finish = (won: PatternGameState) => {
-    const isPerfect = isPerfectWin(won);
+  /**
+   * Dernier défi réussi : l'étoile est gagnée dès ce geste, l'enfant peut quitter pendant la révélation
+   * ou la célébration sans la perdre. Enregistrée ici, une seule fois, jamais par un effet rejoué.
+   * Résultat figé avant : la couronne du niveau change dès que la sauvegarde suit. Le temps court
+   * jusqu'à la fin de la célébration, comme pour les meilleurs temps déjà enregistrés.
+   */
+  const recordWin = (solved: PatternGameState) => {
+    const isPerfect = isPerfectWin(advanceRound(solved));
     setResult({ isPerfect, hadCrown: level.isPerfect });
     const startedAt = startedAtRef.current;
-    const timeSeconds = startedAt === null ? 0 : Math.round((performance.now() - startedAt) / 1000);
-    void controls.recordVictory({ moves: won.moves, timeSeconds, isPerfect });
-    player.playJingle('star');
+    const celebrationMs = getPlayedBeats(solved).length * BEAT_MS + SUCCESS_MS;
+    const timeSeconds =
+      startedAt === null ? 0 : Math.round((readClock() + celebrationMs - startedAt) / 1000);
+    void controls.recordVictory({ moves: solved.moves, timeSeconds, isPerfect });
   };
 
   const openRound = useEffectEvent(() => {
@@ -184,11 +214,10 @@ export function PatternsBoard({ level, controls }: PatternsBoardProps) {
     if (isSoundRound) celebrate();
   });
 
-  // Calculé hors de `setGame` : la victoire est enregistrée ici, jamais par une mise à jour rejouée.
   const closeRound = useEffectEvent(() => {
     const next = advanceRound(game);
     setGame(next);
-    if (next.phase === 'won') finish(next);
+    if (next.phase === 'won') player.playJingle('star');
     else choices.setFocusedIndex(MIDDLE_CHOICE);
   });
 
@@ -271,17 +300,22 @@ export function PatternsBoard({ level, controls }: PatternsBoardProps) {
    * ne se débloque que pendant un geste (FEAT-21 §4). OK à la télécommande passe aussi par ce clic.
    */
   const selectChoice = (index: number) => {
-    const next = tapChoiceNow(game, index);
+    const next = tapChoiceNow(game, index, pressRef.current);
+    pressRef.current = null;
     if (next === game) return;
     setGame(next);
+
+    if (next.impulsiveTaps > game.impulsiveTaps) {
+      announce(ANNOUNCEMENTS.stopTap);
+      return;
+    }
+    if (advanceRound(next).phase === 'won') recordWin(next);
 
     if (next.phase === 'listening' || (next.phase === 'success' && isSoundRound)) {
       setBeatIndex(0);
       player.playBeats(getChoiceBeats(next.round, index), BEAT_MS);
     } else if (next.phase === 'success') {
       celebrate();
-    } else if (next.impulsiveTaps > game.impulsiveTaps) {
-      announce(ANNOUNCEMENTS.stopTap);
     } else {
       announce(
         next.phase === 'stop'
@@ -289,6 +323,11 @@ export function PatternsBoard({ level, controls }: PatternsBoardProps) {
           : ANNOUNCEMENTS.tryAgain,
       );
     }
+  };
+
+  /** En capture sur tout le plateau : le navigateur attribue parfois à un bouton un tap juste à côté. */
+  const notePress = () => {
+    pressRef.current = { phase, atMs: readClock() };
   };
 
   /** « Rejouer » : nouvelle partie, nouveaux défis. */
@@ -326,7 +365,11 @@ export function PatternsBoard({ level, controls }: PatternsBoardProps) {
           />
         }
       >
-        <div key={gameKey} className="flex min-h-0 flex-1 flex-col gap-2">
+        <div
+          key={gameKey}
+          className="flex min-h-0 flex-1 flex-col gap-2"
+          onPointerDownCapture={notePress}
+        >
           {/* Conteneur de taille : les cases se dimensionnent sur l'espace restant (patterns-row).
               Marge et découpe : ni les pulsations ni les particules ne font jamais défiler. */}
           <div className="@container-size relative min-h-0 min-w-0 flex-1 overflow-clip p-1">

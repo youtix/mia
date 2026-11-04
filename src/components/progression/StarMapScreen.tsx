@@ -241,10 +241,11 @@ export function StarMapScreen({ title, summary, onPlayLevel, onBack }: StarMapSc
         ))}
       </div>
 
-      {/* Région toujours présente : son contenu est annoncé par les lecteurs d'écran. */}
+      {/* Région toujours présente : son contenu est annoncé par les lecteurs d'écran. Même marge basse
+          que `.tv-safe-container` : plein écran (Android 15+), la barre de navigation couvre le bas. */}
       <div
         role="status"
-        className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--safe-area-y)_+_1rem)] z-40 flex justify-center px-4 tv:bottom-[calc(var(--safe-area-y)_+_4rem)]"
+        className="pointer-events-none fixed inset-x-0 bottom-[calc(max(var(--safe-area-y),env(safe-area-inset-bottom))_+_1rem)] z-40 flex justify-center px-4 tv:bottom-[calc(max(var(--safe-area-y),env(safe-area-inset-bottom))_+_4rem)]"
       >
         {hint ? (
           <p

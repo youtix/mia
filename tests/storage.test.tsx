@@ -35,6 +35,7 @@ import {
 import {
   TIME_FACTORS,
   type DeviceSettings,
+  type GameProgress,
   type LevelCompletion,
   type MiaSaveState,
   type TvModeOverride,
@@ -55,6 +56,10 @@ const preferences = vi.hoisted(() => {
     get: vi.fn(({ key }: { key: string }) => Promise.resolve({ value: values.get(key) ?? null })),
     set: vi.fn(({ key, value }: { key: string; value: string }) => {
       values.set(key, value);
+      return Promise.resolve();
+    }),
+    remove: vi.fn(({ key }: { key: string }) => {
+      values.delete(key);
       return Promise.resolve();
     }),
   };
@@ -87,7 +92,7 @@ vi.mock('@capacitor/core', () => ({
 }));
 
 vi.mock('@capacitor/preferences', () => ({
-  Preferences: { get: preferences.get, set: preferences.set },
+  Preferences: { get: preferences.get, set: preferences.set, remove: preferences.remove },
 }));
 
 const CREATED_AT = '2026-10-01T09:00:00.000Z';
@@ -135,6 +140,27 @@ function sampleSave(overrides: Partial<MiaSaveState> = {}): MiaSaveState {
 }
 
 const toJson = (value: unknown): string => JSON.stringify(value);
+
+/** Progression d'un jeu d'une version plus récente de Mia, inconnu de celle-ci. */
+function chessProgress(): GameProgress {
+  return {
+    gameId: 'chess',
+    levels: { 'che-001': level('che-001', { isPerfect: true }) },
+    lastPlayedLevelId: 'che-001',
+  };
+}
+
+/** Sauvegarde dont le profil actif a aussi gagné une étoile à ce jeu inconnu. */
+function saveWithChess(overrides: Partial<MiaSaveState> = {}): MiaSaveState {
+  const [first, second] = sampleSave().profiles as [UserProfile, UserProfile];
+  return sampleSave({
+    profiles: [
+      { ...first, gamesProgress: { ...first.gamesProgress, chess: chessProgress() } },
+      second,
+    ],
+    ...overrides,
+  });
+}
 
 /** Sauvegarde brute aux types relâchés, pour simuler une corruption. */
 function rawSave(profiles: unknown[], extra: Record<string, unknown> = {}): string {
@@ -266,11 +292,18 @@ function dispatchStorageEvent(init: StorageEventInit): void {
   });
 }
 
+/** Écriture de la sauvegarde par un autre onglet : le disque, puis l'événement `storage`. */
+function writeFromOtherTab(raw: string): void {
+  localStorage.setItem(STORAGE_KEY, raw);
+  dispatchStorageEvent({ key: STORAGE_KEY, newValue: raw });
+}
+
 beforeEach(() => {
   platform.native = false;
   preferences.values.clear();
   preferences.get.mockReset();
   preferences.set.mockReset();
+  preferences.remove.mockReset();
   tvMode.isAvailable.mockReset();
   tvMode.isTelevision.mockReset();
   warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -396,7 +429,14 @@ describe('Réparation granulaire', () => {
     ]);
   });
 
-  it('écarte les jeux inconnus et les progressions illisibles', () => {
+  it('garde la progression d’un jeu que cette version ne connaît pas, sans perte signalée', () => {
+    expect(parseSaveStateReport(toJson(saveWithChess()))).toEqual({
+      state: saveWithChess(),
+      issues: [],
+    });
+  });
+
+  it('écarte les progressions illisibles et les identifiants de jeu mal formés', () => {
     const memory = {
       gameId: 'memory',
       levels: { 'mem-001': level('mem-001') },
@@ -404,13 +444,52 @@ describe('Réparation granulaire', () => {
     };
 
     const report = parseSaveStateReport(
-      rawSave([rawProfile('p1', { memory, chess: memory, 'traffic-jam': 'illisible' })]),
+      rawSave([
+        rawProfile('p1', {
+          memory,
+          chess: 'illisible',
+          'traffic-jam': 'illisible',
+          Chess: memory,
+          'jeu de go': memory,
+          'jeu-': memory,
+          constructor: memory,
+          '': memory,
+        }),
+      ]),
     );
 
     expect(report.state.profiles[0]?.gamesProgress).toEqual({ memory });
     expect(report.issues).toEqual([
-      'jeu inconnu « p1/chess », écarté',
+      'progression « p1/chess » invalide, écartée',
       'progression « p1/traffic-jam » invalide, écartée',
+      'jeu inconnu « p1/Chess », écarté',
+      'jeu inconnu « p1/jeu de go », écarté',
+      'jeu inconnu « p1/jeu- », écarté',
+      'jeu inconnu « p1/constructor », écarté',
+      'jeu inconnu « p1/ », écarté',
+    ]);
+  });
+
+  it('valide un jeu inconnu champ par champ, comme un jeu connu', () => {
+    const chess = {
+      gameId: 'autre',
+      levels: {
+        'che-001': level('che-001', { stars: 3 } as Partial<LevelCompletion>),
+        'che-002': 7,
+      },
+      lastPlayedLevelId: 7,
+      hint: 1,
+    };
+
+    const report = parseSaveStateReport(rawSave([rawProfile('p1', { chess })]));
+
+    expect(report.state.profiles[0]?.gamesProgress).toEqual({
+      chess: { gameId: 'chess', levels: { 'che-001': level('che-001') }, lastPlayedLevelId: null },
+    });
+    expect(report.issues).toEqual([
+      'progression « p1/chess » : gameId réaligné sur sa clé',
+      'niveau « p1/chess/che-002 » invalide, écarté',
+      'progression « p1/chess » : lastPlayedLevelId invalide, remis à null',
     ]);
   });
 
@@ -845,6 +924,20 @@ describe('parseBackupJson (import)', () => {
     });
   });
 
+  it('importe la progression d’un jeu que cette version ne connaît pas, sans perte signalée', () => {
+    expect(parseBackupJson(exportSaveJson(saveWithChess()))).toEqual({
+      ok: true,
+      state: saveWithChess(),
+      issues: [],
+    });
+  });
+
+  it('demande de mettre à jour en tutoyant, comme tout le reste de Mia', () => {
+    expect(IMPORT_FAILURE_MESSAGES.newer_version).toBe(
+      'Cette sauvegarde provient d’une version plus récente de Mia : mets l’application à jour.',
+    );
+  });
+
   it('accepte une sauvegarde sans profil (appareil neuf)', () => {
     expect(parseBackupJson(toJson(createDefaultSaveState()))).toEqual({
       ok: true,
@@ -875,7 +968,7 @@ describe('StorageService (Web)', () => {
   it('persiste dans localStorage seulement, puis relit la sauvegarde', async () => {
     const save = sampleSave();
 
-    await saveState(save);
+    await expect(saveState(save)).resolves.toBe(true);
 
     expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(save));
     expect(localStorage.getItem(`CapacitorStorage.${STORAGE_KEY}`)).toBeNull();
@@ -893,6 +986,15 @@ describe('StorageService (Web)', () => {
     expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBe(raw);
     expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
     expect(warnings()).toEqual([expect.stringContaining('profil n° 2 invalide, écarté')]);
+  });
+
+  it('charge un jeu que cette version ne connaît pas sans copie de secours ni avertissement', async () => {
+    storeLocally(saveWithChess());
+
+    await expect(loadSaveState()).resolves.toEqual(saveWithChess());
+
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBeNull();
+    expect(warnings()).toEqual([]);
   });
 
   it('charge une sauvegarde d’avant FEAT-19 sans copie de secours ni avertissement', async () => {
@@ -917,22 +1019,22 @@ describe('StorageService (Web)', () => {
     expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBe(truncated);
   });
 
-  it('ne rejette jamais quand localStorage refuse l’écriture', async () => {
+  it('ne rejette jamais quand localStorage refuse l’écriture, mais le signale', async () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('Quota dépassé', 'QuotaExceededError');
     });
 
-    await expect(saveState(sampleSave())).resolves.toBeUndefined();
+    await expect(saveState(sampleSave())).resolves.toBe(false);
     expect(warnings()).toEqual([
       expect.stringContaining(`Écriture locale de « ${STORAGE_KEY} » impossible`),
     ]);
   });
 
-  it('ne rejette jamais quand l’état ne peut pas être sérialisé', async () => {
+  it('ne rejette jamais quand l’état ne peut pas être sérialisé, mais le signale', async () => {
     const circular = sampleSave() as MiaSaveState & { self?: unknown };
     circular.self = circular;
 
-    await expect(saveState(circular)).resolves.toBeUndefined();
+    await expect(saveState(circular)).resolves.toBe(false);
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(warnings()).toEqual([expect.stringContaining('impossible à sérialiser')]);
   });
@@ -983,7 +1085,7 @@ describe('StorageService (natif)', () => {
   it('écrit Preferences puis le miroir', async () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
 
-    await saveState(sampleSave());
+    await expect(saveState(sampleSave())).resolves.toBe(true);
 
     expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave()));
     expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(sampleSave()));
@@ -992,14 +1094,23 @@ describe('StorageService (natif)', () => {
     );
   });
 
-  it('écrit encore le miroir quand Preferences échoue', async () => {
+  it('écrit encore le miroir quand Preferences échoue, et signale la source de vérité non écrite', async () => {
     preferences.set.mockRejectedValueOnce(new Error('Disque plein'));
 
-    await expect(saveState(sampleSave())).resolves.toBeUndefined();
+    await expect(saveState(sampleSave())).resolves.toBe(false);
     expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(sampleSave()));
     expect(warnings()).toEqual([
       expect.stringContaining(`Écriture de « ${STORAGE_KEY} » dans Preferences impossible`),
     ]);
+  });
+
+  it('ne compte pas l’échec du seul miroir comme une écriture manquée', async () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+
+    await expect(saveState(sampleSave())).resolves.toBe(true);
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave()));
   });
 
   it('écrit la copie de secours dans les deux supports', async () => {
@@ -1008,6 +1119,92 @@ describe('StorageService (natif)', () => {
     await expect(loadSaveState()).resolves.toEqual(createDefaultSaveState());
     expect(preferences.values.get(BACKUP_STORAGE_KEY)).toBe('corrompu');
     expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBe('corrompu');
+  });
+
+  it('Preferences illisible, miroir lisible : le miroir l’emporte et répare Preferences, la chaîne illisible part en copie de secours', async () => {
+    preferences.values.set(STORAGE_KEY, 'corrompu');
+    storeLocally(sampleSave());
+
+    await expect(loadSaveState()).resolves.toEqual(sampleSave());
+
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave()));
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(sampleSave()));
+    expect(preferences.values.get(BACKUP_STORAGE_KEY)).toBe('corrompu');
+    expect(warnings()).toEqual([expect.stringContaining('Sauvegarde illisible dans Preferences')]);
+  });
+
+  it('Preferences et miroir illisibles tous les deux : Preferences reste la source de vérité', async () => {
+    preferences.values.set(STORAGE_KEY, '42');
+    localStorage.setItem(STORAGE_KEY, '[');
+
+    await expect(loadSaveState()).resolves.toEqual(createDefaultSaveState());
+
+    expect(localStorage.getItem(STORAGE_KEY)).toBe('42');
+    expect(preferences.values.get(BACKUP_STORAGE_KEY)).toBe('42');
+  });
+
+  it('lecture de Preferences en échec sans miroir : la sauvegarde n’est jamais écrasée, le lancement suivant la relit', async () => {
+    preferences.values.set(STORAGE_KEY, toJson(sampleSave()));
+    preferences.get.mockRejectedValueOnce(new Error('Pont natif indisponible'));
+
+    await expect(loadSaveState()).resolves.toEqual(createDefaultSaveState());
+    // Écriture de la session (premier profil, réglage…) : le seul miroir, la source de vérité intacte.
+    await expect(saveState(createDefaultSaveState())).resolves.toBe(false);
+    expect(preferences.set).not.toHaveBeenCalled();
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave()));
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(createDefaultSaveState()));
+
+    await expect(loadSaveState()).resolves.toEqual(sampleSave());
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(sampleSave()));
+    await expect(saveState(sampleSave({ activeProfileId: 'p2' }))).resolves.toBe(true);
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave({ activeProfileId: 'p2' })));
+  });
+
+  it('lecture de Preferences en échec avec un miroir : la session écrit normalement', async () => {
+    storeLocally(sampleSave());
+    preferences.get.mockRejectedValueOnce(new Error('Pont natif indisponible'));
+
+    await expect(loadSaveState()).resolves.toEqual(sampleSave());
+    await expect(saveState(sampleSave({ activeProfileId: 'p2' }))).resolves.toBe(true);
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave({ activeProfileId: 'p2' })));
+  });
+
+  it('une marque qui ne correspond plus au miroir (réécrit depuis) ne le fait pas gagner', async () => {
+    preferences.values.set(STORAGE_KEY, toJson(sampleSave()));
+    storeLocally(createDefaultSaveState());
+    localStorage.setItem(`${STORAGE_KEY}_mirror_ahead`, 'deadbeef');
+
+    await expect(loadSaveState()).resolves.toEqual(sampleSave());
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(sampleSave()));
+  });
+
+  it('écriture refusée par Preferences et par le miroir : aucune marque', async () => {
+    preferences.values.set(STORAGE_KEY, toJson(sampleSave()));
+    preferences.set.mockRejectedValueOnce(new Error('Disque plein'));
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+
+    await expect(saveState(sampleSave({ activeProfileId: 'p2' }))).resolves.toBe(false);
+
+    expect(localStorage.getItem(`${STORAGE_KEY}_mirror_ahead`)).toBeNull();
+    await expect(loadSaveState()).resolves.toEqual(sampleSave());
+  });
+
+  it('écriture refusée par Preferences : le miroir, plus récent, l’emporte au lancement suivant', async () => {
+    preferences.values.set(STORAGE_KEY, toJson(sampleSave()));
+    storeLocally(sampleSave());
+    const newer = sampleSave({ activeProfileId: 'p2' });
+    preferences.set.mockRejectedValueOnce(new Error('Disque plein'));
+
+    await expect(saveState(newer)).resolves.toBe(false);
+
+    await expect(loadSaveState()).resolves.toEqual(newer);
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(newer));
+    // La marque disparaît avec l'écriture réussie : un miroir différent redevient une copie à réparer.
+    storeLocally(createDefaultSaveState());
+    await expect(loadSaveState()).resolves.toEqual(newer);
+    expect(localStorage.getItem(STORAGE_KEY)).toBe(toJson(newer));
   });
 });
 
@@ -1069,6 +1266,24 @@ describe('Export / import JSON', () => {
     await importSaveJson(rawSave([rawProfile('p1'), 'illisible']));
 
     expect(warnings()).toEqual([expect.stringContaining('Sauvegarde importée avec pertes')]);
+  });
+
+  it('lève une SaveImportError quand la sauvegarde importée n’a pas pu être écrite', async () => {
+    storeLocally(sampleSave());
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+
+    const error = await importSaveJson(exportSaveJson(tabletSave)).catch(
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(SaveImportError);
+    expect(error).toMatchObject({
+      reason: 'write_failed',
+      message: IMPORT_FAILURE_MESSAGES.write_failed,
+    });
+    expect(readLocally()).toEqual(sampleSave());
   });
 });
 
@@ -1558,6 +1773,54 @@ describe('StorageProvider & useMiaStorage', () => {
     expect(readLocally()).toEqual(createDefaultSaveState());
   });
 
+  it('resetAllData efface aussi la copie de secours et ses anciens prénoms (Web)', async () => {
+    storeLocally(rawSave([rawProfile('p1'), 'illisible']));
+    const { result } = await renderLoadedStorage();
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toContain('Mia');
+
+    await act(async () => {
+      await result.current.resetAllData();
+    });
+
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBeNull();
+    expect(preferences.remove).not.toHaveBeenCalled();
+  });
+
+  it('resetAllData efface la copie de secours des deux supports (natif)', async () => {
+    platform.native = true;
+    preferences.values.set(STORAGE_KEY, rawSave([rawProfile('p1'), 'illisible']));
+    const { result } = await renderLoadedStorage();
+    expect(preferences.values.get(BACKUP_STORAGE_KEY)).toContain('Mia');
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toContain('Mia');
+
+    await act(async () => {
+      await result.current.resetAllData();
+    });
+
+    expect(preferences.values.has(BACKUP_STORAGE_KEY)).toBe(false);
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBeNull();
+    expect(result.current.state).toEqual(createDefaultSaveState());
+  });
+
+  it('resetAllData ne rejette jamais quand la copie de secours résiste', async () => {
+    platform.native = true;
+    preferences.remove.mockRejectedValueOnce(new Error('Pont natif indisponible'));
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new DOMException('Données de site bloquées', 'SecurityError');
+    });
+    const { result } = await renderLoadedStorage();
+
+    await act(async () => {
+      await expect(result.current.resetAllData()).resolves.toBeUndefined();
+    });
+
+    expect(result.current.state).toEqual(createDefaultSaveState());
+    expect(warnings()).toEqual([
+      expect.stringContaining('dans Preferences impossible'),
+      expect.stringContaining('Suppression locale'),
+    ]);
+  });
+
   it('exportBackup renvoie le JSON de l’état courant', async () => {
     storeLocally(sampleSave());
     const { result } = await renderLoadedStorage();
@@ -1578,7 +1841,7 @@ describe('StorageProvider & useMiaStorage', () => {
       outcome = await result.current.importBackup(exportSaveJson(tabletSave));
     });
 
-    expect(outcome).toEqual({ ok: true });
+    expect(outcome).toEqual({ ok: true, issues: [] });
     expect(result.current.state).toEqual({ ...tabletSave, settings: tvSettings });
     expect(readLocally()).toEqual({ ...tabletSave, settings: tvSettings });
     expect(document.documentElement.getAttribute('data-tv')).toBe('on');
@@ -1603,25 +1866,113 @@ describe('StorageProvider & useMiaStorage', () => {
     expect(setItem).not.toHaveBeenCalled();
   });
 
-  it('importBackup avertit des entrées écartées', async () => {
+  it('importBackup avertit des entrées écartées et les signale à l’appelant', async () => {
     const { result } = await renderLoadedStorage();
+    let outcome: ImportResult | undefined;
 
     await act(async () => {
-      await result.current.importBackup(rawSave([rawProfile('p1'), 'illisible']));
+      outcome = await result.current.importBackup(rawSave([rawProfile('p1'), 'illisible']));
     });
 
+    expect(outcome).toEqual({ ok: true, issues: ['profil n° 2 invalide, écarté'] });
     expect(result.current.state.profiles).toEqual([miaProfile('p1')]);
     expect(warnings()).toEqual([expect.stringContaining('Sauvegarde importée avec pertes')]);
+  });
+
+  it('updateState garde la modification en mémoire quand l’écriture échoue : la partie continue', async () => {
+    storeLocally(sampleSave());
+    const { result } = await renderLoadedStorage();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.updateState((prev) => ({ ...prev, activeProfileId: 'p2' })),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(result.current.state.activeProfileId).toBe('p2');
+    expect(readLocally()).toEqual(sampleSave());
+  });
+
+  it('importBackup échoue quand l’écriture échoue : écran et stockage gardent l’état d’avant (Web)', async () => {
+    storeLocally(sampleSave());
+    const { result } = await renderLoadedStorage();
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Quota dépassé', 'QuotaExceededError');
+    });
+    let outcome: ImportResult | undefined;
+
+    await act(async () => {
+      outcome = await result.current.importBackup(rawSave([rawProfile('p9')]));
+    });
+
+    expect(outcome).toEqual({
+      ok: false,
+      reason: 'write_failed',
+      message: IMPORT_FAILURE_MESSAGES.write_failed,
+    });
+    expect(result.current.state).toEqual(sampleSave());
+    expect(readLocally()).toEqual(sampleSave());
+  });
+
+  it('importBackup échoue quand Preferences échoue, et le miroir revient à l’état d’avant (natif)', async () => {
+    platform.native = true;
+    preferences.values.set(STORAGE_KEY, toJson(sampleSave()));
+    const { result } = await renderLoadedStorage();
+    preferences.set.mockRejectedValueOnce(new Error('Disque plein'));
+    let outcome: ImportResult | undefined;
+
+    await act(async () => {
+      outcome = await result.current.importBackup(rawSave([rawProfile('p9')]));
+    });
+
+    expect(outcome).toMatchObject({ ok: false, reason: 'write_failed' });
+    expect(result.current.state).toEqual(sampleSave());
+    expect(preferences.values.get(STORAGE_KEY)).toBe(toJson(sampleSave()));
+    expect(readLocally()).toEqual(sampleSave());
+  });
+
+  it('importBackup en échec ne revient pas en arrière quand il y a plus récent', async () => {
+    platform.native = true;
+    preferences.values.set(STORAGE_KEY, toJson(sampleSave()));
+    const { result } = await renderLoadedStorage();
+    let failWrite: (reason: Error) => void = () => undefined;
+    preferences.set.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          failWrite = reject;
+        }),
+    );
+    let outcome: ImportResult | undefined;
+    let importing = Promise.resolve();
+
+    await act(async () => {
+      importing = result.current.importBackup(rawSave([rawProfile('p9')])).then((value) => {
+        outcome = value;
+      });
+      await flushAsync();
+    });
+    expect(result.current.state.profiles).toEqual([miaProfile('p9')]);
+
+    // Une mise à jour arrive pendant l'écriture de l'import, puis cette écriture échoue.
+    await act(async () => {
+      const update = result.current.updateState((prev) => ({ ...prev, activeProfileId: 'p9' }));
+      failWrite(new Error('Disque plein'));
+      await Promise.all([importing, update]);
+    });
+
+    expect(outcome).toMatchObject({ ok: false, reason: 'write_failed' });
+    expect(result.current.state.activeProfileId).toBe('p9');
+    expect(result.current.state.profiles).toEqual([miaProfile('p9')]);
   });
 
   it('suit les écritures des autres onglets', async () => {
     storeLocally(sampleSave());
     const { result } = await renderLoadedStorage();
 
-    dispatchStorageEvent({
-      key: STORAGE_KEY,
-      newValue: toJson(sampleSave({ activeProfileId: 'p2' })),
-    });
+    writeFromOtherTab(toJson(sampleSave({ activeProfileId: 'p2' })));
     expect(result.current.state.activeProfileId).toBe('p2');
 
     dispatchStorageEvent({ key: 'autre-application', newValue: '{}' });
@@ -1629,18 +1980,98 @@ describe('StorageProvider & useMiaStorage', () => {
     expect(result.current.state.activeProfileId).toBe('p2');
 
     // localStorage.clear() dans un autre onglet
+    localStorage.clear();
     dispatchStorageEvent({ key: null, newValue: null });
     expect(result.current.state).toEqual(createDefaultSaveState());
+  });
+
+  it('un événement en retard sur une écriture plus récente ne fait pas diverger les onglets : le disque fait foi', async () => {
+    storeLocally(sampleSave());
+    const { result } = await renderLoadedStorage();
+
+    // Un autre onglet active le contraste ; celui-ci coupe le son juste après, avant d'avoir reçu
+    // l'événement : son écriture est la dernière.
+    const fromOtherTab = toJson(
+      sampleSave({ settings: { ...DEFAULT_DEVICE_SETTINGS, highContrastMode: true } }),
+    );
+    localStorage.setItem(STORAGE_KEY, fromOtherTab);
+    await act(async () => {
+      await result.current.updateSettings({ soundEnabled: false });
+    });
+    dispatchStorageEvent({ key: STORAGE_KEY, newValue: fromOtherTab });
+
+    expect(result.current.state.settings).toEqual({
+      ...DEFAULT_DEVICE_SETTINGS,
+      soundEnabled: false,
+    });
+    expect(result.current.state).toEqual(readLocally());
+  });
+
+  it('une écriture d’un ancien onglet garde les étoiles d’un jeu qu’il ne connaît pas', async () => {
+    storeLocally(sampleSave());
+    const { result } = await renderLoadedStorage();
+
+    // Un onglet d'une version plus récente écrit une étoile à un jeu que celui-ci ne connaît pas.
+    writeFromOtherTab(toJson(saveWithChess()));
+    expect(result.current.state).toEqual(saveWithChess());
+
+    await act(async () => {
+      await result.current.updateSettings({ soundEnabled: false });
+    });
+
+    expect(readLocally()).toEqual(
+      saveWithChess({ settings: { ...DEFAULT_DEVICE_SETTINGS, soundEnabled: false } }),
+    );
+    expect(localStorage.getItem(BACKUP_STORAGE_KEY)).toBeNull();
+  });
+
+  it('relit la sauvegarde au retour du cache de navigation : la prochaine écriture n’efface rien', async () => {
+    storeLocally(sampleSave());
+    const { result } = await renderLoadedStorage();
+
+    // Firefox et WebKit : un autre document écrit pendant que la page dort, sans événement `storage`.
+    const newer = saveWithChess();
+    storeLocally(newer);
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false }));
+    });
+    await flushAsync();
+    expect(result.current.state).toEqual(sampleSave());
+
+    act(() => {
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    });
+    await waitFor(() => {
+      expect(result.current.state).toEqual(newer);
+    });
+
+    await act(async () => {
+      await result.current.updateSettings({ soundEnabled: false });
+    });
+    expect(readLocally()).toEqual({
+      ...newer,
+      settings: { ...DEFAULT_DEVICE_SETTINGS, soundEnabled: false },
+    });
+  });
+
+  it('ne relit plus la sauvegarde une fois démonté', async () => {
+    storeLocally(sampleSave());
+    const { result, unmount } = await renderLoadedStorage();
+    unmount();
+
+    storeLocally(sampleSave({ activeProfileId: 'p2' }));
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    await flushAsync();
+
+    expect(result.current.state).toEqual(sampleSave());
   });
 
   it('garde l’écriture d’un autre onglet reçue pendant le chargement', async () => {
     const finishLoading = holdNativeLoad();
     const { result } = renderStorage();
 
-    dispatchStorageEvent({
-      key: STORAGE_KEY,
-      newValue: toJson(sampleSave({ activeProfileId: 'p2' })),
-    });
+    writeFromOtherTab(toJson(sampleSave({ activeProfileId: 'p2' })));
     expect(result.current.isLoaded).toBe(true);
 
     finishLoading(toJson(sampleSave()));

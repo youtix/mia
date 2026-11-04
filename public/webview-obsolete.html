@@ -4,11 +4,24 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mia - Mise à jour nécessaire</title>
+    <script>
+      // Avant Android 8, Capacitor ne lit pas la version de com.google.android.webview et affiche
+      // cette page à tort : la WebView donne ici sa vraie version et, dès 111, Mia peut démarrer.
+      // Une seule tentative par fenêtre : Capacitor revient sur cette page si Mia ne charge pas.
+      // ES3 : sur un moteur vraiment ancien, ce script ne doit pas être ce qui casse la page.
+      (function () {
+        var match = /Chrome\/(\d+)/.exec(navigator.userAgent);
+        if (match && parseInt(match[1], 10) >= 111 && window.name !== 'mia-webview-ok') {
+          window.name = 'mia-webview-ok';
+          location.replace('./');
+        }
+      })();
+    </script>
     <style>
       /*
-       * Page autonome (ni script, ni police, ni image) : Capacitor l'affiche à la place de Mia quand
-       * la WebView Android est antérieure à la version 111 (capacitor.config.ts), donc sur un
-       * moteur ancien : CSS volontairement basique. Lisible à 3 m sur un téléviseur.
+       * Page autonome (ni police, ni image, un seul script inline) : Capacitor l'affiche à la place de
+       * Mia quand la WebView Android lui semble antérieure à la version 111 (capacitor.config.ts),
+       * donc sur un moteur ancien : CSS volontairement basique. Lisible à 3 m sur un téléviseur.
        */
       html {
         background: #0f172a;

@@ -754,6 +754,171 @@ describe('useGridNavigation', () => {
   });
 });
 
+describe('Éléments remplacés sous le curseur', () => {
+  /** Deux boutons dont l'identité change de place, comme deux cartes permutées (Memory, FEAT-09). */
+  function SwappingGrid() {
+    const [order, setOrder] = useState(['Roi', 'Dame']);
+    const grid = useGridNavigation({ scopeId: 'cartes', rows: 1, cols: 2 });
+    return (
+      <>
+        {order.map((name, index) => (
+          <FocusableButton
+            key={name}
+            ref={grid.getItemRef(index)}
+            isFocused={grid.isItemFocused(index)}
+          >
+            {name}
+          </FocusableButton>
+        ))}
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => {
+            setOrder((current) => [...current].reverse());
+          }}
+        >
+          Permuter
+        </button>
+      </>
+    );
+  }
+
+  it('le focus DOM suit le curseur : un seul anneau après une permutation', async () => {
+    forceTvMode();
+    render(
+      <NavigationProvider>
+        <SwappingGrid />
+      </NavigationProvider>,
+    );
+    await waitFor(() => {
+      expect(getButton('Roi')).toHaveFocus();
+    });
+
+    // Le curseur reste à l'index 0, où se trouve désormais la Dame.
+    fireEvent.click(screen.getByText('Permuter'));
+
+    expect(ringedLabels()).toEqual(['Dame']);
+    expect(getButton('Dame')).toHaveFocus();
+  });
+
+  it('ne reprend pas le focus à un élément hors de la zone', async () => {
+    forceTvMode();
+    render(
+      <NavigationProvider>
+        <SwappingGrid />
+        <button type="button">Ailleurs</button>
+      </NavigationProvider>,
+    );
+    await waitFor(() => {
+      expect(getButton('Roi')).toHaveFocus();
+    });
+
+    getButton('Ailleurs').focus();
+    fireEvent.click(screen.getByText('Permuter'));
+
+    expect(getButton('Ailleurs')).toHaveFocus();
+  });
+});
+
+describe('Mode de saisie au démarrage', () => {
+  it('suit `data-tv` posé après le montage (détection native, sauvegarde chargée)', async () => {
+    render(
+      <NavigationProvider>
+        <NavigationProbe />
+      </NavigationProvider>,
+    );
+    expect(getProbe()).toBe('touch aucune');
+
+    forceTvMode();
+
+    await waitFor(() => {
+      expect(getProbe()).toBe('dpad aucune');
+    });
+  });
+
+  it('ne change plus une fois que le joueur a touché l’écran', async () => {
+    render(
+      <NavigationProvider>
+        <NavigationProbe />
+      </NavigationProvider>,
+    );
+    fireEvent.pointerDown(document.body, { pointerType: 'touch' });
+
+    forceTvMode();
+    // Laisse passer l'observateur de mutations.
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(getProbe()).toBe('touch aucune');
+  });
+});
+
+describe('OK sur un contrôle hors de la zone', () => {
+  it('reste natif et ne change pas le mode de saisie', () => {
+    const onSelect = vi.fn();
+    function Zone() {
+      useNavigationScope({ scopeId: 'plateau', onSelect, ownsElement: () => false });
+      return <button type="button">Réglages</button>;
+    }
+    render(
+      <NavigationProvider>
+        <Zone />
+        <NavigationProbe />
+      </NavigationProvider>,
+    );
+    const button = getButton('Réglages');
+    button.focus();
+
+    expect(press('Enter')).toBe(false);
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(getProbe()).toBe('touch plateau');
+  });
+
+  it('maintenu, ne l’active qu’une fois : la répétition est absorbée', () => {
+    const onSelect = vi.fn();
+    function Zone() {
+      useNavigationScope({ scopeId: 'plateau', onSelect, ownsElement: () => false });
+      return <button type="button">Boîte</button>;
+    }
+    render(
+      <NavigationProvider>
+        <Zone />
+      </NavigationProvider>,
+    );
+    getButton('Boîte').focus();
+
+    expect(press('Enter')).toBe(false);
+    expect(press('Enter', { repeat: true })).toBe(true);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+describe('Flèche maintenue', () => {
+  it('signale ses répétitions à la zone', () => {
+    const onDirection = vi.fn();
+    function Zone() {
+      useNavigationScope({ scopeId: 'plateau', onDirection });
+      return null;
+    }
+    forceTvMode();
+    render(
+      <NavigationProvider>
+        <Zone />
+      </NavigationProvider>,
+    );
+
+    press('ArrowLeft');
+    press('ArrowLeft', { repeat: true });
+
+    expect(onDirection.mock.calls).toEqual([
+      ['left', false],
+      ['left', true],
+    ]);
+  });
+});
+
 describe('Couches de navigation (ModalDialog)', () => {
   beforeAll(() => {
     MotionGlobalConfig.skipAnimations = true;

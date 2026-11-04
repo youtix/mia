@@ -1,3 +1,13 @@
+export {
+  CONFIRM_GUARD_MS,
+  END_SCREEN_GUARD_MS,
+  VIEW_CHANGE_GUARD_MS,
+  claimHistoryPop,
+  guardActivations,
+  installActivationGuard,
+  isActivationGuarded,
+} from './activation-guard';
+export { ActivationGuardBridge } from './ActivationGuardBridge';
 export { AndroidBackButtonBridge } from './AndroidBackButtonBridge';
 export {
   coordToIndex,
@@ -11,6 +21,7 @@ export {
 export {
   NavigationLayer,
   NavigationProvider,
+  useIsLayerClosing,
   useNavigation,
   useNavigationScope,
   type NavigationContextValue,

@@ -26,43 +26,45 @@ export interface MascotSpeech {
    * clips : la même règle « sauf », rappelée après un rebond, ne doit pas faire dire non à la tête.
    */
   speak: (clips: readonly BearSortClipId[], mood?: SpeakingMood) => Promise<void>;
-  /** Coupe la voix et le mime */
-  stopSpeaking: () => void;
 }
 
 /**
  * Voix de la mascotte et mime qui l'accompagne : « elle parle » jusqu'à la fin de la voix, et au
- * moins `MIN_MIME_MS`. Un jeton garantit qu'une parole ancienne ne peut pas clore une parole récente.
+ * moins `MIN_MIME_MS`. Un jeton garantit qu'un mime ancien ne peut pas clore un mime récent. Une voix
+ * retenue par le navigateur jusqu'au premier geste relance le mime quand elle part enfin.
  */
 export function useMascotSpeech(audio: AudioService): MascotSpeech {
   const [speakingMood, setSpeakingMood] = useState<SpeakingMood | null>(null);
   const speechRef = useRef(0);
+  const mimeRef = useRef(0);
   const mimeTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  /** Mime jusqu'à la fin de `voice`, et au moins `MIN_MIME_MS`. */
+  const mimeUntil = useCallback((voice: Promise<void>, mood: SpeakingMood) => {
+    mimeRef.current += 1;
+    const mime = mimeRef.current;
+    setSpeakingMood(mood);
+    clearTimeout(mimeTimerRef.current);
+    const minimum = new Promise((resolve) => {
+      mimeTimerRef.current = setTimeout(resolve, MIN_MIME_MS);
+    });
+    void Promise.all([voice, minimum]).then(() => {
+      if (mimeRef.current === mime) setSpeakingMood(null);
+    });
+  }, []);
 
   const speak = useCallback(
     (clips: readonly BearSortClipId[], mood = getSpeakingMood(clips)) => {
       speechRef.current += 1;
       const speech = speechRef.current;
-      setSpeakingMood(mood);
-      clearTimeout(mimeTimerRef.current);
-      const mime = new Promise((resolve) => {
-        mimeTimerRef.current = setTimeout(resolve, MIN_MIME_MS);
+      const voice = audio.playClips(clips.map(getVoiceClipPath), (deferred) => {
+        if (speechRef.current === speech) mimeUntil(deferred, mood);
       });
-      const voice = audio.playClips(clips.map(getVoiceClipPath));
-      void Promise.all([voice, mime]).then(() => {
-        if (speechRef.current === speech) setSpeakingMood(null);
-      });
+      mimeUntil(voice, mood);
       return voice;
     },
-    [audio],
+    [audio, mimeUntil],
   );
-
-  const stopSpeaking = useCallback(() => {
-    speechRef.current += 1;
-    clearTimeout(mimeTimerRef.current);
-    setSpeakingMood(null);
-    audio.stopClips();
-  }, [audio]);
 
   useEffect(
     () => () => {
@@ -71,5 +73,5 @@ export function useMascotSpeech(audio: AudioService): MascotSpeech {
     [],
   );
 
-  return { speakingMood, speak, stopSpeaking };
+  return { speakingMood, speak };
 }

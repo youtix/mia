@@ -14,3 +14,5 @@ export {
 export { FocusableCard, type FocusableCardProps } from './FocusableCard';
 export { ModalDialog, type ModalDialogProps } from './ModalDialog';
 export { StarBadge, describeStars, type StarBadgeProps, type StarBadgeSize } from './StarBadge';
+export { useHasOverflow } from './useHasOverflow';
+export { useMediaQuery } from './useMediaQuery';

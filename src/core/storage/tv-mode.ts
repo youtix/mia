@@ -77,10 +77,19 @@ function rememberNativeTv(value: boolean): void {
   }
 }
 
+/** Un pont en échec ne fait pas oublier un téléviseur déjà reconnu à un lancement précédent. */
+function readRememberedNativeTv(): boolean {
+  try {
+    return window.localStorage.getItem(TV_DETECTED_STORAGE_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Interroge le plugin natif (APK seulement), mémorise le résultat pour le script inline et le
  * renvoie ; `false` sans détection native, sans appel ni écriture. Ne rejette jamais : un échec du
- * pont est journalisé et vaut « pas un téléviseur ».
+ * pont est journalisé et vaut le dernier résultat mémorisé.
  */
 export async function detectNativeTv(): Promise<boolean> {
   if (!hasNativeTvDetection()) return false;
@@ -90,7 +99,7 @@ export async function detectNativeTv(): Promise<boolean> {
     return value;
   } catch (error) {
     console.warn('[Mia]', 'Détection native du mode TV impossible :', error);
-    return false;
+    return readRememberedNativeTv();
   }
 }
 

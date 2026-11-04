@@ -4,7 +4,13 @@
 import { useGameNavigation } from '@/components/progression/routes';
 import { WaitingScreen } from '@/components/progression/WaitingScreen';
 import { useZoneRegistry } from '@/components/progression/zone-chain';
-import { AppShell, DEFAULT_REMOTE_HINTS, FadeIn, FocusableButton } from '@/components/ui';
+import {
+  AppShell,
+  DEFAULT_REMOTE_HINTS,
+  FadeIn,
+  FocusableButton,
+  useMediaQuery,
+} from '@/components/ui';
 import { useGridNavigation } from '@/core/navigation';
 import { useAppUpdateStatus } from '@/core/pwa';
 import { DEFAULT_MEMORY_GAME_SETTINGS, useMiaStorage } from '@/core/storage';
@@ -17,6 +23,14 @@ import { BackupPanel } from './BackupPanel';
 import { GameSettingsSection } from './GameSettingsSection';
 import { SETTINGS_TEXTS, TIME_FACTOR_OPTIONS, TV_MODE_OPTIONS } from './labels';
 import { SettingsSection } from './SettingsSection';
+
+/**
+ * Seuil `sm` de Tailwind, celui des grilles d'options (`sm:grid-cols-3`, `sm:grid-cols-4`) : en
+ * dessous, elles s'empilent (une colonne pour le mode TV, deux rangées de deux pour les temps), et
+ * chaque zone D-Pad suit la grille affichée : Bas descend d'une option avant de quitter le groupe.
+ */
+const WIDE_OPTIONS_QUERY = '(min-width: 40rem)';
+const NARROW_TIME_FACTOR_COLS = 2;
 
 /**
  * Zones D-Pad de l'écran, de haut en bas : Retour, chaque réglage de l'appareil, les deux
@@ -92,10 +106,14 @@ function SettingsContent() {
       if (direction === 'down') enterTvMode();
     },
   });
+  const isWideOptions = useMediaQuery(WIDE_OPTIONS_QUERY, true);
+  const tvModeCols = isWideOptions ? TV_MODE_OPTIONS.length : 1;
+  const timeFactorCols = isWideOptions ? TIME_FACTOR_OPTIONS.length : NARROW_TIME_FACTOR_COLS;
+  const timeFactorRows = Math.ceil(TIME_FACTOR_OPTIONS.length / timeFactorCols);
   const tvMode = useGridNavigation({
     scopeId: 'settings-tv-mode',
-    rows: 1,
-    cols: TV_MODE_OPTIONS.length,
+    rows: Math.ceil(TV_MODE_OPTIONS.length / tvModeCols),
+    cols: tvModeCols,
     initialIndex: chosenTvIndex,
     isActive: zone === 'tv',
     onBack: backToHub,
@@ -131,8 +149,8 @@ function SettingsContent() {
   });
   const memoryPreview = useGridNavigation({
     scopeId: 'settings-memory-preview',
-    rows: 1,
-    cols: TIME_FACTOR_OPTIONS.length,
+    rows: timeFactorRows,
+    cols: timeFactorCols,
     initialIndex: chosenPreviewIndex,
     isActive: zone === 'memoryPreview',
     onBack: backToHub,
@@ -143,8 +161,8 @@ function SettingsContent() {
   });
   const memoryMismatch = useGridNavigation({
     scopeId: 'settings-memory-mismatch',
-    rows: 1,
-    cols: TIME_FACTOR_OPTIONS.length,
+    rows: timeFactorRows,
+    cols: timeFactorCols,
     initialIndex: chosenMismatchIndex,
     isActive: zone === 'memoryMismatch',
     onBack: backToHub,
@@ -226,7 +244,8 @@ function SettingsContent() {
                 {SETTINGS_TEXTS.tvModeNote}
               </p>
             </div>
-            {/* Effet immédiat (data-tv) : la mise en page change, le curseur reste sur l'option. */}
+            {/* Effet immédiat (data-tv) : la mise en page change, le curseur reste sur l'option.
+                Colonnes : voir WIDE_OPTIONS_QUERY, que la zone D-Pad suit. */}
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:gap-3">
               {TV_MODE_OPTIONS.map((option, index) => {
                 const isChosen = option.value === tvModeOverride;
@@ -361,7 +380,8 @@ function SettingSwitch({
         <span className="flex-1 text-left">{label}</span>
         <SwitchTrack checked={checked} />
       </FocusableButton>
-      <p id={noteId} className="px-1 text-fluid-sm text-slate-300">
+      {/* `wrap-anywhere` : sur téléphone, l'adresse de la licence de la voix ne tient pas sur une ligne. */}
+      <p id={noteId} className="px-1 text-fluid-sm wrap-anywhere text-slate-300">
         {note}
       </p>
     </div>

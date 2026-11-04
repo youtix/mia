@@ -396,11 +396,12 @@ describe('Progression sous gamesProgress.patterns', () => {
     expect(report.state.profiles[0]?.gamesProgress).toEqual({ patterns: progress });
   });
 
-  it('continue d’écarter un jeu réellement inconnu', () => {
-    const report = parseSaveStateReport(saveWith({ patterns: progress, chess: progress }));
+  it('garde la progression d’un jeu que cette version ne connaît pas', () => {
+    const chess = { ...progress, gameId: 'chess' };
+    const report = parseSaveStateReport(saveWith({ patterns: progress, chess }));
 
-    expect(report.issues).toContain('jeu inconnu « p1/chess », écarté');
-    expect(report.state.profiles[0]?.gamesProgress).toEqual({ patterns: progress });
+    expect(report.issues).toEqual([]);
+    expect(report.state.profiles[0]?.gamesProgress).toEqual({ patterns: progress, chess });
   });
 
   it('débloque l’étoile suivante du catalogue', () => {

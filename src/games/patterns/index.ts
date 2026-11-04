@@ -3,7 +3,6 @@ export { PATTERNS_CATALOG, validatePatternsCatalog, type PatternsLevel } from '.
 // de son écran, pas ce barrel (FEAT-08).
 export {
   BEAT_MS,
-  END_INPUT_GUARD_MS,
   INTRO_MS,
   LISTEN_TAIL_MS,
   PatternBeatIcon,

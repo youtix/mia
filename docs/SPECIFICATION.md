@@ -143,7 +143,7 @@ export interface UserProfile {
   name: string;
   avatarId: string; // ex: "fox", "owl", "robot", "star", "cat", "rocket"
   createdAt: string;
-  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", "bear-sort") */
+  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", "patterns", "bear-sort") */
   gamesProgress: Record<string, GameProgress>;
   /** Réglages de jeu du joueur (FEAT-19) : toujours complets, réparés aux valeurs par défaut à la lecture */
   gameSettings: ProfileGameSettings;
@@ -565,7 +565,7 @@ Chacune des 25 features possède sa spécification complète et autonome pour l'
     * `commit-msg` : validation **Conventional Commits** (`@commitlint/config-conventional`).
     * `pre-push` : `npm run test:coverage` (seuil minimal de couverture fixé à **80%** via `@vitest/coverage-v8`).
   * **CI, Release Automatique (`semantic-release`) & Déploiement PWA au merge sur `main`** :
-    * `.github/workflows/ci.yml` : vérifie chaque PR/push (`format:check`, `lint`, `typecheck`, `test:coverage`, `build`).
+    * `.github/workflows/ci.yml` : vérifie chaque PR/push (`format:check`, `lint`, `typecheck`, `test:coverage`, `build`) et, sur les PR, compile l'APK.
     * `.github/workflows/release-and-deploy.yml` : à chaque merge d'un `feat:`/`fix:` sur `main`, `semantic-release` calcule la version SemVer, met à jour `CHANGELOG.md` et `package.json`, crée le tag `vX.Y.Z` et la GitHub Release, et déploie automatiquement la PWA sur **GitHub Pages**.
   * **Dependabot** : `.github/dependabot.yml` pour maintenir les dépendances npm et GitHub Actions à jour chaque semaine.
 
@@ -672,7 +672,7 @@ Chacune des 25 features possède sa spécification complète et autonome pour l'
 
 ### `FEAT-16` : Intégration APK dans la Release Automatique, Recette F-Droid & Documentation ([FEAT-16.md](./FEAT-16.md))
 
-* **Objectif** : Synchroniser automatiquement le `versionCode`/`versionName` Android avec `semantic-release`, attacher l'APK universel (Mobile + Tablette + Android TV) à chaque GitHub Release créée au merge sur `main`, fournir la recette F-Droid (`fdroid/org.mia.braintraining.yml`) et le `README.md` final.
+* **Objectif** : Synchroniser automatiquement le `versionCode`/`versionName` Android avec `semantic-release`, attacher l'APK universel (Mobile + Tablette + Android TV), signé avec la clé de release, à chaque GitHub Release créée au merge sur `main` (sans cette clé, la release se fait sans APK), fournir la recette F-Droid (`fdroid/org.mia.braintraining.yml`) et le `README.md` final.
 * **Dépendances** : `FEAT-02`, `FEAT-15`.
 
 ---
@@ -702,7 +702,7 @@ Chacune des 25 features possède sa spécification complète et autonome pour l'
 
 ### `FEAT-20` : Mises à jour de la PWA, Réparation & Écran d'Erreur ([FEAT-20.md](./FEAT-20.md))
 
-* **Objectif** : Faire arriver les nouvelles versions jusqu'à la PWA installée et donner une issue au joueur quand l'application se comporte mal. Une bannière du Hub propose la version prête (le service worker de `FEAT-17` n'appelle toujours pas `skipWaiting()` de lui-même : le joueur accepte, le worker en attente s'active et chaque page ouverte se recharge) ; la recherche part au lancement et à chaque retour au premier plan, au plus une fois par minute. Une section « Application » de l'écran Réglages affiche la version (APK compris), cherche une mise à jour à la demande et répare l'application (désinscrit le service worker de Mia, supprime ses seuls caches, recharge depuis le réseau, sans toucher à la sauvegarde). Un écran d'erreur global (`global-error.tsx`) propose de recharger ou de réparer au lieu de la page d'erreur par défaut de Next.js. L'APK n'est pas concerné : il garde ses mises à jour par F-Droid ou GitHub Releases.
+* **Objectif** : Faire arriver les nouvelles versions jusqu'à la PWA installée et donner une issue au joueur quand l'application se comporte mal. Une bannière du Hub propose la version prête (le service worker de `FEAT-17` n'appelle toujours pas `skipWaiting()` de lui-même : le joueur accepte, le worker en attente s'active et chaque page ouverte se recharge) ; la recherche part au lancement et à chaque retour au premier plan, au plus une fois par minute. Une section « Application » de l'écran Réglages affiche la version (APK compris), cherche une mise à jour à la demande et répare l'application (installe une copie neuve du service worker de Mia, qui revérifie ses fichiers et retélécharge ceux qui sont abîmés, puis recharge ; rien n'est retiré avant que ce remplaçant soit complet, et la sauvegarde n'est pas touchée). Un écran d'erreur global (`global-error.tsx`) propose de recharger ou de réparer au lieu de la page d'erreur par défaut de Next.js. L'APK n'est pas concerné : il garde ses mises à jour par F-Droid ou GitHub Releases.
 * **Dépendances** : `FEAT-04`, `FEAT-08`, `FEAT-17`, `FEAT-18`.
 * **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-20.md](./FEAT-20.md).
 
@@ -750,12 +750,12 @@ Chacune des 25 features possède sa spécification complète et autonome pour l'
 
 ## 7. Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu
 
-L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi instantané :
+L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi instantané. Seule limite : les tests figent le catalogue publié (`SPEC_ROWS`, nombre d'étoiles, `order` par palier, et `tests/star-map.test.tsx` pour Memory et Traffic Jam). Un niveau ajouté passe `validate:levels` mais les fait échouer : ils se mettent à jour dans le même commit ([README](../README.md), « Ajouter des niveaux »).
 
 ### 7.1. Ajouter 1 ou 50 nouveaux niveaux (et donc nouvelles Étoiles) à *Memory*
 1. Ouvrir `src/games/memory/catalog.ts`.
 2. Ajouter un nouvel objet dans le tableau avec un `id` unique (ex: `"mem-021"`), choisir son palier (`tier: 'easy' | 'medium' | ...`), son `order` et sa configuration (`cols`, `rows`, `visualMode`, etc.).
-3. Lancer `npm run validate:levels` : la nouvelle étoile apparaît immédiatement dans le palier correspondant sans toucher au reste du code !
+3. Lancer `npm run validate:levels` : la nouvelle étoile apparaît immédiatement dans le palier correspondant, sans toucher au reste du code applicatif !
 
 ### 7.2. Ajouter 1 ou 50 nouveaux niveaux à *Traffic Jam*
 1. Ouvrir `src/games/traffic-jam/catalog.ts`.
@@ -766,7 +766,7 @@ L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi ins
 Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.
-3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre, dans la table des icônes (`GAME_ICONS`, `src/components/progression/game-icons.ts`) et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, FEAT-05), sans laquelle sa progression serait écartée au chargement.
+3. Ajouter son identifiant au type `GameId` (`src/types/mia.ts`), puis l'enregistrer dans le registre central `GAME_REGISTRY` (`src/core/progression/game-registry.ts`) : le compilateur exige son entrée dans ce registre et dans la table des icônes (`GAME_ICONS`, `src/components/progression/game-icons.ts`). L'identifiant s'écrit en minuscules et chiffres, mots séparés par un tiret (`bear-sort`) : la sauvegarde ne tient aucune liste des jeux et garde la progression de tout identifiant de cette forme, même inconnu de la version qui la lit (FEAT-05) ; il ne doit plus changer une fois publié.
 4. Un jeu qui propose ses propres réglages (`FEAT-19`) ajoute son objet à `ProfileGameSettings` (`src/types/mia.ts`), ses valeurs par défaut à `createDefaultGameSettings` (`src/core/storage/default-state.ts`), son assainisseur dans `src/core/storage/migrations.ts` et son bloc dans la section « Jeux » de l'écran Réglages.
 5. Un jeu qui parle ou qui sonne passe par `useGameAudio` (voix en clips embarqués et effets, `FEAT-22`) ou `useSoundPlayer` (sons synthétisés, `FEAT-21`), dans `src/core/audio/` : le réglage « Son » de l'appareil s'applique pour lui, et il doit rester jouable sans aucun son. Une voix ou un son embarqué reste sous licence CC0 ou CC BY (`NC` et `ND` sont signalés « Non-Free » par F-Droid). Un jeu pour les non-lecteurs passe `isTextless` à `AppShell` et à `ModalDialog` (`FEAT-21`).
 6. Le Hub principal, le système multi-profils, la sauvegarde locale et la Carte des Étoiles prendront automatiquement en charge ce nouveau jeu !

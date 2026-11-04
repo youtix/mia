@@ -1,7 +1,6 @@
 import {
   TIME_FACTORS,
   type DeviceSettings,
-  type GameId,
   type GameProgress,
   type LevelCompletion,
   type MemoryGameSettings,
@@ -46,14 +45,16 @@ export interface SaveParseReport {
 }
 
 export type ImportFailureReason =
-  'invalid_json' | 'not_a_mia_save' | 'newer_version' | 'no_valid_profile';
+  'invalid_json' | 'not_a_mia_save' | 'newer_version' | 'no_valid_profile' | 'write_failed';
 
 export const IMPORT_FAILURE_MESSAGES: Readonly<Record<ImportFailureReason, string>> = {
   invalid_json: 'Fichier illisible : ce n’est pas une sauvegarde Mia.',
   not_a_mia_save: 'Ce fichier n’est pas une sauvegarde Mia.',
   newer_version:
-    'Cette sauvegarde provient d’une version plus récente de Mia : mettez l’application à jour.',
+    'Cette sauvegarde provient d’une version plus récente de Mia : mets l’application à jour.',
   no_valid_profile: 'Cette sauvegarde est endommagée : aucun profil n’a pu être récupéré.',
+  write_failed:
+    'Enregistrement impossible sur cet appareil (stockage plein ou bloqué) : la sauvegarde n’a pas été restaurée.',
 };
 
 export interface ImportFailure {
@@ -72,13 +73,13 @@ export interface ImportedSave {
 
 export type BackupParseResult = ImportedSave | ImportFailure;
 
-/** Tables exhaustives (le compilateur exige chaque valeur du type) pour valider les chaînes lues. */
-const KNOWN_GAMES: Record<GameId, true> = {
-  memory: true,
-  'traffic-jam': true,
-  patterns: true,
-  'bear-sort': true,
-};
+/**
+ * Identifiant de jeu lu dans une sauvegarde : minuscules et chiffres, mots séparés par un tiret. Pas
+ * de liste des jeux connus : celui d'une version plus récente de Mia doit passer aussi.
+ */
+const GAME_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** Table exhaustive (le compilateur exige chaque valeur du type) pour valider la chaîne lue. */
 const TV_MODE_OVERRIDES: Record<TvModeOverride, true> = {
   auto: true,
   always_tv: true,
@@ -101,8 +102,9 @@ function isNonNegativeNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
-function isKnownGameId(value: string): value is GameId {
-  return Object.hasOwn(KNOWN_GAMES, value);
+/** « constructor » a la forme d'un identifiant, mais c'est un membre de tout objet : jamais un jeu. */
+function isValidGameId(value: string): boolean {
+  return GAME_ID_PATTERN.test(value) && !(value in Object.prototype);
 }
 
 function isTvModeOverride(value: unknown): value is TvModeOverride {
@@ -210,7 +212,7 @@ function sanitizeLevels(
 }
 
 function sanitizeGameProgress(
-  gameId: GameId,
+  gameId: string,
   value: unknown,
   path: string,
   issues: string[],
@@ -230,6 +232,11 @@ function sanitizeLastPlayedLevelId(value: unknown, path: string, issues: string[
   return null;
 }
 
+/**
+ * La progression d'un jeu que cette version ne connaît pas (sauvegarde d'une version plus récente)
+ * est validée comme les autres et gardée, sans perte signalée : l'import sur une version antérieure,
+ * l'écriture d'un ancien onglet ou un retour en arrière n'effacent plus les étoiles de ce jeu.
+ */
 function sanitizeGamesProgress(
   value: unknown,
   profileId: string,
@@ -242,7 +249,7 @@ function sanitizeGamesProgress(
   const games: [string, GameProgress][] = [];
   for (const [gameId, entry] of Object.entries(value)) {
     const path = `${profileId}/${gameId}`;
-    if (!isKnownGameId(gameId)) {
+    if (!isValidGameId(gameId)) {
       issues.push(`jeu inconnu « ${path} », écarté`);
       continue;
     }
@@ -418,7 +425,7 @@ export function parseAndMigrateSaveState(raw: string | null, options?: ParseOpti
   return parseSaveStateReport(raw, options).state;
 }
 
-function importFailure(reason: ImportFailureReason): ImportFailure {
+export function importFailure(reason: ImportFailureReason): ImportFailure {
   return { ok: false, reason, message: IMPORT_FAILURE_MESSAGES[reason] };
 }
 

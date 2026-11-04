@@ -427,6 +427,28 @@ describe('AppShell', () => {
     expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
   });
 
+  it('garde le contenu dans le défilement du <main> (éléments absolus, anneau de focus)', () => {
+    render(
+      <AppShell title="Hub">
+        <p>Jeux</p>
+      </AppShell>,
+    );
+
+    // Sans `relative`, un `.sr-only` absolu allongerait le document : la page entière défilerait.
+    expect(screen.getByRole('main')).toHaveClass('relative', 'overflow-y-auto', 'scroll-p-4');
+  });
+
+  it('laisse le profil passer à la ligne plutôt que de tronquer le titre', () => {
+    render(
+      <AppShell title="Attrape-Piège" profile={<button type="button">Jouer</button>}>
+        <p>Carte</p>
+      </AppShell>,
+    );
+
+    expect(screen.getByRole('banner')).toHaveClass('flex-wrap');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveClass('min-w-min', 'truncate');
+  });
+
   it('montre le titre et le libellé de Retour par défaut, dès le palier sm', () => {
     render(
       <AppShell title="Memory" onBack={vi.fn()}>

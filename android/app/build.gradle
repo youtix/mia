@@ -1,8 +1,10 @@
 apply plugin: 'com.android.application'
 
-// Signature de l'APK de release (FEAT-16) : clé fournie par l'environnement (secrets facultatifs du
-// workflow de release), sinon clé de débogage du SDK pour que l'APK reste installable sans aucun
-// secret. La recette F-Droid retire la ligne `signingConfig` de `release` : F-Droid signe lui-même.
+// Signature de l'APK de release (FEAT-16) : clé fournie par l'environnement (secrets du workflow de
+// release), sinon clé de débogage du SDK pour qu'un build local reste installable. La CI ne publie
+// jamais ce dernier (scripts/build-apk.mjs) : sur un runner, cette clé change à chaque build, et
+// Android refuserait la mise à jour. La recette F-Droid retire la ligne `signingConfig` de `release` :
+// F-Droid signe lui-même.
 def releaseKeystorePath = System.getenv("MIA_KEYSTORE_PATH")
 
 android {

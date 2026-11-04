@@ -10,6 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from 'react';
+import { isActivationGuarded } from './activation-guard';
 import {
   isBackKey,
   isSelectKey,
@@ -219,8 +220,19 @@ function isForeignControl(scope: NavigationScope, target: EventTarget | null): b
 
 function createInputListeners(store: NavigationStore) {
   let suppressSpaceKeyUp = false;
+  let hasUserInput = false;
+
+  /**
+   * `data-tv` peut changer juste après le montage : sauvegarde chargée, détection native de l'APK.
+   * Tant que le joueur n'a rien touché, le mode de saisie le suit : le curseur d'un premier lancement
+   * sur téléviseur est visible d'emblée.
+   */
+  function onTvAttributeChange(): void {
+    if (!hasUserInput) store.setInputMode(detectInitialInputMode());
+  }
 
   function onKeyDown(event: KeyboardEvent): void {
+    hasUserInput = true;
     if (
       event.defaultPrevented ||
       event.isComposing ||
@@ -244,9 +256,17 @@ function createInputListeners(store: NavigationStore) {
       return;
     }
 
+    const scope = store.getActiveScope();
+    // OK sur un contrôle hors de la zone (atteint avec Tab) : le navigateur l'active, et le mode de
+    // saisie ne change pas (le curseur révélé reprendrait le focus avant le clic natif). Maintenu, il
+    // ne l'active qu'une fois, comme OK dans la zone.
+    if (isSelect && scope?.onSelect && isForeignControl(scope, event.target)) {
+      if (event.repeat) event.preventDefault();
+      return;
+    }
+
     const wasTouch = store.getSnapshot().inputMode === 'touch';
     store.setInputMode('dpad');
-    const scope = store.getActiveScope();
     if (!scope) return;
     // Après le tactile, le premier appui révèle le curseur, sauf s'il a déjà le focus DOM.
     const isWakeUp = wasTouch && !hasDomFocus(scope);
@@ -255,15 +275,15 @@ function createInputListeners(store: NavigationStore) {
       if (!scope.onDirection) return;
       // Sans preventDefault(), le <main> défilant d'AppShell défilerait aussi.
       event.preventDefault();
-      if (!isWakeUp) scope.onDirection(direction);
+      if (!isWakeUp) scope.onDirection(direction, event.repeat);
       return;
     }
 
-    if (!scope.onSelect || isForeignControl(scope, event.target)) return;
+    if (!scope.onSelect) return;
     // Sans preventDefault(), un bouton focalisé recevrait aussi un clic natif (double activation).
     event.preventDefault();
     if (event.key === ' ') suppressSpaceKeyUp = true;
-    if (!event.repeat && !isWakeUp) scope.onSelect();
+    if (!event.repeat && !isWakeUp && !isActivationGuarded()) scope.onSelect();
   }
 
   function onKeyUp(event: KeyboardEvent): void {
@@ -274,16 +294,20 @@ function createInputListeners(store: NavigationStore) {
   }
 
   function onPointerDown(event: PointerEvent): void {
+    hasUserInput = true;
     if (TOUCH_POINTER_TYPES.has(event.pointerType)) store.setInputMode('touch');
   }
 
-  return { onKeyDown, onKeyUp, onPointerDown };
+  return { onTvAttributeChange, onKeyDown, onKeyUp, onPointerDown };
 }
 
 const NavigationStoreContext = createContext<NavigationStore | null>(null);
 
 /** Profondeur de couche : 0 pour l'écran, +1 par `NavigationLayer` (modale) imbriquée. */
 const LayerDepthContext = createContext(0);
+
+/** Couche en train de se fermer : ses zones ne reçoivent plus rien. */
+const LayerClosingContext = createContext(false);
 
 function useNavigationStore(): NavigationStore {
   const store = use(NavigationStoreContext);
@@ -309,11 +333,14 @@ export function NavigationProvider({ children }: NavigationProviderProps) {
 
   useEffect(() => {
     store.setInputMode(detectInitialInputMode());
-    const { onKeyDown, onKeyUp, onPointerDown } = createInputListeners(store);
+    const { onTvAttributeChange, onKeyDown, onKeyUp, onPointerDown } = createInputListeners(store);
+    const tvObserver = new MutationObserver(onTvAttributeChange);
+    tvObserver.observe(document.documentElement, { attributeFilter: ['data-tv'] });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('pointerdown', onPointerDown, { capture: true, passive: true });
     return () => {
+      tvObserver.disconnect();
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('pointerdown', onPointerDown, { capture: true });
@@ -343,6 +370,8 @@ export function useNavigation(): NavigationContextValue {
 export interface NavigationLayerProps {
   /** Retour quand aucune zone de la couche ne le gère (ex: `onClose` d'une modale) */
   onBack?: () => void;
+  /** Modale en train de se fermer : ses zones se taisent, l'écran dessous reste suspendu */
+  isClosing?: boolean;
   children: ReactNode;
 }
 
@@ -351,9 +380,11 @@ export interface NavigationLayerProps {
  * suspendues, même si elle n'en déclare aucune. Les zones déclarées dans ses enfants s'empilent
  * au-dessus. Sans `NavigationProvider`, ne fait rien.
  */
-export function NavigationLayer({ onBack, children }: NavigationLayerProps) {
+export function NavigationLayer({ onBack, isClosing = false, children }: NavigationLayerProps) {
   const store = use(NavigationStoreContext);
   const depth = use(LayerDepthContext) + 1;
+  // Une modale imbriquée se ferme avec sa parente, qui garde ses enfants pendant son animation.
+  const isParentClosing = use(LayerClosingContext);
   const token = useId();
   const getOnBack = useEffectEvent(() => onBack);
 
@@ -362,7 +393,16 @@ export function NavigationLayer({ onBack, children }: NavigationLayerProps) {
     return store.registerLayer({ token, depth, getOnBack: () => getOnBack() });
   }, [store, token, depth]);
 
-  return <LayerDepthContext value={depth}>{children}</LayerDepthContext>;
+  return (
+    <LayerDepthContext value={depth}>
+      <LayerClosingContext value={isClosing || isParentClosing}>{children}</LayerClosingContext>
+    </LayerDepthContext>
+  );
+}
+
+/** La couche qui contient ce composant se ferme, ou une couche qui la contient (modale imbriquée). */
+export function useIsLayerClosing(): boolean {
+  return use(LayerClosingContext);
 }
 
 export interface UseNavigationScopeOptions extends NavigationScope {
@@ -385,7 +425,9 @@ export interface NavigationScopeState {
  * `useGridNavigation` repose sur elle. Doit être déclarée à l'intérieur de la modale qu'elle pilote.
  */
 export function useNavigationScope(options: UseNavigationScopeOptions): NavigationScopeState {
-  const { scopeId, isActive: isRequested = true } = options;
+  const { scopeId, isActive: isWanted = true } = options;
+  const isLayerClosing = use(LayerClosingContext);
+  const isRequested = isWanted && !isLayerClosing;
   const store = useNavigationStore();
   const depth = use(LayerDepthContext);
   const token = useId();

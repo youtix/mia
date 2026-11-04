@@ -23,6 +23,7 @@ import {
   buildApk,
   main as buildApkMain,
   getApkFileName,
+  isThrowawaySigned,
   pickReleaseApk,
   runGradle,
 } from '../scripts/build-apk.mjs';
@@ -42,6 +43,7 @@ const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const SYNC_SCRIPT = join(ROOT, 'scripts/sync-android-version.mjs');
 const BUILD_SCRIPT = join(ROOT, 'scripts/build-apk.mjs');
 const RELEASE_WORKFLOW = '.github/workflows/release-and-deploy.yml';
+const CI_WORKFLOW = '.github/workflows/ci.yml';
 
 const read = (path: string): string => readFileSync(join(ROOT, path), 'utf8');
 const readJson = (path: string): unknown => JSON.parse(read(path));
@@ -67,6 +69,8 @@ interface WorkflowStep {
 }
 
 interface WorkflowJob {
+  name?: string;
+  if?: string;
   'timeout-minutes'?: number;
   steps?: WorkflowStep[];
 }
@@ -182,6 +186,37 @@ const FAKE_APK_SCRIPT = `mkdir -p ${APK_OUTPUT_DIR} && echo fake-apk > ${APK_OUT
 
 const runNode = (args: string[]) =>
   spawnSync(process.execPath, args, { encoding: 'utf8', cwd: ROOT });
+
+/** Environnement d'un build local, y compris quand les tests eux-mêmes tournent en CI. */
+const LOCAL_ENV = { ...process.env, CI: '', MIA_KEYSTORE_PATH: '' };
+
+/** Environnement vierge : rien du poste ni des hooks Husky (`GIT_DIR`) n'entre dans ces processus. */
+const cleanEnv = (env: Record<string, string>): NodeJS.ProcessEnv => ({
+  NODE_ENV: 'test',
+  PATH: process.env.PATH,
+  ...env,
+});
+
+/** Exécute le script d'une étape du workflow comme le runner (`bash -e`). */
+function runStep(step: WorkflowStep, cwd: string, env: Record<string, string>) {
+  return spawnSync('bash', ['-e', '-c', step.run ?? ''], {
+    encoding: 'utf8',
+    cwd,
+    env: cleanEnv(env),
+  });
+}
+
+/**
+ * Lance un module ESM dans un processus Node à la racine du dépôt : les plugins semantic-release
+ * sont des paquets ESM sans types, et ces tests veulent leur vrai comportement.
+ */
+function runModule(source: string): unknown {
+  const stdout = execFileSync(process.execPath, ['--input-type=module', '-e', source], {
+    encoding: 'utf8',
+    cwd: ROOT,
+  });
+  return JSON.parse(stdout);
+}
 
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -426,22 +461,75 @@ describe('build-apk.mjs', () => {
       writeFileSync(join(androidDir, APK_OUTPUT_DIR, 'app-release.apk'), 'fresh-apk');
     });
 
-    const target = await buildApk('1.4.2', { root, gradle });
+    const target = await buildApk('1.4.2', { root, gradle, env: {} });
 
     expect(gradle).toHaveBeenCalledWith(join(root, ANDROID_DIR));
     expect(target).toBe(join(distDir, 'mia-v1.4.2-universal.apk'));
-    expect(readFileSync(target, 'utf8')).toBe('fresh-apk');
+    expect(readFileSync(String(target), 'utf8')).toBe('fresh-apk');
     expect(existsSync(join(distDir, 'mia-v0.0.1-universal.apk'))).toBe(false);
+  });
+
+  it('ne tient pour jetable qu’un APK compilé en CI sans clé de release', () => {
+    expect(isThrowawaySigned({ CI: 'true' })).toBe(true);
+    expect(isThrowawaySigned({ CI: 'true', MIA_KEYSTORE_PATH: '/tmp/mia-release.jks' })).toBe(
+      false,
+    );
+    expect(isThrowawaySigned({})).toBe(false);
+    expect(isThrowawaySigned({ CI: '' })).toBe(false);
+  });
+
+  it('en CI sans clé, compile mais ne laisse rien à publier dans dist-apk/', async () => {
+    const root = makeTempRoot();
+    const distDir = join(root, DIST_DIR);
+    mkdirSync(distDir, { recursive: true });
+    writeFileSync(join(distDir, 'mia-v0.0.1-universal.apk'), 'stale');
+    const gradle = vi.fn((androidDir: string) => {
+      mkdirSync(join(androidDir, APK_OUTPUT_DIR), { recursive: true });
+      writeFileSync(join(androidDir, APK_OUTPUT_DIR, 'app-release.apk'), 'debug-signed');
+    });
+
+    const target = await buildApk('1.4.2', { root, gradle, env: { CI: 'true' } });
+
+    expect(gradle).toHaveBeenCalledTimes(1);
+    expect(target).toBeNull();
+    expect(existsSync(distDir)).toBe(false);
+  });
+
+  it('en CI sans clé, un build Gradle cassé arrête encore la release', async () => {
+    const gradle = vi.fn(() => {
+      throw new Error('Gradle a échoué (code 1)');
+    });
+
+    await expect(
+      buildApk('1.4.2', { root: makeTempRoot(), gradle, env: { CI: 'true' } }),
+    ).rejects.toThrow('Gradle a échoué');
+  });
+
+  it('en CI avec la clé de release, publie l’APK', async () => {
+    const root = makeTempRoot();
+    const gradle = vi.fn((androidDir: string) => {
+      mkdirSync(join(androidDir, APK_OUTPUT_DIR), { recursive: true });
+      writeFileSync(join(androidDir, APK_OUTPUT_DIR, 'app-release.apk'), 'signed');
+    });
+
+    const target = await buildApk('1.4.2', {
+      root,
+      gradle,
+      env: { CI: 'true', MIA_KEYSTORE_PATH: '/tmp/mia-release.jks' },
+    });
+
+    expect(target).toBe(join(root, DIST_DIR, 'mia-v1.4.2-universal.apk'));
+    expect(existsSync(String(target))).toBe(true);
   });
 
   it('échoue si Gradle ne produit aucun APK, et avant Gradle si la version est invalide', async () => {
     const root = makeTempRoot();
     const gradle = vi.fn();
 
-    await expect(buildApk('1.4.2', { root, gradle })).rejects.toThrow(
+    await expect(buildApk('1.4.2', { root, gradle, env: {} })).rejects.toThrow(
       '0 APK signé(s) dans app/build/outputs/apk/release (dossier vide)',
     );
-    await expect(buildApk('1.4', { root, gradle })).rejects.toThrow(/invalide/);
+    await expect(buildApk('1.4', { root, gradle, env: {} })).rejects.toThrow(/invalide/);
     expect(gradle).toHaveBeenCalledTimes(1);
   });
 
@@ -473,10 +561,41 @@ describe('build-apk.mjs', () => {
 
     const stdout = execFileSync(process.execPath, [BUILD_SCRIPT, '1.4.2', '--root', root], {
       encoding: 'utf8',
+      env: LOCAL_ENV,
     });
 
     expect(stdout).toContain(`APK prêt : ${DIST_DIR}/mia-v1.4.2-universal.apk`);
     expect(existsSync(join(root, DIST_DIR, 'mia-v1.4.2-universal.apk'))).toBe(true);
+  });
+
+  it('en CI sans clé, le CLI réussit et annonce la release sans APK : annotation et résumé du job', () => {
+    const root = makeTempRoot();
+    const summary = join(root, 'summary.md');
+    writeFakeGradlew(root, FAKE_APK_SCRIPT);
+
+    const stdout = execFileSync(process.execPath, [BUILD_SCRIPT, '1.4.2', '--root', root], {
+      encoding: 'utf8',
+      env: { ...LOCAL_ENV, CI: 'true', GITHUB_STEP_SUMMARY: summary },
+    });
+
+    // Le runner ne lit une commande qu'en début de ligne.
+    expect(stdout.split('\n').filter((line) => line.startsWith('::warning '))).toHaveLength(1);
+    expect(stdout).toContain('MIA_KEYSTORE_BASE64');
+    expect(stdout).not.toContain('APK prêt');
+    expect(readFileSync(summary, 'utf8')).toContain('v1.4.2 : aucun APK publié');
+    expect(existsSync(join(root, DIST_DIR))).toBe(false);
+  });
+
+  it('en CI sans clé, se passe du résumé du job s’il n’existe pas', () => {
+    const root = makeTempRoot();
+    writeFakeGradlew(root, FAKE_APK_SCRIPT);
+
+    const stdout = execFileSync(process.execPath, [BUILD_SCRIPT, '1.4.2', '--root', root], {
+      encoding: 'utf8',
+      env: { ...LOCAL_ENV, CI: 'true', GITHUB_STEP_SUMMARY: '' },
+    });
+
+    expect(stdout).toContain('::warning ');
   });
 
   it('sort en code 1 quand Gradle échoue', () => {
@@ -495,7 +614,7 @@ describe('build-apk.mjs', () => {
     writeFakeGradlew(root, FAKE_APK_SCRIPT);
     const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
-    await buildApkMain(['1.4.2', '--root', root]);
+    await buildApkMain(['1.4.2', '--root', root], {});
 
     expect(log).toHaveBeenCalledWith(`APK prêt : ${DIST_DIR}/mia-v1.4.2-universal.apk`);
     expect(readFileSync(join(root, DIST_DIR, 'mia-v1.4.2-universal.apk'), 'utf8')).toBe(
@@ -543,6 +662,129 @@ describe('.releaserc.json', () => {
       { path: `${DIST_DIR}/*.apk`, label: 'Mia Android / Android TV Universal APK' },
     ]);
   });
+
+  describe('@semantic-release/github, avec le vrai plugin et une API GitHub simulée', () => {
+    /** Publie `v1.4.2` depuis `cwd` ; renvoie les appels à l'API et les erreurs journalisées. */
+    function publishFrom(cwd: string): { calls: string[]; errors: string[] } {
+      return runModule(`
+        import { readFileSync } from 'node:fs';
+        import { publish } from '@semantic-release/github';
+
+        const { plugins } = JSON.parse(readFileSync('.releaserc.json', 'utf8'));
+        const [, options] = plugins.find(([name]) => name === '@semantic-release/github');
+        const calls = [];
+        const errors = [];
+        class Octokit {
+          async request(route, params = {}) {
+            if (typeof route !== 'string') {
+              calls.push('upload ' + route.name);
+              return { data: { browser_download_url: 'http://file' } };
+            }
+            calls.push(route + ('draft' in params ? ' draft=' + params.draft : ''));
+            const clone_url = 'https://github.com/youtix/mia.git';
+            if (route.startsWith('GET')) return { data: { clone_url, permissions: { push: true } } };
+            return { data: { upload_url: 'http://upload', html_url: 'http://release', id: 1 } };
+          }
+        }
+        const logger = { log() {}, error: (...args) => errors.push(args.join(' ')) };
+        await publish(
+          options,
+          {
+            cwd: ${JSON.stringify(cwd)},
+            env: { GITHUB_TOKEN: 'token' },
+            options: { repositoryUrl: 'https://github.com/youtix/mia.git' },
+            branch: { name: 'main', main: true, type: 'release' },
+            nextRelease: { gitTag: 'v1.4.2', name: 'v1.4.2', version: '1.4.2', notes: 'notes' },
+            logger,
+          },
+          { Octokit },
+        );
+        process.stdout.write(JSON.stringify({ calls, errors }));
+      `) as { calls: string[]; errors: string[] };
+    }
+
+    const DRAFT = 'POST /repos/{owner}/{repo}/releases draft=true';
+    const PUBLISH = 'PATCH /repos/{owner}/{repo}/releases/{release_id} draft=false';
+
+    it('publie la release sans échec quand dist-apk/ n’existe pas', () => {
+      const { calls, errors } = publishFrom(makeTempRoot());
+
+      expect(calls.slice(-2)).toEqual([DRAFT, PUBLISH]);
+      expect(errors.join('\n')).toContain('cannot be read, and will be ignored');
+    });
+
+    it('attache l’APK quand il existe', () => {
+      const root = makeTempRoot();
+      mkdirSync(join(root, DIST_DIR));
+      writeFileSync(join(root, DIST_DIR, 'mia-v1.4.2-universal.apk'), 'signed');
+
+      const { calls, errors } = publishFrom(root);
+
+      expect(calls.slice(-3)).toEqual([DRAFT, 'upload mia-v1.4.2-universal.apk', PUBLISH]);
+      expect(errors).toEqual([]);
+    });
+  });
+
+  describe('versions et notes, avec les vrais plugins', () => {
+    /** Type de release et notes calculés pour un commit de `main`, avec la configuration du dépôt. */
+    function analyze(message: string): { release: string | null; notes: string } {
+      return runModule(`
+        import { readFileSync } from 'node:fs';
+        import { analyzeCommits } from '@semantic-release/commit-analyzer';
+        import { generateNotes } from '@semantic-release/release-notes-generator';
+
+        const { plugins } = JSON.parse(readFileSync('.releaserc.json', 'utf8'));
+        const options = (plugin) => plugins.find(([name]) => name === plugin)[1];
+        const commits = [{ hash: 'abcdef1234', message: ${JSON.stringify(message)} }];
+        const context = {
+          commits,
+          cwd: process.cwd(),
+          logger: { log() {} },
+          lastRelease: { gitTag: 'v1.4.1', version: '1.4.1', gitHead: 'aaa' },
+          nextRelease: { gitTag: 'v1.4.2', version: '1.4.2', gitHead: 'bbb' },
+          options: { repositoryUrl: 'https://github.com/youtix/mia.git' },
+        };
+        const release = await analyzeCommits(options('@semantic-release/commit-analyzer'), context);
+        const notes = await generateNotes(options('@semantic-release/release-notes-generator'), context);
+        process.stdout.write(JSON.stringify({ release, notes }));
+      `) as { release: string | null; notes: string };
+    }
+
+    // Le bouton « Revert » de GitHub puis le squash : titre seul, sans « This reverts commit ».
+    it.each([
+      'Revert "feat(memory): add new board (#20)" (#21)',
+      'Revert "fix(ui): add new board a/b (#20)" (#21)',
+      'Revert "feat(memory): add new board (#20)" (#21)\n\nCo-authored-by: youtix <youtix@example.org>',
+      'revert: feat(memory): add new board (#21)',
+      'revert(memory): add new board (#21)',
+    ])('publie un correctif pour « %s », listé dans les notes', (message) => {
+      const { release, notes } = analyze(message);
+
+      expect(release).toBe('patch');
+      expect(notes).toContain('### Reverts');
+      expect(notes).toContain('add new board');
+    });
+
+    it.each([
+      ['feat(memory): add new board (#20)', 'minor'],
+      ['fix(ui): keep focus (#3)', 'patch'],
+      ['perf(ui): faster (#3)', 'patch'],
+      ['feat(storage)!: drop old saves (#3)', 'major'],
+      ['docs: explain how to revert a release (#3)', null],
+      ['chore(deps): bump x (#3)', null],
+      ['ci: revert the cache key (#3)', null],
+    ])('laisse aux autres commits leur effet : « %s »', (message, release) => {
+      expect(analyze(message).release).toBe(release);
+    });
+
+    it('un pied BREAKING CHANGE ne vaut majeure que s’il atteint main dans le message de squash', () => {
+      expect(analyze('feat(storage): drop old saves (#3)').release).toBe('minor');
+      expect(
+        analyze('feat(storage): drop old saves (#3)\n\nBREAKING CHANGE: old saves are gone')
+          .release,
+      ).toBe('major');
+    });
+  });
 });
 
 describe('Workflow release-and-deploy.yml', () => {
@@ -562,6 +804,34 @@ describe('Workflow release-and-deploy.yml', () => {
     expect(java).toBeLessThan(stepIndex(release, runs('npx semantic-release')));
   });
 
+  it('garde une clé de cache Gradle stable : chaque release réécrit android/app/build.gradle', () => {
+    const java = stepAt(release, stepIndex(release, usesAction('actions/setup-java')));
+    const files = String(java.with?.['cache-dependency-path']).trim().split('\n');
+
+    expect(files).not.toContain(GRADLE_FILE);
+    expect(files.join('\n')).not.toContain('*');
+    expect(files).toEqual(
+      expect.arrayContaining([
+        'android/build.gradle',
+        'android/variables.gradle',
+        'android/gradle/wrapper/gradle-wrapper.properties',
+      ]),
+    );
+    for (const file of files) expect(existsSync(join(ROOT, file)), file).toBe(true);
+  });
+
+  it('ne laisse pas le token de l’App sur le disque pendant npm ci', () => {
+    const checkout = stepAt(release, stepIndex(release, usesAction('actions/checkout')));
+    const semanticRelease = stepAt(release, stepIndex(release, runs('npx semantic-release')));
+
+    expect(checkout.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
+    // semantic-release et @semantic-release/git poussent avec ce token, placé dans leur URL Git.
+    expect(semanticRelease.env).toMatchObject({
+      GITHUB_TOKEN: '${{ steps.app-token.outputs.token }}',
+    });
+    expect(semanticRelease.env).not.toHaveProperty('GH_TOKEN');
+  });
+
   it('vérifie le SDK Android préinstallé et laisse le temps de compiler', () => {
     const check = stepAt(
       release,
@@ -579,7 +849,12 @@ describe('Workflow release-and-deploy.yml', () => {
     );
     const semanticRelease = stepAt(release, stepIndex(release, runs('npx semantic-release')));
 
-    expect(keystore.env).toEqual({ MIA_KEYSTORE_BASE64: '${{ secrets.MIA_KEYSTORE_BASE64 }}' });
+    expect(keystore.env).toEqual({
+      MIA_KEYSTORE_BASE64: '${{ secrets.MIA_KEYSTORE_BASE64 }}',
+      MIA_KEYSTORE_PASSWORD: '${{ secrets.MIA_KEYSTORE_PASSWORD }}',
+      MIA_KEY_ALIAS: '${{ secrets.MIA_KEY_ALIAS }}',
+      MIA_KEY_PASSWORD: '${{ secrets.MIA_KEY_PASSWORD }}',
+    });
     expect(keystore.run).toContain('if [ -n "$MIA_KEYSTORE_BASE64" ]');
     expect(keystore.run).toContain('base64 -d > "$RUNNER_TEMP/mia-release.jks"');
     expect(keystore.run).toContain('>> "$GITHUB_ENV"');
@@ -602,6 +877,361 @@ describe('Workflow release-and-deploy.yml', () => {
   it('ne lit jamais le contexte secrets dans une condition if (indisponible pour les étapes)', () => {
     expect(read(RELEASE_WORKFLOW)).not.toMatch(/^\s*if:.*secrets\./m);
   });
+
+  describe('étape « Prepare release keystore »', () => {
+    const keystore = stepAt(
+      release,
+      stepIndex(release, (step) => step.run?.includes('MIA_KEYSTORE_PATH=') ?? false),
+    );
+
+    /** Exécute l'étape avec ces secrets ; renvoie le résultat et ce qu'elle a écrit. */
+    function prepare(secrets: Record<string, string>) {
+      const root = makeTempRoot();
+      const githubEnv = join(root, 'github-env');
+      writeFileSync(githubEnv, '');
+      const result = runStep(keystore, root, {
+        RUNNER_TEMP: root,
+        GITHUB_ENV: githubEnv,
+        ...secrets,
+      });
+      return {
+        result,
+        githubEnv: readFileSync(githubEnv, 'utf8'),
+        keystorePath: join(root, 'mia-release.jks'),
+      };
+    }
+
+    const BASE64 = Buffer.from('keystore').toString('base64');
+
+    it('sans secret, réussit sans clé : la release continue sans APK', () => {
+      const { result, githubEnv, keystorePath } = prepare({});
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('attaches no APK');
+      expect(githubEnv).toBe('');
+      expect(existsSync(keystorePath)).toBe(false);
+    });
+
+    it('avec les quatre secrets, décode la clé et transmet son chemin à Gradle', () => {
+      const { result, githubEnv, keystorePath } = prepare({
+        MIA_KEYSTORE_BASE64: BASE64,
+        MIA_KEYSTORE_PASSWORD: 'password',
+        MIA_KEY_ALIAS: 'alias',
+        MIA_KEY_PASSWORD: 'password',
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(keystorePath, 'utf8')).toBe('keystore');
+      expect(githubEnv).toBe(`MIA_KEYSTORE_PATH=${keystorePath}\n`);
+    });
+
+    it.each(['MIA_KEYSTORE_PASSWORD', 'MIA_KEY_ALIAS', 'MIA_KEY_PASSWORD'])(
+      'échoue clairement si %s manque, sans retomber sur une autre clé',
+      (missing) => {
+        const { result, githubEnv, keystorePath } = prepare({
+          MIA_KEYSTORE_BASE64: BASE64,
+          MIA_KEYSTORE_PASSWORD: 'password',
+          MIA_KEY_ALIAS: 'alias',
+          MIA_KEY_PASSWORD: 'password',
+          [missing]: '',
+        });
+
+        expect(result.status).toBe(1);
+        expect(result.stdout).toMatch(/^::error::MIA_KEYSTORE_BASE64 is set but/m);
+        expect(githubEnv).toBe('');
+        expect(existsSync(keystorePath)).toBe(false);
+      },
+    );
+  });
+
+  describe('étape « Detect published release »', () => {
+    const detect = stepAt(
+      release,
+      stepIndex(release, (step) => step.id === 'result'),
+    );
+    const build = getJob(workflow, 'build-pwa');
+
+    interface Repo {
+      root: string;
+      git: (...args: string[]) => string;
+      /** Crée un commit vide et renvoie son SHA. */
+      commit: (message: string) => string;
+    }
+
+    function makeRepo(): Repo {
+      const root = makeTempRoot();
+      const env = cleanEnv({
+        HOME: root,
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_AUTHOR_NAME: 'Mia',
+        GIT_AUTHOR_EMAIL: 'mia@example.org',
+        GIT_COMMITTER_NAME: 'Mia',
+        GIT_COMMITTER_EMAIL: 'mia@example.org',
+      });
+      const git = (...args: string[]) =>
+        execFileSync('git', args, { cwd: root, env, encoding: 'utf8' }).trim();
+      git('init', '-q', '-b', 'main');
+      const commit = (message: string) => {
+        git('commit', '-q', '--allow-empty', '-m', message);
+        return git('rev-parse', 'HEAD');
+      };
+      return { root, git, commit };
+    }
+
+    interface DetectOptions {
+      sha: string;
+      attempt?: number;
+      outcome?: string;
+      /** Le tag est-il sur GitHub (`gh api …/git/ref/tags/…`) ? */
+      hasTag?: boolean;
+      hasRelease?: boolean;
+    }
+
+    /**
+     * Exécute l'étape. `hasTag` et `hasRelease` : ce que répondent `gh api` et `gh release view`, seuls
+     * appels réseau de l'étape.
+     */
+    function runDetect(
+      repo: Repo,
+      { sha, attempt = 1, outcome = 'success', hasTag = true, hasRelease = true }: DetectOptions,
+    ) {
+      const outputFile = join(repo.root, 'github-output');
+      writeFileSync(outputFile, '');
+      const bin = join(repo.root, 'bin');
+      mkdirSync(bin, { recursive: true });
+      const calls = join(repo.root, 'gh-calls');
+      writeFileSync(
+        join(bin, 'gh'),
+        [
+          '#!/bin/sh',
+          `echo "$@" >> "${calls}"`,
+          `if [ "$1" = api ]; then exit ${hasTag ? '0' : '1'}; fi`,
+          `exit ${hasRelease ? '0' : '1'}`,
+          '',
+        ].join('\n'),
+      );
+      chmodSync(join(bin, 'gh'), 0o755);
+      const result = runStep(detect, repo.root, {
+        PATH: `${bin}:${String(process.env.PATH)}`,
+        HOME: repo.root,
+        GITHUB_SHA: sha,
+        GITHUB_REPOSITORY: 'youtix/mia',
+        GITHUB_RUN_ATTEMPT: String(attempt),
+        GITHUB_OUTPUT: outputFile,
+        SEMANTIC_RELEASE_OUTCOME: outcome,
+      });
+      return {
+        result,
+        output: readFileSync(outputFile, 'utf8'),
+        ghCalls: existsSync(calls) ? readFileSync(calls, 'utf8') : '',
+      };
+    }
+
+    /** Appel qui vérifie que le tag est bien arrivé sur GitHub. */
+    const TAG_LOOKUP_V110 = 'api repos/youtix/mia/git/ref/tags/v1.1.0\n';
+
+    /** Un merge et la version publiée pour lui, comme le fait @semantic-release/git. */
+    function publishVersion(repo: Repo, version: string): string {
+      const sha = repo.commit('feat: change');
+      repo.commit(`chore(release): ${version} [skip ci]`);
+      repo.git('tag', `v${version}`);
+      return sha;
+    }
+
+    it('tourne même après un échec, et le déploiement suit une version publiée', () => {
+      expect(detect.if).toBe('always()');
+      expect(build.if).toBe("always() && needs.release.outputs.published == 'true'");
+      expect(getJob(workflow, 'release')).toMatchObject({
+        permissions: { contents: 'read' },
+      });
+      expect(detect.env).toMatchObject({ GH_TOKEN: '${{ github.token }}' });
+    });
+
+    it('cas nominal : publie le tag de HEAD sans interroger GitHub', () => {
+      const repo = makeRepo();
+      const sha = publishVersion(repo, '1.1.0');
+
+      const { result, output, ghCalls } = runDetect(repo, { sha });
+
+      expect(result.status).toBe(0);
+      expect(output).toBe('published=true\ntag=v1.1.0\n');
+      expect(ghCalls).toBe('');
+    });
+
+    it('rien de neuf : pas de déploiement', () => {
+      const repo = makeRepo();
+      publishVersion(repo, '1.1.0');
+      const sha = repo.commit('docs: change');
+
+      const { result, output } = runDetect(repo, { sha });
+
+      expect(result.status).toBe(0);
+      expect(output).toBe('published=false\n');
+    });
+
+    it('échec après le tag poussé : déploie et signale la GitHub Release absente', () => {
+      const repo = makeRepo();
+      const sha = publishVersion(repo, '1.1.0');
+
+      const { result, output, ghCalls } = runDetect(repo, {
+        sha,
+        outcome: 'failure',
+        hasRelease: false,
+      });
+
+      expect(output).toBe('published=true\ntag=v1.1.0\n');
+      expect(ghCalls).toBe(`${TAG_LOOKUP_V110}release view v1.1.0\n`);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toMatch(/^::error::v1\.1\.0 has no published GitHub Release/m);
+    });
+
+    it('push du tag en échec : le tag local n’est pas une version, rien n’est déployé', () => {
+      const repo = makeRepo();
+      const sha = publishVersion(repo, '1.1.0');
+
+      const { result, output, ghCalls } = runDetect(repo, {
+        sha,
+        outcome: 'failure',
+        hasTag: false,
+      });
+
+      expect(output).toBe('published=false\n');
+      expect(ghCalls).toBe(TAG_LOOKUP_V110);
+      expect(result.status).toBe(1);
+      expect(result.stdout).toMatch(
+        /^::error::v1\.1\.0 was created by this run but never reached GitHub/m,
+      );
+    });
+
+    it('échec avant le tag : aucune version, aucun déploiement', () => {
+      const repo = makeRepo();
+      const sha = repo.commit('feat: change');
+
+      const { result, output } = runDetect(repo, { sha, outcome: 'failure' });
+
+      expect(result.status).toBe(0);
+      expect(output).toBe('published=false\n');
+    });
+
+    it('relance : retrouve la version de ce déclencheur et la déploie', () => {
+      const repo = makeRepo();
+      const sha = publishVersion(repo, '1.1.0');
+      // actions/checkout repart de GITHUB_SHA ; les tags, eux, sont déjà là (fetch-depth: 0).
+      repo.git('checkout', '-q', '--force', '-B', 'main', sha);
+
+      const { result, output, ghCalls } = runDetect(repo, { sha, attempt: 2 });
+
+      expect(result.status).toBe(0);
+      expect(output).toBe('published=true\ntag=v1.1.0\n');
+      expect(ghCalls).toBe(`${TAG_LOOKUP_V110}release view v1.1.0\n`);
+    });
+
+    it('relance : déploie quand même, en échec si la GitHub Release manque toujours', () => {
+      const repo = makeRepo();
+      const sha = publishVersion(repo, '1.1.0');
+      repo.git('checkout', '-q', '--force', '-B', 'main', sha);
+
+      const { result, output } = runDetect(repo, { sha, attempt: 2, hasRelease: false });
+
+      expect(output).toBe('published=true\ntag=v1.1.0\n');
+      expect(result.status).toBe(1);
+      expect(result.stdout).toMatch(/^::error::v1\.1\.0 has no published GitHub Release/m);
+    });
+
+    it('relance d’un ancien run : ne fait jamais reculer la PWA vers une version dépassée', () => {
+      const repo = makeRepo();
+      const sha = publishVersion(repo, '1.1.0');
+      publishVersion(repo, '1.2.0');
+      repo.git('checkout', '-q', '--force', '-B', 'main', sha);
+
+      const { result, output } = runDetect(repo, { sha, attempt: 2 });
+
+      expect(result.status).toBe(0);
+      expect(output).toBe('published=false\n');
+    });
+
+    it('relance d’un déclencheur sans version : aucun déploiement', () => {
+      const repo = makeRepo();
+      publishVersion(repo, '1.1.0');
+      const sha = repo.commit('docs: change');
+
+      const { result, output } = runDetect(repo, { sha, attempt: 2 });
+
+      expect(result.status).toBe(0);
+      expect(output).toBe('published=false\n');
+    });
+
+    it('classe les tags par version : v1.10.0 passe après v1.9.0', () => {
+      const repo = makeRepo();
+      publishVersion(repo, '1.9.0');
+      const sha = publishVersion(repo, '1.10.0');
+      repo.git('checkout', '-q', '--force', '-B', 'main', sha);
+
+      expect(runDetect(repo, { sha, attempt: 2 }).output).toBe('published=true\ntag=v1.10.0\n');
+    });
+
+    it('sans dépôt (checkout en échec) : ne déclare aucune version', () => {
+      const root = makeTempRoot();
+      const outputFile = join(root, 'github-output');
+
+      const result = runStep(detect, root, {
+        HOME: root,
+        GIT_CEILING_DIRECTORIES: dirname(root),
+        GITHUB_SHA: 'abc',
+        GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_OUTPUT: outputFile,
+        SEMANTIC_RELEASE_OUTCOME: 'skipped',
+      });
+
+      expect(result.status).toBe(0);
+      expect(readFileSync(outputFile, 'utf8')).toBe('published=false\n');
+    });
+  });
+});
+
+describe('Workflow ci.yml', () => {
+  const workflow = readYaml(CI_WORKFLOW) as Workflow;
+  const android = getJob(workflow, 'android');
+
+  it('garde le job verify sous son nom : c’est le check requis sur main', () => {
+    expect(getJob(workflow, 'verify').name).toBe('verify');
+  });
+
+  it('compile l’APK sur les PR seulement, le job release s’en charge sur main', () => {
+    expect(android.name).toBe('android');
+    expect(android.if).toBe("github.event_name == 'pull_request'");
+    expect(android).not.toHaveProperty('needs');
+    expect(read(CI_WORKFLOW)).not.toContain('secrets.');
+  });
+
+  it('prépare le projet Android avec JDK 21 et cap sync, puis compile comme la release', () => {
+    const java = stepIndex(android, usesAction('actions/setup-java'));
+    const install = stepIndex(android, runs('npm ci'));
+    const sync = stepIndex(android, runs('npm run cap:sync'));
+    const gradle = stepIndex(android, runs('./gradlew assembleRelease --no-daemon'));
+
+    expect(stepAt(android, java).with).toMatchObject({
+      distribution: 'temurin',
+      'java-version': '21',
+      cache: 'gradle',
+    });
+    expect(java).toBeLessThan(install);
+    expect(install).toBeLessThan(sync);
+    expect(sync).toBeLessThan(gradle);
+    expect(stepAt(android, gradle)).toMatchObject({ 'working-directory': 'android' });
+    expect(stepAt(android, stepIndex(android, usesAction('actions/checkout'))).with).toMatchObject({
+      'persist-credentials': false,
+    });
+  });
+
+  it('partage la clé de cache Gradle du job release', () => {
+    const release = getJob(readYaml(RELEASE_WORKFLOW) as Workflow, 'release');
+    const cachePath = (job: WorkflowJob) =>
+      stepAt(job, stepIndex(job, usesAction('actions/setup-java'))).with?.['cache-dependency-path'];
+
+    expect(cachePath(android)).toBeDefined();
+    expect(cachePath(android)).toBe(cachePath(release));
+  });
 });
 
 describe('Signature de l’APK (android/app/build.gradle)', () => {
@@ -609,7 +1239,7 @@ describe('Signature de l’APK (android/app/build.gradle)', () => {
   const SIGNING_LINE =
     'signingConfig = releaseKeystorePath ? signingConfigs.release : signingConfigs.debug';
 
-  it('lit la clé de release dans l’environnement et retombe sur la clé de débogage', () => {
+  it('lit la clé de release dans l’environnement et retombe sur la clé de débogage (build local)', () => {
     expect(gradle).toContain('def releaseKeystorePath = System.getenv("MIA_KEYSTORE_PATH")');
     for (const variable of ['MIA_KEYSTORE_PASSWORD', 'MIA_KEY_ALIAS', 'MIA_KEY_PASSWORD']) {
       expect(gradle).toContain(`System.getenv("${variable}")`);
@@ -636,9 +1266,13 @@ describe('Signature de l’APK (android/app/build.gradle)', () => {
 
   it('ignore les keystores et le dossier dist-apk/', () => {
     const androidIgnored = read('android/.gitignore').split('\n');
+    const rootIgnored = read('.gitignore').split('\n');
     expect(androidIgnored).toContain('*.jks');
     expect(androidIgnored).toContain('*.keystore');
-    expect(read('.gitignore').split('\n')).toContain('dist-apk/');
+    // Le keytool du README écrit dans le dossier courant, souvent la racine du dépôt.
+    expect(rootIgnored).toContain('*.jks');
+    expect(rootIgnored).toContain('*.keystore');
+    expect(rootIgnored).toContain('dist-apk/');
   });
 });
 
@@ -708,6 +1342,11 @@ describe('Recette F-Droid (fdroid/org.mia.braintraining.yml)', () => {
       'node_modules/@img',
       'node_modules/@capacitor/cli',
       'node_modules/@pnpm',
+      // Le scanner F-Droid refuse tout .wasm : ceux de Next.js ne servent ni à Gradle ni à l'export.
+      'node_modules/next/dist/compiled/source-map08/mappings.wasm',
+      'node_modules/next/dist/compiled/@vercel/og/yoga.wasm',
+      'node_modules/next/dist/compiled/@vercel/og/resvg.wasm',
+      'node_modules/next/dist/compiled/@mswjs/interceptors/ClientRequest/llhttp/llhttp.wasm',
     ]) {
       expect(removed).toContain(path);
     }
@@ -731,6 +1370,20 @@ describe('README.md', () => {
       'Conventional Commits',
       'MIA_KEYSTORE_BASE64',
       'GPL-3.0-or-later',
+    ]) {
+      expect(readme, needle).toContain(needle);
+    }
+  });
+
+  it('donne au propriétaire les étapes de la clé de release, et leurs conséquences', () => {
+    for (const needle of [
+      'keytool -genkeypair',
+      'base64 -w0 mia-release.jks | gh secret set MIA_KEYSTORE_BASE64',
+      'gh secret set MIA_KEYSTORE_PASSWORD',
+      'gh secret set MIA_KEY_ALIAS',
+      'gh secret set MIA_KEY_PASSWORD',
+      'désinstalle',
+      'clé perdue',
     ]) {
       expect(readme, needle).toContain(needle);
     }

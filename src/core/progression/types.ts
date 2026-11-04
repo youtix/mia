@@ -85,6 +85,8 @@ export interface LevelVictoryParams {
 }
 
 export interface RecordVictoryOptions {
+  /** Profil à créditer ; défaut : le profil actif. Introuvable : rien n'est enregistré */
+  profileId?: string;
   /** Date de la victoire (tests) ; défaut : maintenant */
   now?: Date;
 }

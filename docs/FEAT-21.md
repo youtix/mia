@@ -35,7 +35,7 @@ src/
 │   ├── audio/                         # Nouveau : synth.ts (Web Audio), useSoundPlayer.ts, types.ts, index.ts
 │   ├── navigation/NavigationContext.tsx # Une zone qu'on ne demande plus n'est plus active (§4)
 │   ├── progression/game-registry.ts   # Entrée du registre
-│   └── storage/migrations.ts          # KNOWN_GAMES
+│   └── storage/migrations.ts          # Aucun ajout : la sauvegarde garde tout identifiant bien formé (FEAT-05 §5)
 └── games/patterns/                    # Nouveau
     ├── types.ts, items.ts             # Types, banque d'éléments, couleurs
     ├── engine.ts                      # Moteur pur (machine à états, génération des défis)
@@ -88,11 +88,11 @@ Fonctions pures, sans React ni DOM ; le hasard passe par `rng` et le temps par `
 
 * `createPatternsGame(config, rng = Math.random)` : tire tous les défis d'un coup, s'ouvre en `intro` ; lève une `Error` listant `getPatternsConfigErrors(config)`.
 * `beginRound(state, nowMs)`, `endStop(state, nowMs)`, `endListening(state, nowMs)`, `advanceRound(state)` : transitions cadencées par le plateau.
-* `tapChoice(state, index, nowMs)` : seule action du joueur.
-  * `stop` : `impulsiveTaps + 1`, rien d'autre (**le STOP n'est ni abrégé ni rallongé**).
+* `tapChoice(state, index, nowMs, pressPhase = state.phase)` : seule action du joueur, jugée sur la phase où le doigt s'est posé (`pressPhase`, notée par le plateau ; par défaut la phase en cours, OK n'ayant pas de durée).
+  * `stop` : `impulsiveTaps + 1`, rien d'autre (**le STOP n'est ni abrégé ni rallongé**), même si le STOP est fini quand le doigt se lève : ce n'est pas une réponse.
   * `choosing` + pièces : validation immédiate.
   * `choosing` + sons : une proposition différente de `armedIndex` passe en `listening` ; `armedIndex` lui-même est validé.
-  * `listening`, `intro`, `success`, `won`, index invalide : ignorée. **Un double tap ne valide jamais**, et une réponse n'est jamais donnée sans avoir été entendue.
+  * `listening`, `intro`, `success`, `won`, index invalide, ou doigt levé hors de `choosing` : ignorée (posé avant un STOP et levé pendant, il n'a rien d'impulsif). **Un double tap ne valide jamais**, et une réponse n'est jamais donnée sans avoir été entendue.
 * Mauvaise réponse : `roundMistakes`, `mistakes`, `moves`, `wrongTick` + 1, `lastWrongIndex` posé, proposition désarmée et toujours disponible. Si elle tombe moins de `TOO_FAST_MS` (1 200 ms) après `unlockedAtMs` (dernier déverrouillage ou dernière erreur), la partie passe en `stop`. Une **bonne** réponse rapide n'est jamais pénalisée.
 * `getHelpLevel(state)` : 0, puis 1 à la 2e mauvaise réponse du défi (la ligne montre son unité répétée), 2 à partir de la 3e (la bonne proposition luit).
 * `isPerfectWin(state)` : `won`, `mistakes === 0` et `impulsiveTaps === 0`.
@@ -133,7 +133,7 @@ Règles de `getPatternsConfigErrors` : pièces, `visibleItems` entier de la long
 ### 3.4. Sons (`src/core/audio/`)
 
 * **Synthèse Web Audio** (`synth.ts`) : aucun fichier à embarquer, à licencier (F-Droid) ni à pré-cacher (PWA). Cloche à partiels inharmoniques ; tambour audible sur un haut-parleur de téléphone (qui ne reproduit rien sous 300 Hz environ) : corps en onde triangle et partiel de membrane au-dessus de ce seuil, grave pour l'assise sur un téléviseur, attaque de bruit filtré ; deux jingles (`round`, `star`). Un seul son à la fois. Niveaux réglés à la mesure, pas à l'oreille : rendu hors ligne du vrai graphe, énergie pondérée A à travers un passe-haut de 300 Hz simulant un téléphone (tambour à moins de 3 dB de la cloche, contre 10 dB avec un corps plus grave). Crête du tambour à 0,88 en médiane : 2 frappes sur 500 dépassent 1,0 d'au plus 1,2 %, sur 1 ou 2 échantillons. Il reste donc peu de marge pour le monter encore.
-* `useSoundPlayer()` : `{ isEnabled, playBeats, playJingle, stop }`, lit `state.settings.soundEnabled`, n'émet rien si le son est coupé, se tait au démontage. Sans `AudioContext` (tests, navigateur ancien), rien n'est joué et rien ne plante.
+* `useSoundPlayer()` : `{ isEnabled, playBeats, playJingle, stop }`, lit `state.settings.soundEnabled`, n'émet rien si le son est coupé, se tait et libère aussitôt la sortie audio page masquée et son coupé ; page masquée, rien n'est joué (FEAT-22 §4). Au démontage, il se tait et ne libère la sortie que si rien ne sonne dans les 3 s : le niveau suivant ne réveille pas une sortie à peine endormie, dont la reprise couperait sa première note sur un téléviseur (HDMI) ou un casque Bluetooth. `stop` (nouvelle partie) coupe le son et garde la sortie. Sans `AudioContext` (tests, navigateur ancien), rien n'est joué et rien ne plante.
 * **Le déroulé du jeu ne dépend jamais de l'audio** : temps et états sont cadencés par les minuteurs du plateau.
 * **Son coupé** : une proposition « joue » sa suite sous forme d'images (cloche, tambour) qui apparaissent en rythme, sur le même minutage. Aucun blocage ; l'exercice est plus facile et n'est plus un vrai transfert sensoriel. Un appareil muet **n'est pas détectable** depuis le navigateur : ce cas reste non couvert.
 
@@ -142,13 +142,13 @@ Règles de `getPatternsConfigErrors` : pièces, `visibleItems` entier de la long
 * **Aucun texte visible** sur toute la boucle de jeu, écran de fin compris : `AppShell isTextless`, `ModalDialog isTextless`, boutons en icônes, pas de `DifficultyPill`, ni compteur en chiffres, ni aides de télécommande. Le Hub, la Carte des Étoiles et les Réglages gardent leur texte. **Les noms accessibles restent** (`aria-label`, `sr-only`, région `role="status"`) : ils ne sont pas affichés. Un enfant non lecteur qui utilise TalkBack entend tout en français.
 * **Ligne de lecture** : au centre, de gauche à droite, sur une seule ligne et sans défilement de 360 × 640 à 960 × 540 (TV), terminée par la **cible** (case vide à bordure pointillée pulsée). Pas de « ? » : c'est un caractère à lire.
 * **Trois grands boutons** ancrés en bas (`grid-cols-3`, au moins 96 px de haut). Pièce : icône de l'élément. Son : haut-parleur neutre, **qui ne révèle jamais le motif** ; une proposition en lecture pulse à chaque temps, à l'identique pour la cloche et le tambour. Une proposition prête est allumée avec une coche, à cheval sur le coin du bouton : elle ne couvre aucune image. Son coupé, les images se dimensionnent sur le bouton, du téléphone au téléviseur (deux lignes de deux pour 4 temps, lignes de trois pour 3 et 6 temps).
-* **STOP** : panneau octogonal rouge orné d'une main ouverte (sans lettres) et petite mascotte au-dessus des boutons, assombris mais visibles (l'enfant doit pouvoir réfléchir à sa réponse), anneau qui se vide en `stopSeconds`. Rien ne cache les réponses : en paysage, panneau et mascotte se placent entre deux boutons ; en portrait, ils dépassent au-dessus, dans l'espace libre sous la ligne. Le calque laisse passer les tapes : une tape fait gigoter la mascotte, rien de plus. Un défi sonore ne s'écoute pas pendant le STOP.
+* **STOP** : panneau octogonal rouge orné d'une main ouverte (sans lettres) et petite mascotte au-dessus des boutons, assombris mais visibles (l'enfant doit pouvoir réfléchir à sa réponse), anneau qui se vide en `stopSeconds`. Rien ne cache les réponses : en paysage, panneau et mascotte se placent entre deux boutons ; en portrait, ils dépassent au-dessus, dans l'espace libre sous la ligne (bas à 76 % de la zone des réponses : mesuré dans Chromium de 320 × 568 à 1024 × 1366, aucune icône couverte et au moins 79 px libres sous la ligne ; à 66 %, le haut des icônes était couvert sur tablette). Le calque laisse passer les tapes : une tape fait gigoter la mascotte, rien de plus. Un défi sonore ne s'écoute pas pendant le STOP.
 * **Réussite** : la pièce se place dans la cible avec un mouvement joyeux, particules, jingle `round`. Sons : d'abord la **révélation** (la bonne suite rejouée pendant que les éléments de la ligne pulsent chacun sur son temps, ce qui fait comprendre le lien entre image et son ; avec le son coupé, une image de cloche ou de tambour apparaît sur chaque élément), puis la cible, les particules et le jingle.
 * **Erreur** : la pièce rebondit doucement sur place, avec une brève baisse d'opacité, et reste disponible. Ni rouge, ni croix, ni grisé durable, ni son d'échec.
 * **Aide** : niveau 1, les unités de la ligne pulsent l'une après l'autre ; niveau 2, cette pulsation continue et la bonne proposition luit doucement (lueur et anneau ambrés). L'ambre lui est réservé : le curseur D-Pad reste bleu ciel, comme partout dans Mia, pour ne pas se confondre avec elle.
 * **Guide** (`hasGuide`, premier défi seulement) : une main fantôme indique la bonne proposition et mime la tape. Pour les sons, elle reste jusqu'à la validation : c'est elle qui apprend les deux appuis. Elle disparaît pendant un STOP : une main qui tape dirait le contraire.
-* **Écran de fin** : grande étoile animée, couronne dorée si elle est gagnée ou déjà acquise (sinon contour gris), jingle `star`, trois boutons en icônes : étoile suivante (pré-focalisée, absente après la dernière), rejouer, carte. Une phrase sur la couronne décrit la boîte de dialogue pour les lecteurs d'écran. Les boutons n'agissent qu'après `END_INPUT_GUARD_MS` : un enfant qui tape encore, au même endroit que sa réponse, voit sa récompense. Les flèches et Retour répondent tout de suite.
-* **Transitions** : `transform` et `opacity` seulement (boîtiers TV modestes), `MotionConfig reducedMotion="user"`. Si le système demande de réduire les animations, seule l'opacité subsiste : le rebond et les pulsations restent visibles par elle, la main du guide reste immobile, et l'anneau du STOP paraît vide d'emblée (le panneau reste jusqu'à la fin de la pause).
+* **Écran de fin** : grande étoile animée, couronne dorée si elle est gagnée ou déjà acquise (sinon contour gris), jingle `star`, trois boutons en icônes : étoile suivante (pré-focalisée, absente après la dernière), rejouer, carte. Une phrase sur la couronne décrit la boîte de dialogue pour les lecteurs d'écran. Les boutons n'agissent qu'après `END_SCREEN_GUARD_MS` (800 ms, `inputGuardMs` de `ModalDialog`, [FEAT-04](./FEAT-04.md)) : un enfant qui tape encore, au même endroit que sa réponse, ou presse encore `OK`, voit sa récompense. Les flèches et Retour répondent tout de suite.
+* **Transitions** : `transform` et `opacity` seulement (boîtiers TV modestes), `MotionConfig reducedMotion="user"`. Si le système demande de réduire les animations, seule l'opacité subsiste : le rebond, les pulsations et le gigotement de la mascotte (une brève baisse d'opacité remplace sa rotation) restent visibles par elle, la main du guide reste immobile, et l'anneau du STOP paraît vide d'emblée (le panneau reste jusqu'à la fin de la pause).
 
 ### 3.6. Minutages (`PatternsBoard.tsx`, constantes exportées)
 
@@ -158,7 +158,7 @@ Règles de `getPatternsConfigErrors` : pièces, `visibleItems` entier de la long
 | `BEAT_MS` | 550 ms | Intervalle entre deux temps d'une suite sonore |
 | `LISTEN_TAIL_MS` | 250 ms | Fin de résonance avant de pouvoir revalider |
 | `SUCCESS_MS` | 1 300 ms | Célébration avant le défi suivant (après la révélation pour les sons) |
-| `END_INPUT_GUARD_MS` | 800 ms | Boutons de l'écran de fin sans effet, le temps que l'étoile et la couronne se posent (`PatternsEndModal.tsx`) |
+| `END_SCREEN_GUARD_MS` | 800 ms | Boutons de l'écran de fin sans effet, le temps que l'étoile et la couronne se posent (garde d'activation de FEAT-04, `inputGuardMs` de `ModalDialog`) |
 
 ### 3.7. D-Pad & clavier
 
@@ -166,12 +166,13 @@ Deux zones (`useGridNavigation`) : en-tête (Retour, 1 × 1) et propositions (1 
 
 ### 3.8. Progression
 
-`controls.recordVictory({ moves, timeSeconds, isPerfect })` une seule fois, à `won` : `moves` = réponses validées, `timeSeconds` depuis le premier `choosing`, `isPerfect` = `isPerfectWin`. **Aucune mesure ajoutée à la sauvegarde** ([§6](#6-décisions-dimplémentation-session-de-cadrage)).
+`controls.recordVictory({ moves, timeSeconds, isPerfect })` une seule fois, dès la bonne réponse du dernier défi, dans son gestionnaire de clic (jamais par un effet rejoué) : l'enfant qui quitte pendant la révélation ou la célébration garde son étoile. `moves` = réponses validées, `timeSeconds` depuis le premier `choosing` jusqu'à la fin de la célébration (la même mesure qu'à `won`), `isPerfect` = `isPerfectWin` de l'état `won` à venir. La couronne d'avant cette victoire est figée avec le résultat : la sauvegarde change aussitôt celle du niveau, et l'écran de fin dirait sinon « déjà acquise ». **Aucune mesure ajoutée à la sauvegarde** ([§6](#6-décisions-dimplémentation-session-de-cadrage)).
 
 ---
 
 ## 4. Points d'attention
 
+* **Une tape se juge à son appui, pas au relâchement** : le `click` part quand le doigt se lève. Un doigt posé pendant l'apparition et levé pendant le STOP qui suit coûterait la couronne ; posé pendant un STOP et levé après, il deviendrait une réponse. Le plateau note la phase au `pointerdown`, en capture sur tout le plateau (le navigateur attribue parfois à un bouton un tap juste à côté), et la passe à `tapChoice` ; le clic d'un second doigt, que la garde d'activation donne elle-même, est jugé de même. Sans appui récent (OK, Entrée, ou doigt parti en glissant il y a plus de 1,5 s), la phase en cours décide.
 * **Le minuteur du STOP ne dépend pas de `game`** : `impulsiveTaps` crée un nouvel état à chaque tape ; un effet dépendant de l'objet `game` repartirait de zéro et rallongerait le STOP, ce que le cadrage interdit. Dépendre de `game.phase` et d'un compteur de STOP.
 * **La fin du STOP se rend tout de suite (`flushSync`)** : `selectChoice` lit l'état du dernier rendu. Une tape tombée entre le minuteur et ce rendu réécrirait un état `stop` périmé par-dessus `endStop`, et plus aucun minuteur ne le terminerait : le jeu resterait en STOP pour toujours. Les autres minuteurs n'ont pas ce risque : leurs phases ignorent les tapes, qui n'écrivent donc rien.
 * **Une zone qu'on ne demande plus n'est plus active** (`useNavigationScope`) : le magasin des zones ne suit qu'après les effets. Entre-temps, une zone tout juste quittée reprenait le focus à celle qu'on venait de demander, et les deux se le renvoyaient jusqu'au plantage de React. Le parcours touchait aussi Memory : curseur sur Retour quand la partie se termine, puis « Rejouer ».
@@ -179,15 +180,15 @@ Deux zones (`useGridNavigation`) : en-tête (Retour, 1 × 1) et propositions (1 
 * **Le bouton ne doit pas trahir le motif** : même pulsation et même apparence pour la cloche et le tambour quand le son est actif. Les images n'apparaissent qu'avec le son coupé, sur les propositions comme à la révélation.
 * **`Math.random` simulé à 0 dans les tests** : le mélange conserve l'ordre ; la bonne réponse d'un défi A-B à 4 éléments est donc à l'index 0, le rôle A est tenu par le premier élément de la famille.
 * **Module de hasard de Memory** : `engine.ts` importe `@/games/memory/random` (pur, sans dépendance). Ne pas le dupliquer ; un déplacement vers `src/lib/` serait un refactoring à part.
-* **Un `GameId` de plus** : `KNOWN_GAMES`, `GAME_REGISTRY` et `GAME_ICONS` sont exhaustifs, le compilateur les exige. La progression d'un joueur vit sous `gamesProgress.patterns` : **cet identifiant ne doit plus changer**.
+* **Un `GameId` de plus** : `GAME_REGISTRY` et `GAME_ICONS` sont exhaustifs, le compilateur les exige (la sauvegarde garde tout identifiant bien formé, FEAT-05 §5). La progression d'un joueur vit sous `gamesProgress.patterns` : **cet identifiant ne doit plus changer**.
 
 ---
 
 ## 5. Critères d'Acceptation (Definition of Done)
 
 - [x] Les 20 étoiles se jouent au doigt, à la souris et à la télécommande, sans aucun texte visible de la première tape à l'écran de fin ; `npm run validate:levels` valide le catalogue.
-- [x] Une étoile ne peut pas être perdue ; une erreur n'affiche ni rouge ni croix ; après 3 mauvaises réponses, la bonne proposition luit.
-- [x] Une tape pendant un STOP ne change pas sa durée et fait perdre la couronne ; une mauvaise réponse en moins de 1,2 s déclenche un STOP.
+- [x] Une étoile ne peut pas être perdue, et elle est enregistrée dès la dernière bonne réponse : quitter pendant la célébration la garde ; une erreur n'affiche ni rouge ni croix ; après 3 mauvaises réponses, la bonne proposition luit.
+- [x] Une tape pendant un STOP ne change pas sa durée et fait perdre la couronne, jugée à l'instant où le doigt se pose ; une mauvaise réponse en moins de 1,2 s déclenche un STOP.
 - [x] Une réponse sonore n'est jamais validée sans avoir été entendue, et un double tap ne valide pas.
 - [x] Son coupé : toutes les étoiles restent solubles, grâce aux images en rythme.
 - [x] `npm run validate:all` passe, avec 90 % de couverture sur `src/games/patterns/*.ts`.

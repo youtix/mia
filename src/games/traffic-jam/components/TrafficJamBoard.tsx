@@ -2,14 +2,9 @@
 
 import type { LevelControls } from '@/components/progression';
 import { AppShell, DEFAULT_REMOTE_HINTS, type RemoteHint } from '@/components/ui';
-import {
-  findNearestTarget,
-  useGridNavigation,
-  useNavigationScope,
-  type Direction,
-  type NavigationTarget,
-} from '@/core/navigation';
+import { useGridNavigation, useNavigationScope, type Direction } from '@/core/navigation';
 import type { EnrichedLevelItem } from '@/core/progression';
+import { capturePointer } from '@/lib/pointer-capture';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, TrafficCone } from 'lucide-react';
 import {
   useCallback,
@@ -46,6 +41,7 @@ import {
 } from './labels';
 import { TrafficJamEndModal, type TrafficJamGameResult } from './TrafficJamEndModal';
 import { HUD_ACTIONS, TrafficJamHud } from './TrafficJamHud';
+import { findVehicleTarget } from './vehicle-cursor';
 import { VehiclePiece } from './VehiclePiece';
 
 /** Sortie du hero par l'ouverture du muret, avant la modale de fin. */
@@ -56,6 +52,9 @@ export const HINT_DURATION_MS = 2500;
 
 /** Épaisseur du muret du parking. */
 const WALL_PX = 6;
+
+/** Véhicule déplacé d'au moins ce nombre de pixels : glissement en cours, plus une main posée. */
+const DRAG_SLOP_PX = 8;
 
 /** Zones D-Pad : le HUD (Retour d'`AppShell`, Annuler, Indice, Recommencer), puis le parking. */
 type BoardZone = 'hud' | 'board';
@@ -73,7 +72,7 @@ interface RemoteState {
    * Longueur de l'historique au démarrage du véhicule : un pas ne se cumule qu'avec un coup joué
    * depuis (`history.length` plus grand). Un cumul nul retire le coup et ramène l'historique à
    * cette longueur : le pas suivant ouvre un nouveau coup, jamais fusionné avec celui d'une
-   * session précédente du même véhicule.
+   * session précédente du même véhicule. « Annuler » la fait suivre l'historique s'il passe dessous.
    */
   historyLengthAtLock: number;
 }
@@ -96,6 +95,8 @@ interface DragState {
   bounds: VehicleBounds;
   /** Décalage courant le long de l'axe, borné par `bounds` */
   offsetPx: number;
+  /** Le véhicule a quitté sa place de `DRAG_SLOP_PX`, même s'il y revient : sinon, une main posée */
+  hasMoved: boolean;
 }
 
 /** Indice calculé pour un état précis : effacé dès que l'état change (coup, annulation…). */
@@ -117,15 +118,6 @@ const ARROW_ICONS = {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
-}
-
-/** Centre géométrique d'un véhicule, en cases (repère écran : `y` croît vers le bas). */
-function getVehicleCenter(vehicle: VehicleDef): NavigationTarget {
-  return {
-    id: vehicle.id,
-    x: vehicle.col + (vehicle.axis === 'H' ? vehicle.length / 2 : 0.5),
-    y: vehicle.row + (vehicle.axis === 'V' ? vehicle.length / 2 : 0.5),
-  };
 }
 
 /** Pas d'une flèche sur l'axe du véhicule (`0` : flèche hors axe, ignorée). */
@@ -153,17 +145,10 @@ function getCellRect(row: number, col: number, rows: number, cols: number, gridS
   } satisfies CSSProperties;
 }
 
-/**
- * Capture du pointeur : le glissement suit le doigt même sorti du véhicule. jsdom ne l'implémente
- * pas et un pointeur déjà relâché lève `InvalidStateError` : sans capture, le glissement suit le
- * pointeur tant qu'il reste sur le véhicule.
- */
-function capturePointer(element: HTMLElement, pointerId: number): void {
-  try {
-    element.setPointerCapture(pointerId);
-  } catch {
-    // Capture indisponible : voir ci-dessus.
-  }
+/** Décalage d'un pointeur depuis le premier contact, le long de l'axe, borné par `bounds`. */
+function getDragOffset(drag: DragState, event: ReactPointerEvent<HTMLButtonElement>): number {
+  const raw = (drag.axis === 'H' ? event.clientX : event.clientY) - drag.originPx;
+  return clamp(raw, drag.bounds.minDelta * drag.cellPx, drag.bounds.maxDelta * drag.cellPx);
 }
 
 /** Aides de la télécommande selon l'état : OK démarre puis arrête le véhicule. */
@@ -318,6 +303,9 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
   const [remote, setRemote] = useState(INITIAL_REMOTE);
   const [activeZone, setActiveZone] = useState<BoardZone>('board');
   const [drag, setDrag] = useState<DragState | null>(null);
+  // Dernier décalage reçu : `pointercancel` n'a pas de coordonnées fiables, et il peut arriver avant
+  // le rendu du dernier `pointermove`.
+  const lastOffsetRef = useRef(0);
   const [hint, setHint] = useState<Hint | null>(null);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [result, setResult] = useState<TrafficJamGameResult | null>(null);
@@ -371,12 +359,7 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
   /** État 1 : saute au véhicule voisin dans la direction ; au-delà du plateau, Haut rejoint le HUD. */
   const navigateVehicles = (direction: Direction) => {
     if (!focusedVehicle) return;
-    const others = game.vehicles.filter((vehicle) => vehicle.id !== focusedVehicle.id);
-    const targetId = findNearestTarget(
-      getVehicleCenter(focusedVehicle),
-      others.map(getVehicleCenter),
-      direction,
-    );
+    const targetId = findVehicleTarget(game.vehicles, focusedVehicle.id, direction);
     if (targetId !== null) {
       setRemote((current) => ({ ...current, focusedVehicleId: targetId }));
     } else if (direction === 'up') {
@@ -442,13 +425,14 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
 
   // Curseur → focus DOM (annonces TalkBack), au D-Pad uniquement : `useNavigationScope` ne déplace
   // pas le focus lui-même (FEAT-04 §5).
+  // Après la victoire, le hero sort du parking : le faire défiler jusqu'à lui décalerait le plateau.
   useEffect(() => {
     if (!isFocusVisible) return;
     const element = vehiclesRef.current?.get(remote.focusedVehicleId);
     if (!element) return;
     if (element !== document.activeElement) element.focus({ preventScroll: true });
-    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [isFocusVisible, remote.focusedVehicleId]);
+    if (!game.isWon) element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [isFocusVisible, remote.focusedVehicleId, game.isWon]);
 
   // Victoire : le hero sort du parking, puis la modale de fin s'ouvre.
   useEffect(() => {
@@ -501,7 +485,13 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
 
   const undo = () => {
     const next = undoLastMove(game);
-    if (next !== game) setGame(next);
+    if (next === game) return;
+    setGame(next);
+    // Le moteur reste démarré (pointeur, Tab) : les pas qui suivent font toujours un seul coup.
+    setRemote((current) => ({
+      ...current,
+      historyLengthAtLock: Math.min(current.historyLengthAtLock, next.history.length),
+    }));
   };
 
   /** « Recommencer », « Rejouer » : positions de départ, curseur sur le hero, moteur coupé. */
@@ -538,7 +528,10 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
   };
 
   const startDrag = (vehicle: VehicleDef, event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (game.isWon || drag !== null || !event.isPrimary) return;
+    // Un véhicule à la fois, mais seul un glissement en cours refuse un autre doigt : une main posée,
+    // même sur un véhicule, ne bloque pas le jeu. Un nouveau pointeur principal remplace tout geste :
+    // le sien est forcément relâché, même si `pointerup` n'est jamais arrivé.
+    if (game.isWon || (!event.isPrimary && drag?.hasMoved)) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     const parking = parkingRef.current;
     if (!parking) return;
@@ -546,6 +539,7 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
     // Sans mise en page (jsdom), aucune case mesurable : pas de glissement.
     if (!(cellPx > 0)) return;
     capturePointer(event.currentTarget, event.pointerId);
+    lastOffsetRef.current = 0;
     setDrag({
       vehicleId: vehicle.id,
       pointerId: event.pointerId,
@@ -554,27 +548,73 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
       cellPx,
       bounds: getVehicleBounds(game, vehicle.id),
       offsetPx: 0,
+      hasMoved: false,
     });
-  };
-
-  const moveDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (drag?.pointerId !== event.pointerId) return;
-    const raw = (drag.axis === 'H' ? event.clientX : event.clientY) - drag.originPx;
-    const offsetPx = clamp(
-      raw,
-      drag.bounds.minDelta * drag.cellPx,
-      drag.bounds.maxDelta * drag.cellPx,
-    );
-    if (offsetPx !== drag.offsetPx) setDrag({ ...drag, offsetPx });
+    // Le pointeur reprend la main : la flèche suivante ne déplacera pas le véhicule démarré au clavier.
+    setRemote((current) => (current.isLocked ? { ...current, isLocked: false } : current));
   };
 
   /** Relâchement : aimanté à la case la plus proche, dans les bornes du moment (un coup, ou rien). */
+  const settleDrag = (settled: DragState, offsetPx: number) => {
+    setDrag(null);
+    const { minDelta, maxDelta } = getVehicleBounds(game, settled.vehicleId);
+    const delta = clamp(Math.round(offsetPx / settled.cellPx), minDelta, maxDelta);
+    if (delta !== 0) play(applyMove(game, settled.vehicleId, delta));
+  };
+
+  /**
+   * Le glissement au côté de case du moment : la fenêtre a pu changer de taille depuis le contact
+   * (rotation, fenêtre redimensionnée). Bornes et aimantation suivent alors les cases dessinées.
+   */
+  const atCurrentCellSize = (current: DragState): DragState => {
+    const cellPx = (parkingRef.current?.getBoundingClientRect().width ?? 0) / gridSize;
+    return cellPx > 0 && cellPx !== current.cellPx ? { ...current, cellPx } : current;
+  };
+
+  // Plusieurs `pointermove` peuvent précéder un rendu : `drag` n'a alors que le décalage d'avant.
+  const moveDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (drag?.pointerId !== event.pointerId) return;
+    // Souris relâchée sans `pointerup` (fenêtre quittée en plein glissement, Alt+Tab) : plus aucun
+    // bouton enfoncé, le véhicule ne suit plus le curseur, il s'arrête comme après `pointercancel`.
+    if (event.pointerType === 'mouse' && event.buttons === 0) {
+      settleDrag(atCurrentCellSize(drag), lastOffsetRef.current);
+      return;
+    }
+    const { cellPx } = atCurrentCellSize(drag);
+    const offsetPx = getDragOffset({ ...drag, cellPx }, event);
+    if (offsetPx === lastOffsetRef.current && cellPx === drag.cellPx) return;
+    lastOffsetRef.current = offsetPx;
+    setDrag((current) =>
+      current === null
+        ? null
+        : {
+            ...current,
+            cellPx,
+            offsetPx,
+            hasMoved: current.hasMoved || Math.abs(offsetPx) >= DRAG_SLOP_PX,
+          },
+    );
+  };
+
+  /** `pointerup` donne le point de lever : un doigt levé en plein élan garde sa dernière case. */
   const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (drag?.pointerId !== event.pointerId) return;
-    setDrag(null);
-    const { minDelta, maxDelta } = getVehicleBounds(game, drag.vehicleId);
-    const delta = clamp(Math.round(drag.offsetPx / drag.cellPx), minDelta, maxDelta);
-    if (delta !== 0) play(applyMove(game, drag.vehicleId, delta));
+    const current = atCurrentCellSize(drag);
+    settleDrag(current, getDragOffset(current, event));
+  };
+
+  const cancelDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (drag?.pointerId === event.pointerId)
+      settleDrag(atCurrentCellSize(drag), lastOffsetRef.current);
+  };
+
+  /**
+   * Capture perdue sans `pointerup` : le glissement s'arrête comme après `pointercancel`. Seulement
+   * sur le véhicule du glissement en cours : la souris garde le même identifiant de pointeur, et un
+   * nouveau véhicule saisi retire la capture au précédent.
+   */
+  const loseDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (drag?.vehicleId === event.currentTarget.dataset.vehicleId) cancelDrag(event);
   };
 
   return (
@@ -584,7 +624,8 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
       isBackFocused={hud.isItemFocused(0)}
       backButtonRef={hud.getItemRef(0)}
       onBackFocus={focusHud}
-      footerHints={getRemoteHints(remote.isLocked)}
+      // Curseur sur le HUD : OK active le bouton, les flèches naviguent ; l'état du véhicule n'y compte pas.
+      footerHints={activeZone === 'board' ? getRemoteHints(remote.isLocked) : DEFAULT_REMOTE_HINTS}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3 landscape:flex-row landscape:gap-4">
         <TrafficJamHud
@@ -612,7 +653,8 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
             className="relative aspect-square w-[min(100cqw,100cqh)] max-w-[520px]"
           >
             {/* Enceinte rognée au bord extérieur du muret : le hero disparaît en sortant. */}
-            <div className="absolute inset-0 overflow-hidden rounded-2xl bg-slate-900 shadow-inner shadow-black/60">
+            {/* `overflow-clip` : jamais un conteneur défilant, même pour le hero qui sort du parking. */}
+            <div className="absolute inset-0 overflow-clip rounded-2xl bg-slate-900 shadow-inner shadow-black/60">
               <div
                 ref={parkingRef}
                 data-parking="true"
@@ -666,7 +708,8 @@ export function TrafficJamBoard({ level, controls }: TrafficJamBoardProps) {
                       }}
                       onPointerMove={moveDrag}
                       onPointerUp={endDrag}
-                      onPointerCancel={endDrag}
+                      onPointerCancel={cancelDrag}
+                      onLostPointerCapture={loseDrag}
                       onFocus={() => {
                         focusVehicle(vehicle.id);
                       }}

@@ -12,16 +12,33 @@ export interface SoundPlayer {
   playBeats: (beats: readonly SoundBeat[], beatMs: number) => void;
   /** Joue une récompense sonore ; sans effet si le son est coupé */
   playJingle: (kind: JingleKind) => void;
-  /** Coupe le son en cours */
+  /** Coupe le son en cours ; la sortie audio reste ouverte pour la suite de l'écran */
   stop: () => void;
 }
 
-/** Lecteur de sons d'un écran : suit le réglage de l'appareil et se tait au démontage. */
+/**
+ * Lecteur de sons d'un écran : suit le réglage de l'appareil. Son coupé ou page masquée, il se tait et
+ * libère aussitôt la sortie audio, comme le service audio (FEAT-22 §4) ; écran démonté, il se tait et la
+ * libère si rien ne sonne dans les 3 s : le niveau suivant ne réveille pas une sortie à peine endormie.
+ */
 export function useSoundPlayer(): SoundPlayer {
   const { state } = useMiaStorage();
   const isEnabled = state.settings.soundEnabled;
 
-  useEffect(() => stopSounds, []);
+  useEffect(() => {
+    if (!isEnabled) stopSounds();
+  }, [isEnabled]);
+
+  useEffect(() => {
+    const stopWhenHidden = () => {
+      if (document.hidden) stopSounds();
+    };
+    document.addEventListener('visibilitychange', stopWhenHidden);
+    return () => {
+      document.removeEventListener('visibilitychange', stopWhenHidden);
+      stopSounds('soon');
+    };
+  }, []);
 
   return useMemo(
     () => ({
@@ -32,7 +49,9 @@ export function useSoundPlayer(): SoundPlayer {
       playJingle: (kind) => {
         if (isEnabled) playSoundJingle(kind);
       },
-      stop: stopSounds,
+      stop: () => {
+        stopSounds('keep');
+      },
     }),
     [isEnabled],
   );

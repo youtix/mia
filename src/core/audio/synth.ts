@@ -63,9 +63,21 @@ const JINGLES: Readonly<Record<JingleKind, readonly JingleNote[]>> = {
 let context: AudioContext | null = null;
 let currentBus: GainNode | null = null;
 
+/**
+ * Écran quitté : la sortie audio reste ouverte ce temps-là, au cas où le niveau suivant sonne aussitôt.
+ * Rendue à chaque changement de niveau, sa reprise pourrait couper la première note sur un téléviseur
+ * (HDMI) ou un casque Bluetooth.
+ */
+const RELEASE_DELAY_MS = 3000;
+
+let releaseTimer: ReturnType<typeof setTimeout> | undefined;
+
 /** Contexte de ces sons, créé au premier son et réveillé à chaque lecture. */
 function getContext(): AudioContext | null {
-  if (typeof AudioContext === 'undefined') return null;
+  // Page masquée, les minuteurs du plateau continuent : l'application ne sonne pas dans le vide.
+  if (typeof AudioContext === 'undefined' || document.hidden) return null;
+  // Un son part : la sortie ne sera pas rendue (voir `RELEASE_DELAY_MS`).
+  clearTimeout(releaseTimer);
   try {
     context ??= new AudioContext();
   } catch {
@@ -73,15 +85,22 @@ function getContext(): AudioContext | null {
     // et le prochain son réessaiera.
     return null;
   }
-  // Politique d'autoplay : suspendu tant qu'aucun geste n'a eu lieu. Un refus n'est pas une erreur,
-  // le prochain geste réessaiera.
-  if (context.state === 'suspended') void context.resume().catch(() => undefined);
+  // Quel que soit `state` : le contexte dort avant le premier geste (autoplay), après `stopSounds` et
+  // pendant une interruption (`interrupted` sur iOS), et il peut encore dire `running` juste après
+  // `suspend()`. Sans effet s'il tourne. Un refus n'est pas une erreur, le prochain geste réessaiera.
+  void context.resume().catch(() => undefined);
   return context;
 }
 
-/** Nouvelle sortie de la lecture : couper la précédente suffit à faire taire ses notes. */
+/** Coupe la sortie de la lecture : ses notes se taisent, y compris celles encore à venir. */
+function cutBus(): void {
+  currentBus?.disconnect();
+  currentBus = null;
+}
+
+/** Nouvelle sortie de la lecture, à la place de la précédente. */
 function startBus(ctx: AudioContext): GainNode {
-  stopSounds();
+  cutBus();
   const bus = ctx.createGain();
   bus.gain.value = OUTPUT_GAIN;
   bus.connect(ctx.destination);
@@ -159,8 +178,23 @@ export function playSoundJingle(kind: JingleKind): void {
   }
 }
 
-/** Coupe le son en cours (le contexte, lui, reste ouvert pour les lectures suivantes). */
-export function stopSounds(): void {
-  currentBus?.disconnect();
-  currentBus = null;
+/** Libère la sortie audio (batterie, HDMI, Bluetooth) ; suspendu, le contexte reste là pour la suite. */
+function releaseOutput(): void {
+  clearTimeout(releaseTimer);
+  void context?.suspend().catch(() => undefined);
+}
+
+/**
+ * Coupe le son en cours, notes programmées comprises. La sortie audio est libérée aussitôt (`now` :
+ * page masquée, son coupé), un peu plus tard si rien ne sonne entre-temps (`soon` : écran quitté), ou
+ * gardée (`keep` : une nouvelle partie suit sur le même écran). La lecture suivante réveille le contexte.
+ */
+export function stopSounds(release: 'now' | 'soon' | 'keep' = 'now'): void {
+  cutBus();
+  if (release === 'now') {
+    releaseOutput();
+  } else if (release === 'soon' && context) {
+    clearTimeout(releaseTimer);
+    releaseTimer = setTimeout(releaseOutput, RELEASE_DELAY_MS);
+  }
 }

@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     'android/**',
     'node_modules/**',
     'next-env.d.ts',
+    // Copies de travail locales des sessions Claude Code (`.claude/worktrees/`), avec leurs builds.
+    '.claude/**',
   ]),
   js.configs.recommended,
   ...nextVitals,

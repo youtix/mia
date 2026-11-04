@@ -1,13 +1,19 @@
 'use client';
 
-import { NavigationLayer } from '@/core/navigation';
+import {
+  guardActivations,
+  NavigationLayer,
+  useIsLayerClosing,
+  VIEW_CHANGE_GUARD_MS,
+} from '@/core/navigation';
 import { cn } from '@/lib/cn';
-import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import { AnimatePresence, motion, MotionConfig, useIsPresent } from 'framer-motion';
 import { X } from 'lucide-react';
 import {
   useEffect,
   useEffectEvent,
   useId,
+  useLayoutEffect,
   useRef,
   useSyncExternalStore,
   type MouseEvent as ReactMouseEvent,
@@ -33,6 +39,8 @@ export interface ModalDialogProps {
   initialFocusRef?: RefObject<HTMLElement | null>;
   /** Rend le focus à l'élément d'origine à la fermeture (défaut), sauf si l'écran place son curseur */
   restoreFocus?: boolean;
+  /** Boutons et fond sans effet après l'ouverture : un double tap ne les atteint pas (FEAT-04 §5) */
+  inputGuardMs?: number;
   children: ReactNode;
   /** Classes du panneau de la boîte de dialogue */
   className?: string;
@@ -85,9 +93,13 @@ const keepFocusInside = (event: ReactMouseEvent) => {
   event.preventDefault();
 };
 
+/** Modale en train de se fermer : Retour ne fait plus rien, sans pour autant quitter l'application. */
+const ignoreBack = () => undefined;
+
 /**
  * Boîte de dialogue modale animée, rendue dans un portail sur `document.body`.
- * Gère le focus (ouverture, Tab, restauration à la fermeture) et `Échap`.
+ * Gère le focus (ouverture, Tab, restauration à la fermeture) et `Échap`. Fermée, elle l'est dès que
+ * `isOpen` passe à `false` : pendant son animation de sortie, plus rien n'y réagit.
  */
 export function ModalDialog({ isOpen, ...dialogProps }: ModalDialogProps) {
   const isClient = useIsClient();
@@ -110,12 +122,18 @@ function DialogLayer({
   onClose,
   initialFocusRef,
   restoreFocus = true,
+  inputGuardMs = VIEW_CHANGE_GUARD_MS,
   children,
   className,
 }: Omit<ModalDialogProps, 'isOpen'>) {
   const titleId = useId();
   const subtitleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  // Une modale imbriquée se ferme avec sa parente : celle-ci garde ses enfants le temps de son
+  // animation de sortie, sans que leur `isOpen` change.
+  const isPresent = useIsPresent();
+  const isParentClosing = useIsLayerClosing();
+  const isLive = isPresent && !isParentClosing;
 
   const handleKeyDown = useEffectEvent((event: KeyboardEvent, panel: HTMLElement) => {
     if (event.key === 'Escape') {
@@ -123,7 +141,8 @@ function DialogLayer({
       // Évite que le moteur D-Pad (écouteur sur window) traite aussi `Échap` comme un retour.
       event.preventDefault();
       event.stopPropagation();
-      onClose();
+      // Maintenue, `Échap` ne ferme qu'une modale, pas celles de dessous.
+      if (!event.repeat) onClose();
     } else if (event.key === 'Tab') {
       trapTabKey(event, panel);
     }
@@ -131,7 +150,7 @@ function DialogLayer({
 
   useEffect(() => {
     const panel = panelRef.current;
-    if (!panel) return;
+    if (!panel || !isLive) return;
 
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     (initialFocusRef?.current ?? panel).focus();
@@ -142,14 +161,32 @@ function DialogLayer({
     };
     panel.addEventListener('keydown', listener);
 
+    // Dès la fermeture : le panneau, inerte, perdrait le focus. Sauf si l'écran l'a déjà placé ailleurs ;
+    // une modale imbriquée qui se ferme avec celle-ci ne compte pas comme un ailleurs.
     return () => {
       panel.removeEventListener('keydown', listener);
-      if (restoreFocus) opener?.focus();
+      const active = document.activeElement;
+      const isFocusLeftBehind =
+        !active ||
+        active === document.body ||
+        panel.contains(active) ||
+        active.closest('[data-dialog-closing]') !== null;
+      if (restoreFocus && isFocusLeftBehind) opener?.focus();
     };
-  }, [initialFocusRef, restoreFocus]);
+  }, [initialFocusRef, restoreFocus, isLive]);
+
+  // Ouverture et fermeture : le second tap d'un double tap n'atteint ni la modale, ni l'écran dessous.
+  // Avant l'affichage : un effet ordinaire laisserait passer un tap pendant les premières millisecondes.
+  useLayoutEffect(() => {
+    guardActivations(isLive ? inputGuardMs : VIEW_CHANGE_GUARD_MS);
+  }, [isLive, inputGuardMs]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center tv-safe-container">
+    <div
+      data-dialog-root
+      data-dialog-closing={isLive ? undefined : true}
+      className="fixed inset-0 z-50 flex items-center justify-center tv-safe-container"
+    >
       <motion.div
         aria-hidden="true"
         role="presentation"
@@ -159,7 +196,7 @@ function DialogLayer({
         exit={{ opacity: 0 }}
         transition={{ duration: 0.2 }}
         onMouseDown={keepFocusInside}
-        onClick={onClose}
+        onClick={isLive ? onClose : undefined}
       />
       <motion.div
         ref={panelRef}
@@ -168,6 +205,7 @@ function DialogLayer({
         aria-labelledby={titleId}
         aria-describedby={subtitle ? subtitleId : undefined}
         tabIndex={-1}
+        inert={!isLive}
         className={cn(
           'relative flex max-h-full w-full max-w-lg flex-col gap-6 overflow-y-auto rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-2xl outline-hidden md:p-8 tv:max-w-2xl',
           className,
@@ -196,7 +234,9 @@ function DialogLayer({
 
         {/* Couche D-Pad (FEAT-04) : suspend les zones de l'écran sous-jacent tant que la modale est
             montée ; les zones déclarées dans son contenu s'empilent au-dessus. */}
-        <NavigationLayer onBack={onClose}>{children}</NavigationLayer>
+        <NavigationLayer onBack={isLive ? onClose : ignoreBack} isClosing={!isLive}>
+          {children}
+        </NavigationLayer>
 
         {onClose ? (
           <FocusableButton

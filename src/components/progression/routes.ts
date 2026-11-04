@@ -1,5 +1,6 @@
 'use client';
 
+import { claimHistoryPop, guardActivations } from '@/core/navigation';
 import { useRouter } from 'next/navigation';
 import { useMemo } from 'react';
 
@@ -73,20 +74,26 @@ export function useGameNavigation(): GameNavigation {
   return useMemo(
     () => ({
       openLevel: (levelId) => {
+        guardActivations();
         window.history.pushState(null, '', withLevel(levelId));
       },
       replaceLevel: (levelId) => {
+        guardActivations();
         window.history.replaceState(null, '', withLevel(levelId));
       },
       clearLevel: () => {
         window.history.replaceState(null, '', withLevel(null));
       },
       exitToMap: () => {
+        if (!claimHistoryPop()) return;
+        guardActivations();
         const map = withLevel(null);
         if (isPreviousHistoryEntry(new URL(map, window.location.href))) router.back();
         else window.history.replaceState(null, '', map);
       },
       backToHub: () => {
+        if (!claimHistoryPop()) return;
+        guardActivations();
         if (isPreviousHistoryEntry(new URL(`${BASE_PATH}/`, window.location.href))) router.back();
         else router.replace('/');
       },

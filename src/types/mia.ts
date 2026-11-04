@@ -30,7 +30,8 @@ export interface LevelCompletion {
 }
 
 export interface GameProgress {
-  gameId: GameId;
+  /** Un `GameId`, ou le jeu d'une version plus récente de Mia : sa progression est gardée telle quelle */
+  gameId: string;
   /** Dictionnaire indexé par levelId immuable (ex: "mem-001", "tj-005") */
   levels: Record<string, LevelCompletion>;
   /** Dernier niveau joué pour proposer le bouton "Continuer" */
@@ -65,7 +66,7 @@ export interface UserProfile {
   /** ex: "fox", "owl", "robot" (catalogue d'avatars de FEAT-06) */
   avatarId: string;
   createdAt: string;
-  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", "patterns", "bear-sort") */
+  /** Progression indexée par identifiant de jeu ("memory", "traffic-jam", "patterns", "bear-sort"…) */
   gamesProgress: Record<string, GameProgress>;
   /** Réglages de jeu du joueur (FEAT-19) : toujours complets, réparés aux valeurs par défaut à la lecture */
   gameSettings: ProfileGameSettings;

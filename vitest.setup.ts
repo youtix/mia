@@ -15,3 +15,11 @@ if (typeof Element !== 'undefined') {
     // Aucun défilement dans jsdom.
   };
 }
+
+// Sans mise en page, aucun élément n'est sous un point : le tap sans clic (`activation-guard`) ne part
+// que dans les tests qui définissent ce qui se trouve sous le doigt.
+if (typeof Document !== 'undefined') {
+  Document.prototype.elementFromPoint = function elementFromPoint() {
+    return null;
+  };
+}
