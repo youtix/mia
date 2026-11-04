@@ -1,3 +1,9 @@
+## [0.15.1](https://github.com/youtix/mia/compare/v0.15.0...v0.15.1) (2026-11-04)
+
+### Bug Fixes
+
+* address the code review findings ([#20](https://github.com/youtix/mia/issues/20)) ([9250225](https://github.com/youtix/mia/commit/925022528571f54319e4e52f69e7641d3384ab20))
+
 ## [0.15.0](https://github.com/youtix/mia/compare/v0.14.0...v0.15.0) (2026-10-30)
 
 ### Features
