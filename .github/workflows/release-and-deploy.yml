@@ -65,7 +65,7 @@ jobs:
       # JDK 21 (exigé par Capacitor 8) et cache Gradle : semantic-release compile l'APK pendant la
       # release (prepareCmd de .releaserc.json). La clé de cache ne lit pas android/app/build.gradle :
       # chaque release y écrit sa version, et le cache ne servirait jamais.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
