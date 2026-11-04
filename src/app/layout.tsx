@@ -1,5 +1,10 @@
-import { AndroidBackButtonBridge, NavigationProvider } from '@/core/navigation';
+import {
+  ActivationGuardBridge,
+  AndroidBackButtonBridge,
+  NavigationProvider,
+} from '@/core/navigation';
 import { ServiceWorkerRegistrar } from '@/core/pwa';
+import { WEBVIEW_GUARD_SCRIPT } from '@/core/pwa/webview-guard';
 import { StorageProvider, TV_MODE_BOOTSTRAP_SCRIPT } from '@/core/storage';
 import '@fontsource-variable/atkinson-hyperlegible-next';
 import type { Metadata, Viewport } from 'next';
@@ -41,6 +46,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     // suppressHydrationWarning : le script inline pose `data-tv` sur <html> avant l'hydratation.
     <html lang="fr" suppressHydrationWarning>
       <head>
+        {/* WebView trop ancienne dans l'APK (FEAT-15) : la page d'erreur, avant tout le reste. */}
+        <script dangerouslySetInnerHTML={{ __html: WEBVIEW_GUARD_SCRIPT }} />
         {/* Mode TV (FEAT-05 §3.4) : posé avant le premier rendu, sinon les marges sauteraient. */}
         <script dangerouslySetInnerHTML={{ __html: TV_MODE_BOOTSTRAP_SCRIPT }} />
       </head>
@@ -50,6 +57,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
           <NavigationProvider>
             {/* Bouton Retour physique d'Android (FEAT-15) : même routage que les touches. */}
             <AndroidBackButtonBridge />
+            {/* Double tap et main posée : voir `activation-guard.ts` (FEAT-04 §5). */}
+            <ActivationGuardBridge />
             {children}
           </NavigationProvider>
         </StorageProvider>

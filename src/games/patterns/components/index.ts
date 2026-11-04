@@ -22,7 +22,6 @@ export {
   type PatternsBoardProps,
 } from './PatternsBoard';
 export {
-  END_INPUT_GUARD_MS,
   PatternsEndModal,
   type PatternsEndModalProps,
   type PatternsGameResult,

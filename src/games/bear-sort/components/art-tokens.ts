@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { BearColor, SortFeature } from '../types';
 
 /**
@@ -51,12 +52,38 @@ export const BOX_INSIDE = '#1e293b';
 /** Halo de la bonne boîte : vert très pâle, jamais rouge. */
 export const GLOW_COLOR = '#dcfce7';
 
+/** Tons d'un dessin lus dans ses variables, posées sur son groupe (`getArtToneStyle`). */
+export const ART_TONES: ArtPalette = {
+  body: 'var(--art-body)',
+  shade: 'var(--art-shade)',
+  light: 'var(--art-light)',
+  outline: 'var(--art-outline)',
+};
+
+/** Variables d'un dessin : la palette qu'`ART_TONES` lit dans ses formes. */
+export function getArtToneStyle({ body, shade, light, outline }: ArtPalette): CSSProperties {
+  return {
+    '--art-body': body,
+    '--art-shade': shade,
+    '--art-light': light,
+    '--art-outline': outline,
+  } as CSSProperties;
+}
+
 /**
- * Transition d'échelle du dessin, et de couleur de ses formes (filles directes uniquement : une
- * couleur héritée d'un parent lui-même en transition repartirait de zéro à chaque image).
+ * Transition d'échelle du dessin, et de ses variables de couleur. Par dessin plutôt que par forme :
+ * au 2ᵉ rebond, plus de 250 transitions partiraient d'un coup, et un téléphone modeste décrocherait.
  */
 export const FADE_TRANSITION_CLASSES =
-  'motion-safe:transition-transform motion-safe:duration-400 motion-safe:ease-out motion-safe:[&>*]:transition-colors motion-safe:[&>*]:duration-400 motion-safe:[&>*]:ease-out';
+  'motion-safe:transition-[transform,--art-body,--art-shade,--art-light,--art-outline] motion-safe:duration-400 motion-safe:ease-out';
+
+/** Variables déclarées comme couleurs : sans cela, le navigateur ne saurait pas les faire varier. */
+export const FADE_STYLE_ID = 'bear-sort-fade';
+export const FADE_PROPERTIES = ['body', 'shade', 'light', 'outline']
+  .map(
+    (tone) => `@property --art-${tone}{syntax:'<color>';inherits:true;initial-value:transparent}`,
+  )
+  .join('');
 
 /**
  * Précédence des `<style>` hissés dans le `<head>` par les dessins (dédupliqués par leur `href`) :

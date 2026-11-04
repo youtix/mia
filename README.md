@@ -3,13 +3,13 @@
 [![CI](https://github.com/youtix/mia/actions/workflows/ci.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/ci.yml)
 [![Release & Deploy](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml)
 
-**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits (dès 3 ans), raisonnement inductif sur des suites logiques, flexibilité mentale et inhibition. Une seule base de code pour trois usages :
+**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits, raisonnement inductif sur des suites logiques (dès 4 ans), flexibilité mentale et inhibition (dès 3 ans). Une seule base de code pour trois usages :
 
 - **Smartphone et tablette** : au doigt (tap, glisser-déposer).
 - **Android TV** : à la télécommande (flèches, OK, Retour), avec de grands boutons, des aides à l'écran et des marges adaptées au téléviseur (« 10-foot UI »).
 - **Navigateur Web** : la même application en PWA, installable et utilisable hors-ligne.
 
-Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqueur et sans service Google : toutes les données restent sur l'appareil.
+Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqueur et sans service Google : toutes les données restent sur l'appareil. L'APK refuse aussi la sauvegarde automatique d'Android et le transfert vers un nouveau téléphone : pour emporter ta progression sur un autre appareil, exporte ta sauvegarde (Réglages) puis importe-la là-bas.
 
 ## Sommaire
 
@@ -99,7 +99,7 @@ flowchart LR
 
 ### APK Android (smartphone, tablette, Android TV)
 
-Chaque [GitHub Release](https://github.com/youtix/mia/releases) publiée depuis l'intégration du projet Android contient l'asset **`mia-vX.Y.Z-universal.apk`** (« Mia Android / Android TV Universal APK ») : un seul fichier pour smartphone, tablette et Android TV.
+Les [GitHub Releases](https://github.com/youtix/mia/releases) signées avec la clé du projet contiennent l'asset **`mia-vX.Y.Z-universal.apk`** (« Mia Android / Android TV Universal APK ») : un seul fichier pour smartphone, tablette et Android TV. Tant que cette clé n'est pas configurée, une release ne contient aucun APK (voir [Signature](#signature-de-lapk)).
 
 1. Télécharge l'APK de la dernière release.
 2. Autorise l'installation d'applications de sources inconnues pour l'application qui ouvre le fichier (gestionnaire de fichiers, navigateur).
@@ -107,7 +107,7 @@ Chaque [GitHub Release](https://github.com/youtix/mia/releases) publiée depuis 
 
 Les mises à jour de l'APK ne passent pas par l'application : F-Droid (une fois Mia publiée) ou la nouvelle release installée par-dessus. Mia ne contacte aucun serveur et ne prévient donc pas qu'une release plus récente existe : Réglages › Application affiche la version installée, à comparer avec la [dernière release](https://github.com/youtix/mia/releases).
 
-> L'APK est signé avec la clé de release du projet quand elle est configurée dans la CI, sinon avec la clé de débogage du SDK (voir [Signature](#signature-de-lapk)). Android refuse de mettre à jour en place une application signée avec une autre clé : dans ce cas, exporte ta sauvegarde (Réglages), désinstalle, réinstalle, puis importe-la.
+> Android refuse de mettre à jour en place une application signée avec une autre clé. Les premiers APK publiés ont chacun leur propre clé de débogage : pour passer de l'un d'eux à un APK signé avec la clé du projet, exporte ta sauvegarde (Réglages), désinstalle, réinstalle, puis importe-la. Ensuite, chaque nouvelle release s'installe par-dessus.
 
 ### Android TV sans Play Store (sideload)
 
@@ -169,7 +169,7 @@ Les messages de commit pilotent les releases : ils doivent respecter **[Conventi
 
 - **Types autorisés** : `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
 - **Scopes autorisés** (facultatif) : `core`, `ui`, `navigation`, `storage`, `profile`, `progression`, `hub`, `settings`, `memory`, `traffic-jam`, `patterns`, `bear-sort`, `android`, `pwa`, `release`, `quality`, `deps`, `deps-dev`.
-- **Effet sur la version** : `feat` → version mineure, `fix` et `perf` → correctif, `!` après le type ou `BREAKING CHANGE:` en pied → version majeure. Les autres types ne publient rien.
+- **Effet sur la version** : `feat` → version mineure ; `fix`, `perf` et `revert` (y compris le titre `Revert "…"` du bouton de GitHub) → correctif ; `!` après le type → version majeure. Les autres types ne publient rien. Un pied `BREAKING CHANGE:` vaut aussi une version majeure, mais n'atteint pas `main` par défaut : en squash merge, le message du commit est le titre de la PR seul. Il faut le recopier à la main dans le message de squash au moment du merge ; le `!` dans le titre reste le moyen fiable.
 
 ```text
 feat(memory): add 10 new very hard levels
@@ -181,7 +181,7 @@ Le dépôt fonctionne en **pull requests avec squash merge** : le titre de la PR
 
 ### Intégration continue
 
-- `ci.yml` (chaque PR vers `main`, et réutilisé au merge) : `npm ci`, `format:check`, `lint`, `typecheck`, `validate:levels`, `test:coverage`, `build`.
+- `ci.yml` (chaque PR vers `main`, et réutilisé au merge) : `npm ci`, `format:check`, `lint`, `typecheck`, `validate:levels`, `test:coverage`, `build` (job `verify`). Sur les PR seulement, un second job `android` lance `npm run cap:sync` puis `./gradlew assembleRelease` : une erreur Gradle ou Java se voit avant le merge. Il n'est pas requis pour merger.
 - `pr-title.yml` : titre de la PR validé par commitlint.
 - `release-and-deploy.yml` (chaque push sur `main`) : vérification, release automatique puis déploiement de la PWA.
 - **Dependabot** maintient chaque semaine les dépendances npm (`fix(deps)` / `chore(deps-dev)`) et les actions GitHub.
@@ -198,25 +198,30 @@ flowchart TD
     SyncVersion --> CapSync["npm run cap:sync<br/>(next build + service worker + cap sync android)"]
     CapSync --> Apk["node scripts/build-apk.mjs X.Y.Z<br/>./gradlew assembleRelease → dist-apk/mia-vX.Y.Z-universal.apk"]
     Apk --> Commit["commit chore(release): X.Y.Z [skip ci] + tag vX.Y.Z"]
-    Commit --> GitHubRelease["GitHub Release + APK en asset"]
-    GitHubRelease --> Pages["deploy-pwa : npm run build avec basePath → GitHub Pages"]
+    Commit --> GitHubRelease["GitHub Release + APK en asset<br/>(avec la clé de release)"]
+    GitHubRelease --> BuildPwa["build-pwa : npm run build avec basePath<br/>(sans droit sur Pages)"]
+    BuildPwa --> Pages["deploy-pwa : artefact → GitHub Pages"]
 ```
 
 1. **Version** : `@semantic-release/commit-analyzer` lit les commits depuis le dernier tag ; `CHANGELOG.md` et `package.json` sont mis à jour.
 2. **Version Android** : `scripts/sync-android-version.mjs` écrit `versionName "X.Y.Z"` et `versionCode` dans `android/app/build.gradle`, avec `versionCode = major × 10000 + minor × 100 + patch` (`1.4.2` → `10402`, strictement croissant ; `minor` et `patch` doivent rester inférieurs à 100). Il aligne aussi la recette F-Droid.
 3. **Build** : `npm run cap:sync` exporte l'application et la copie dans `android/app/src/main/assets/public`. `next.config.ts` y injecte la version de `package.json` (`NEXT_PUBLIC_APP_VERSION`) : c'est le numéro affiché dans Réglages › Application, celui de la release dans l'APK comme dans la PWA déployée depuis le tag.
-4. **APK** : `scripts/build-apk.mjs` lance `./gradlew assembleRelease --no-daemon` (JDK 21 Temurin et cache Gradle installés par `actions/setup-java`, SDK Android préinstallé sur `ubuntu-latest`) et copie l'APK dans `dist-apk/` (ignoré par Git).
+4. **APK** : `scripts/build-apk.mjs` lance `./gradlew assembleRelease --no-daemon` (JDK 21 Temurin et cache Gradle installés par `actions/setup-java`, SDK Android préinstallé sur `ubuntu-latest`) et copie l'APK dans `dist-apk/` (ignoré par Git). Sans clé de release, l'APK est compilé mais pas copié : voir [Signature](#signature-de-lapk).
 5. **Commit et tag** : `@semantic-release/git` commite `CHANGELOG.md`, `package.json`, `package-lock.json`, `android/app/build.gradle` et `fdroid/org.mia.braintraining.yml` (`chore(release): X.Y.Z [skip ci]`, poussé par la GitHub App de release), puis pose le tag `vX.Y.Z`.
-6. **GitHub Release** : `@semantic-release/github` crée la release avec les notes de version et attache `dist-apk/*.apk`.
-7. **PWA** : le job `deploy-pwa` compile l'export depuis le tag avec le `basePath` de GitHub Pages et le déploie.
+6. **GitHub Release** : `@semantic-release/github` crée la release avec les notes de version et attache `dist-apk/*.apk` s'il y en a un.
+7. **PWA** : le job `build-pwa` compile l'export depuis le tag avec le `basePath` de GitHub Pages, sans aucun droit sur Pages ; le job `deploy-pwa`, seul à avoir `pages: write` et `id-token: write`, le déploie sans rien installer ni compiler.
 
 Si une étape échoue avant le commit (par exemple le build Gradle), rien n'est publié : la release repart de zéro au prochain run.
+
+Si elle échoue après le tag poussé (par exemple l'envoi de la GitHub Release), la version existe : `deploy-pwa` déploie quand même la PWA, et le job `release` reste en échec. « Re-run failed jobs » ne republie rien, car semantic-release se voit en retard sur le dépôt : le run retrouve le tag de ce merge et le redéploie, puis reste en échec tant que la GitHub Release manque, avec une erreur qui le dit. Crée-la à la main (`gh release create vX.Y.Z --verify-tag --notes-from-tag`, ou `gh release edit vX.Y.Z --draft=false` s'il en reste un brouillon) : la release suivante apportera l'APK. Relancer un ancien run après une release plus récente ne redéploie rien : la PWA ne recule jamais. Si c'est le push du tag lui-même qui échoue, le commit de release est sur `main` mais la version n'existe pas : rien n'est déployé, et l'erreur le dit. Pousse le tag à la main sur ce commit (`git tag vX.Y.Z <commit> && git push origin vX.Y.Z`), puis relance le run.
 
 > **Versions Android et Web toujours alignées** : `tests/android-manifest.test.ts` vérifie que `android/app/build.gradle` porte la version de `package.json`. Le projet Android et cette chaîne de release doivent donc atterrir dans la **même release** ; ensuite, chaque commit de release synchronise les deux fichiers.
 
 ### Signature de l'APK
 
-La signature de release est **facultative** et configurée par quatre secrets du dépôt GitHub ; sans eux, l'APK de release est signé avec la clé de débogage du SDK et reste installable.
+Android n'accepte une mise à jour que si elle est signée par **la même clé** que la version installée. Sans clé de release, Gradle retombe sur la clé de débogage du runner, recréée à chaque build : aucun APK ainsi signé ne pourrait mettre Mia à jour, donc **la CI n'en publie jamais**. Tant que la clé n'est pas configurée, chaque release se déroule normalement (version, tag, GitHub Release, PWA) mais sans APK, avec un avertissement dans le job et une ligne dans son résumé. En local, l'APK reste signé avec ta clé de débogage, et la recette F-Droid n'est pas concernée : F-Droid signe lui-même.
+
+La clé tient dans quatre secrets du dépôt GitHub, à créer une fois pour toutes par son propriétaire :
 
 | Secret                  | Contenu                                                               |
 | :---------------------- | :-------------------------------------------------------------------- |
@@ -226,11 +231,22 @@ La signature de release est **facultative** et configurée par quatre secrets du
 | `MIA_KEY_PASSWORD`      | Mot de passe de la clé.                                               |
 
 ```sh
-keytool -genkeypair -v -keystore mia-release.jks -alias mia -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 mia-release.jks   # valeur du secret MIA_KEYSTORE_BASE64
+# Crée la clé (valable 27 ans) ; keytool demande un mot de passe et un nom.
+keytool -genkeypair -v -keystore mia-release.jks -alias mia-release -keyalg RSA -keysize 4096 -validity 10000
+
+# La confie à GitHub ; sans --body, gh demande la valeur sans l'afficher.
+base64 -w0 mia-release.jks | gh secret set MIA_KEYSTORE_BASE64
+gh secret set MIA_KEYSTORE_PASSWORD
+gh secret set MIA_KEY_ALIAS --body mia-release
+gh secret set MIA_KEY_PASSWORD   # le même : le format PKCS12 de keytool n'a qu'un mot de passe
 ```
 
-Le workflow décode le keystore hors du dépôt (`$RUNNER_TEMP`) seulement si `MIA_KEYSTORE_BASE64` est défini et transmet son chemin à Gradle par `MIA_KEYSTORE_PATH` ; `android/app/build.gradle` lit ces variables d'environnement et retombe sur `signingConfigs.debug` en leur absence. Les keystores sont ignorés par Git (`android/.gitignore`). Garde le keystore et ses mots de passe en lieu sûr : une clé perdue empêche toute mise à jour en place des installations existantes.
+N'utilise pas `mia` tout court comme alias : GitHub masque la valeur d'un secret dans tous les journaux, donc aussi le nom du dépôt.
+
+- **Sauvegarde la clé** : garde `mia-release.jks` et son mot de passe hors de GitHub (les secrets ne se relisent pas), par exemple dans un gestionnaire de mots de passe. Une clé perdue empêche pour toujours la mise à jour en place des installations existantes. Les keystores sont ignorés par Git (`.gitignore`, `android/.gitignore`), mais le plus sûr reste de ne pas laisser celui-ci dans le dépôt.
+- **La première release signée ne met pas à jour les anciens APK** : ils portent chacun une clé de débogage. Chaque joueur exporte sa sauvegarde (Réglages), désinstalle, installe le nouvel APK puis importe sa sauvegarde. Les releases suivantes s'installent par-dessus.
+
+Le workflow décode le keystore hors du dépôt (`$RUNNER_TEMP`) seulement si `MIA_KEYSTORE_BASE64` est défini, s'arrête sur une erreur avant toute publication si l'un des trois autres secrets manque, et transmet le chemin à Gradle par `MIA_KEYSTORE_PATH`. `android/app/build.gradle` lit ces variables d'environnement et retombe sur `signingConfigs.debug` en leur absence. En CI (variable `CI`), `scripts/build-apk.mjs` ne copie l'APK dans `dist-apk/` que si une clé est fournie.
 
 ### Compiler l'APK en local (facultatif)
 
@@ -254,6 +270,7 @@ Règles communes aux quatre jeux (vérifiées par `npm run validate:levels` et p
 - `tier` : `very_easy`, `easy`, `medium`, `hard` ou `very_hard` ; `order` : position dans le palier, **unique**. Les niveaux initiaux utilisent `10, 20, 30, 40` : un nouveau niveau s'intercale avec un `order` libre (`15`, `25`…) ou s'ajoute à la fin (`50`).
 - `title` : titre court en français (jamais affiché, l'écran indique « Étoile #N »).
 - Le numéro d'étoile est recalculé à partir de l'ordre des paliers puis des `order` : insérer un niveau au début ne bloque jamais un joueur avancé (règle de déblocage hybride du moteur de progression).
+- **Les tests figent le catalogue publié, à mettre à jour dans le même commit** : un niveau ajouté passe `validate:levels` mais fait échouer `tests/<jeu>-catalog.test.ts` (tableau `SPEC_ROWS`, identifiants et titres, nombre d'étoiles, quatre étoiles par palier d'`order` 10 à 40 ; pour Traffic Jam, aussi les plages de coups et leurs moyennes) et, pour Memory et Traffic Jam, `tests/star-map.test.tsx` (« 4 étoiles sur 20 »), donc le `pre-push` et la CI. C'est voulu : un catalogue ne change pas par accident.
 
 ```sh
 npm run validate:levels   # résumé par jeu + anomalies (code de sortie 1 si une règle est violée)
@@ -294,7 +311,8 @@ npm run validate:levels   # résumé par jeu + anomalies (code de sortie 1 si un
 | `swapEveryNMistakes` | Entier ≥ 1 ou `null`                                                             | Deux cartes cachées échangent leur place toutes les N erreurs ; `<= maxMistakes` quand les deux sont définis.                   |
 | `perfectMaxMistakes` | Entier ≥ 0                                                                       | Nombre d'erreurs maximal pour la couronne ; `<= maxMistakes` quand il est défini.                                               |
 
-3. Lance `npm run validate:levels` (ou `npx vitest run tests/memory-catalog.test.ts`) : `validateMemoryCatalog` signale chaque anomalie avec le nom du niveau, et instancie chaque configuration avec le moteur pour s'assurer qu'elle se joue.
+3. Lance `npm run validate:levels` : `validateMemoryCatalog` signale chaque anomalie avec le nom du niveau, et instancie chaque configuration avec le moteur pour s'assurer qu'elle se joue.
+4. Mets à jour les tests (voir les règles communes), puis lance `npx vitest run tests/memory-catalog.test.ts tests/star-map.test.tsx`.
 
 ### Traffic Jam : une grille ASCII 6 × 6 dans `TRAFFIC_JAM_CATALOG`
 
@@ -338,6 +356,7 @@ Chaque niveau est dessiné avec `parseTrafficJamAscii(lignes, { optimalMoves })`
 ```
 
 4. Reporte la valeur mesurée (`{ optimalMoves: 3 }`) et relance la commande : le catalogue est valide. Cette valeur est l'objectif de la couronne et doit être **exactement** celle du solveur.
+5. Mets à jour les tests (voir les règles communes), puis lance `npx vitest run tests/traffic-jam-catalog.test.ts tests/star-map.test.tsx`.
 
 Le validateur refuse aussi une grille non carrée ou mal formée (message avec ligne et colonne), un niveau insoluble ou déjà gagné au départ, un `optimalMoves` qui redescend par rapport à l'étoile précédente sur la carte, et un palier dont le `optimalMoves` moyen n'est pas supérieur au palier précédent : place ton niveau là où sa difficulté le mérite. Le solveur explore au plus 50 000 positions (`DEFAULT_MAX_STATES`), largement suffisant pour une grille 6 × 6.
 
@@ -383,7 +402,8 @@ Un niveau ne contient **aucune suite** : le moteur tire les défis (éléments, 
 | `stopSeconds`  | Nombre fini > 0             | Durée d'un STOP en secondes, qu'il soit prévu (`stopRounds`) ou déclenché par une mauvaise réponse en moins de 1,2 s (2 s en Très Facile et Facile au catalogue, 3 s ensuite).                                                        |
 | `hasGuide`     | `true` ou `false`           | Main fantôme sur la bonne réponse au premier défi, pour apprendre le geste sans texte (`pat-001` et `pat-013` au catalogue).                                                                                                          |
 
-3. Lance `npm run validate:levels` (ou `npx vitest run tests/patterns-catalog.test.ts`) : `validatePatternsCatalog` signale chaque anomalie avec le nom du niveau, et instancie chaque configuration avec le moteur (`createPatternsGame`) pour s'assurer qu'elle se joue.
+3. Lance `npm run validate:levels` : `validatePatternsCatalog` signale chaque anomalie avec le nom du niveau, et instancie chaque configuration avec le moteur (`createPatternsGame`) pour s'assurer qu'elle se joue.
+4. Mets à jour les tests (voir les règles communes), puis lance `npx vitest run tests/patterns-catalog.test.ts`.
 
 ### Attrape-Piège : un objet dans `BEAR_SORT_CATALOG`
 
@@ -412,22 +432,23 @@ Un niveau ne contient **aucune suite** : le moteur tire les défis (éléments, 
 },
 ```
 
-| Champ                 | Valeurs                                                                                              | Règles                                                                                                                                                                           |
-| :-------------------- | :--------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zones`               | Deux boîtes `{ color, size }`, de gauche à droite                                                    | Opposées par la couleur **et** par la taille, fixes pour toute l'étoile.                                                                                                         |
-| `phases[].rule`       | `{ kind: 'sort', feature: 'color' \| 'size' }` ou `{ kind: 'except', forbidden: { color?, size? } }` | Une règle de tri change de caractéristique à chaque STOP ; une règle « sauf » termine toujours l'étoile.                                                                         |
-| `phases[].addBears`   | Nombre d'ours par sorte : `blue-small`, `blue-big`, `yellow-small`, `yellow-big`                     | S'ajoutent aux ours restés. Tri : ils remplissent les deux boîtes, avec au moins un ours en conflit après un changement. « Sauf » : au moins un ours interdit et un ours permis. |
-| `phases[].placements` | Entier ≥ 1, ou `null` à la dernière phase                                                            | Ours à ranger avant le STOP, strictement moins que la réserve : le STOP interrompt toujours des ours qui attendent.                                                              |
-| `showGestureHint`     | `true` ou `false`                                                                                    | Une main montre le geste tant que le premier ours n'est pas rangé (première étoile).                                                                                             |
+| Champ                 | Valeurs                                                                                              | Règles                                                                                                                                                                                                                                                                                |
+| :-------------------- | :--------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `zones`               | Deux boîtes `{ color, size }`, de gauche à droite                                                    | Opposées par la couleur **et** par la taille, fixes pour toute l'étoile.                                                                                                                                                                                                              |
+| `phases[].rule`       | `{ kind: 'sort', feature: 'color' \| 'size' }` ou `{ kind: 'except', forbidden: { color?, size? } }` | Une règle de tri change de caractéristique à chaque STOP ; une règle « sauf » termine toujours l'étoile.                                                                                                                                                                              |
+| `phases[].addBears`   | Nombre d'ours par sorte : `blue-small`, `blue-big`, `yellow-small`, `yellow-big`                     | S'ajoutent aux ours restés, au plus 10 ours dans la réserve au début de chaque phase, ours restés compris (`MAX_RESERVE_BEARS`). Tri : ils remplissent les deux boîtes, avec au moins un ours en conflit après un changement. « Sauf » : au moins un ours interdit et un ours permis. |
+| `phases[].placements` | Entier ≥ 1, ou `null` à la dernière phase                                                            | Ours à ranger avant le STOP, strictement moins que la réserve : le STOP interrompt toujours des ours qui attendent.                                                                                                                                                                   |
+| `showGestureHint`     | `true` ou `false`                                                                                    | Une main montre le geste tant que le premier ours n'est pas rangé (première étoile).                                                                                                                                                                                                  |
 
 3. Lance `npm run validate:levels` : `validateBearSortCatalog` signale chaque anomalie avec le nom du niveau.
+4. Mets à jour les tests (voir les règles communes), puis lance `npx vitest run tests/bear-sort-catalog.test.ts`.
 
 Les 2 règles de tri et les 8 règles « sauf » ont déjà leur phrase de mascotte. Pour changer une phrase, modifie [`voice-script.json`](./src/games/bear-sort/voice-script.json) puis relance le générateur (Python, avec `piper-tts`, `lameenc` et le modèle de voix : voir l'en-tête de [`scripts/generate-voice-clips.py`](./scripts/generate-voice-clips.py)) ; un test signale un clip dont le texte est périmé. Un MP3 enregistré par une vraie voix peut aussi remplacer un fichier du même nom, sans rien changer au jeu.
 
 ## Ajouter un nouveau jeu
 
 1. Crée `src/games/<nouveau-jeu>/` avec un moteur en TypeScript pur (sans React ni DOM : testable et importable par `validate:levels`), ses composants (`'use client'` pour ceux qui ont un état) et son `catalog.ts` qui exporte un tableau de `BaseLevelDefinition<Config>` et une fonction `validate<Jeu>Catalog` (commence par `validateLevelCatalog(gameId, catalog)` de `@/core/progression/catalog-validator`).
-2. Ajoute l'identifiant au type `GameId` (`src/types/mia.ts`) : le compilateur exige alors son entrée dans `GAME_REGISTRY` (`src/core/progression/game-registry.ts`, titre, faculté travaillée, route, catalogue), dans la table des icônes (`GAME_ICONS`, `src/components/progression/game-icons.ts`) et dans la table des jeux reconnus par la sauvegarde (`KNOWN_GAMES`, `src/core/storage`), sans laquelle sa progression serait écartée au chargement.
+2. Ajoute l'identifiant au type `GameId` (`src/types/mia.ts`) : le compilateur exige alors son entrée dans `GAME_REGISTRY` (`src/core/progression/game-registry.ts`, titre, faculté travaillée, route, catalogue) et dans la table des icônes (`GAME_ICONS`, `src/components/progression/game-icons.ts`). Écris-le en minuscules et chiffres, mots séparés par un tiret (`bear-sort`) : la sauvegarde garde la progression de tout identifiant de cette forme, et il ne doit plus changer une fois publié.
 3. Crée la page `src/app/<nouveau-jeu>/page.tsx`, qui rend un écran client `<GameScreen gameId="…" catalog={…} renderLevel={(level, controls) => <TonPlateau … />} />` (`src/components/progression/GameScreen.tsx`) : Carte des Étoiles, déblocage, enregistrement des victoires et navigation sont fournis.
 4. Branche le catalogue dans `scripts/validate-levels.ts`, ajoute une entrée au scope commitlint si nécessaire (`commitlint.config.mjs`) et un seuil de couverture de 90 % pour le moteur dans `vitest.config.ts`.
 5. Facultatif, pour un jeu qui parle ou qui sonne : `useGameAudio` de `@/core/audio` joue une voix en clips embarqués et des effets, `useSoundPlayer` des sons synthétisés à la volée. Les deux suivent le réglage « Son », et le jeu doit rester jouable sans aucun son. Un média embarqué reste sous licence CC0 ou CC BY : F-Droid signale `NC` et `ND` comme « Non-Free ». Un écran sans texte à lire, pour les non-lecteurs, passe `isTextless` à `AppShell` et à `ModalDialog` (titres et libellés réservés aux lecteurs d'écran).

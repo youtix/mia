@@ -1,6 +1,7 @@
 'use client';
 
 import { useMiaStorage, useProfileGate } from '@/core/storage';
+import { useEffect, useRef } from 'react';
 import { ProfileSelectorModal } from './ProfileSelectorModal';
 
 export interface ProfileGateProps {
@@ -18,6 +19,13 @@ export interface ProfileGateProps {
 export function ProfileGate({ isOpen = false, onClose }: ProfileGateProps) {
   const { isLoaded } = useMiaStorage();
   const { mustChooseProfile } = useProfileGate();
+  // Un choix imposé qui aboutit ferme aussi l'ouverture volontaire en cours (le profil actif retiré
+  // par un autre onglet pendant que le joueur ouvrait le choix) : la modale ne lui passe pas `onClose`.
+  const wasImposedRef = useRef(mustChooseProfile);
+  useEffect(() => {
+    if (wasImposedRef.current && !mustChooseProfile && isOpen) onClose?.();
+    wasImposedRef.current = mustChooseProfile;
+  }, [mustChooseProfile, isOpen, onClose]);
   if (!isLoaded) return null;
 
   return (

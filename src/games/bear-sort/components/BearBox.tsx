@@ -1,9 +1,14 @@
 import { cn } from '@/lib/cn';
 import type { BearSize, BearTraits, SortFeature } from '../types';
 import {
+  ART_STYLE_PRECEDENCE,
+  ART_TONES,
   BOX_INSIDE,
+  FADE_PROPERTIES,
+  FADE_STYLE_ID,
   FADE_TRANSITION_CLASSES,
   getArtPalette,
+  getArtToneStyle,
   GLOW_COLOR,
   GREY_PALETTE,
 } from './art-tokens';
@@ -45,72 +50,81 @@ export function BearBox({
     traits === null ? 1 : fadedFeature === 'size' ? FADED_SIZE_SCALE : BOX_SCALES[traits.size];
 
   return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 100 100"
-      preserveAspectRatio="xMidYMax meet"
-      data-box-color={traits?.color ?? 'neutral'}
-      data-box-size={traits?.size}
-      data-faded={fadedFeature ?? undefined}
-      data-glowing={isGlowing || undefined}
-      className={cn('size-full overflow-visible', className)}
-    >
-      <g
-        stroke={palette.outline}
-        strokeWidth={2.6}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ transform: `scale(${String(scale)})`, transformOrigin: '50px 100px' }}
-        className={FADE_TRANSITION_CLASSES}
+    <>
+      <style href={FADE_STYLE_ID} precedence={ART_STYLE_PRECEDENCE}>
+        {FADE_PROPERTIES}
+      </style>
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 100 100"
+        preserveAspectRatio="xMidYMax meet"
+        data-box-color={traits?.color ?? 'neutral'}
+        data-box-size={traits?.size}
+        data-faded={fadedFeature ?? undefined}
+        data-glowing={isGlowing || undefined}
+        className={cn('size-full overflow-visible', className)}
       >
-        {/* Halo : un trait épais et flouté autour de la silhouette, qui reste visible sans animation */}
-        {isGlowing ? (
-          <g
-            data-glow="true"
-            fill="none"
-            stroke={GLOW_COLOR}
-            className="motion-safe:animate-pulse contrast:stroke-white"
-          >
-            <filter
-              id={GLOW_FILTER_ID}
-              x="-30"
-              y="-30"
-              width="160"
-              height="160"
-              filterUnits="userSpaceOnUse"
+        <g
+          stroke={ART_TONES.outline}
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            ...getArtToneStyle(palette),
+            transform: `scale(${String(scale)})`,
+            transformOrigin: '50px 100px',
+          }}
+          className={FADE_TRANSITION_CLASSES}
+        >
+          {/* Halo : un trait épais et flouté autour de la silhouette, qui reste visible sans animation */}
+          {isGlowing ? (
+            <g
+              data-glow="true"
+              fill="none"
+              stroke={GLOW_COLOR}
+              className="motion-safe:animate-pulse contrast:stroke-white"
             >
-              <feGaussianBlur stdDeviation={3.6} />
-            </filter>
-            <path d={CRATE_SILHOUETTE} strokeWidth={13} filter={`url(#${GLOW_FILTER_ID})`} />
-          </g>
-        ) : null}
+              <filter
+                id={GLOW_FILTER_ID}
+                x="-30"
+                y="-30"
+                width="160"
+                height="160"
+                filterUnits="userSpaceOnUse"
+              >
+                <feGaussianBlur stdDeviation={3.6} />
+              </filter>
+              <path d={CRATE_SILHOUETTE} strokeWidth={13} filter={`url(#${GLOW_FILTER_ID})`} />
+            </g>
+          ) : null}
 
-        {/* Bord arrière et paroi du fond, vus par l'ouverture */}
-        <path d="M15 12H85L97 34H3Z" fill={palette.light} />
-        <path d="M19.5 17H80.5L89 33H11Z" fill={BOX_INSIDE} stroke="none" />
-        <path d="M19.5 17H80.5L83 21.8H17Z" fill={palette.shade} stroke="none" />
+          {/* Bord arrière et paroi du fond, vus par l'ouverture */}
+          <path d="M15 12H85L97 34H3Z" fill={ART_TONES.light} />
+          <path d="M19.5 17H80.5L89 33H11Z" fill={BOX_INSIDE} stroke="none" />
+          <path d="M19.5 17H80.5L83 21.8H17Z" fill={ART_TONES.shade} stroke="none" />
 
-        {/* Face avant et lattes */}
-        <path
-          d="M4 34H96L91 91.5A5.5 5.5 0 0 1 85.5 96.5H14.5A5.5 5.5 0 0 1 9 91.5Z"
-          fill={palette.body}
-        />
-        <path d="M10 62H90M10 79H90" fill="none" stroke={palette.shade} strokeWidth={2.6} />
+          {/* Face avant et lattes */}
+          <path
+            d="M4 34H96L91 91.5A5.5 5.5 0 0 1 85.5 96.5H14.5A5.5 5.5 0 0 1 9 91.5Z"
+            fill={ART_TONES.body}
+          />
+          <path d="M10 62H90M10 79H90" fill="none" stroke={ART_TONES.shade} strokeWidth={2.6} />
 
-        {/* Montants d'angle */}
-        <path d="M4 34H15.5L18 96.5H14.5A5.5 5.5 0 0 1 9 91.5Z" fill={palette.shade} />
-        <path d="M96 34H84.5L82 96.5H85.5A5.5 5.5 0 0 0 91 91.5Z" fill={palette.shade} />
+          {/* Montants d'angle */}
+          <path d="M4 34H15.5L18 96.5H14.5A5.5 5.5 0 0 1 9 91.5Z" fill={ART_TONES.shade} />
+          <path d="M96 34H84.5L82 96.5H85.5A5.5 5.5 0 0 0 91 91.5Z" fill={ART_TONES.shade} />
 
-        {/* Empreinte de patte, sur la latte du haut : les ours rangés occupent le bas de la face */}
-        <ellipse cx={50} cy={54.5} rx={7.4} ry={5.6} fill={palette.light} stroke="none" />
-        <circle cx={40.4} cy={48.5} r={2.9} fill={palette.light} stroke="none" />
-        <circle cx={46.4} cy={45} r={3} fill={palette.light} stroke="none" />
-        <circle cx={53.6} cy={45} r={3} fill={palette.light} stroke="none" />
-        <circle cx={59.6} cy={48.5} r={2.9} fill={palette.light} stroke="none" />
+          {/* Empreinte de patte, sur la latte du haut : les ours rangés occupent le bas de la face */}
+          <ellipse cx={50} cy={54.5} rx={7.4} ry={5.6} fill={ART_TONES.light} stroke="none" />
+          <circle cx={40.4} cy={48.5} r={2.9} fill={ART_TONES.light} stroke="none" />
+          <circle cx={46.4} cy={45} r={3} fill={ART_TONES.light} stroke="none" />
+          <circle cx={53.6} cy={45} r={3} fill={ART_TONES.light} stroke="none" />
+          <circle cx={59.6} cy={48.5} r={2.9} fill={ART_TONES.light} stroke="none" />
 
-        {/* Rebord avant */}
-        <rect x={2} y={30} width={96} height={9.5} rx={4.75} fill={palette.light} />
-      </g>
-    </svg>
+          {/* Rebord avant */}
+          <rect x={2} y={30} width={96} height={9.5} rx={4.75} fill={ART_TONES.light} />
+        </g>
+      </svg>
+    </>
   );
 }

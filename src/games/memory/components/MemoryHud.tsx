@@ -1,6 +1,6 @@
 'use client';
 
-import { DifficultyPill } from '@/components/ui';
+import { DifficultyPill, useHasOverflow } from '@/components/ui';
 import type { InputMode } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import type { DifficultyTier } from '@/types/mia';
@@ -206,6 +206,8 @@ export interface MemoryHudProps {
   hasCrown: boolean;
   /** Une permutation vient d'avoir lieu : le badge de la règle s'illumine (1 s) */
   isSwapping: boolean;
+  /** Page cachée : l'aperçu est suspendu, et son compte à rebours repart en entier au retour */
+  isPreviewPaused: boolean;
   /** Numéro de la partie : le compte à rebours repart à chaque nouvelle partie */
   round: number;
   /** Aide de l'aperçu : « Touche une carte » au doigt, « Appuie sur OK » à la télécommande */
@@ -217,24 +219,35 @@ export interface MemoryHudProps {
  * Informations de la partie, sans élément interactif (les boutons sont dans l'en-tête
  * d'`AppShell`) : palier, règles, puis compteurs ou aperçu. Bandeau au-dessus du plateau en
  * portrait, colonne à sa gauche en paysage. L'aperçu et les compteurs partagent la même cellule :
- * la hauteur ne change pas à la fin de l'aperçu, donc le plateau ne se redimensionne pas. Durée
- * d'aperçu affichée : celle de la partie (`game.config`, réglages du profil déjà appliqués par le
- * plateau, FEAT-19).
+ * la hauteur ne change pas à la fin de l'aperçu, donc le plateau ne se redimensionne pas. Pour la
+ * même raison, en portrait, le compteur d'erreurs qui annoncera « Dernier essai ! » garde sa propre
+ * ligne : ce texte l'allonge sans en ajouter une. Durée d'aperçu affichée : celle de la partie
+ * (`game.config`, réglages du profil déjà appliqués par le plateau, FEAT-19).
  */
 export function MemoryHud({
   game,
   tier,
   hasCrown,
   isSwapping,
+  isPreviewPaused,
   round,
   inputMode,
   className,
 }: MemoryHudProps) {
   const { config, phase, mistakes } = game;
   const isPreview = phase === 'preview';
+  const canBeLastTry = config.maxMistakes !== null && config.maxMistakes > 0;
+  const [hudRef, hasOverflow] = useHasOverflow<HTMLElement>();
 
   return (
-    <section aria-label="État de la partie" className={cn('flex flex-col gap-2', className)}>
+    // `data-touch-scroll` : en colonne sur un écran bas, le HUD défile au doigt sous le verrou du
+    // plateau, et seulement s'il déborde : une main posée qui glisse dessus figerait sinon l'écran.
+    <section
+      ref={hudRef}
+      data-touch-scroll={hasOverflow || undefined}
+      aria-label="État de la partie"
+      className={cn('flex flex-col gap-2', className)}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <DifficultyPill tier={tier} size="sm" />
         <HudChip
@@ -258,7 +271,7 @@ export function MemoryHud({
           >
             <PreviewBanner
               seconds={config.previewSeconds}
-              isRunning={isPreview}
+              isRunning={isPreview && !isPreviewPaused}
               round={round}
               inputMode={inputMode}
             />
@@ -275,12 +288,14 @@ export function MemoryHud({
             {getGroupsTitle(config.matchSize)} :{' '}
             <Fraction value={game.matchedGroups} total={game.totalGroups} />
           </HudChip>
-          <MistakesChip mistakes={mistakes} maxMistakes={config.maxMistakes} />
           <CrownChip
             perfectMaxMistakes={config.perfectMaxMistakes}
             mistakes={mistakes}
             hasCrown={hasCrown}
           />
+          <div className={cn('flex max-w-full', canBeLastTry && 'basis-full landscape:basis-auto')}>
+            <MistakesChip mistakes={mistakes} maxMistakes={config.maxMistakes} />
+          </div>
         </div>
       </div>
     </section>

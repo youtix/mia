@@ -48,26 +48,39 @@ export interface NewProfileOptions {
 /** Diacritiques séparés par la décomposition NFD (« é » → « e » + accent aigu combinant). */
 const COMBINING_MARKS = /[\u0300-\u036f]/g;
 
+/**
+ * Caractères sans rendu (espace sans chasse U+200B, joncteurs, trait d'union conditionnel…), ignorés
+ * pour juger un prénom. Le prénom enregistré les garde : joncteur et sélecteur de variante composent
+ * les emoji (👩‍🚀).
+ */
+const INVISIBLE_CHARACTERS = /\p{Default_Ignorable_Code_Point}/gu;
+
 /** Espaces de début et de fin retirés, espaces intérieurs (insécables compris) réduits à un seul. */
 export function normalizeProfileName(name: string): string {
   return name.trim().replace(/\s+/g, ' ');
 }
 
-/** Clé de comparaison des prénoms : casse et accents ignorés (« mia » = « Mía »). */
+/** Clé de comparaison des prénoms : casse, accents et caractères invisibles ignorés (« mia » = « Mía »). */
 export function getProfileNameKey(name: string): string {
-  return normalizeProfileName(name).normalize('NFD').replace(COMBINING_MARKS, '').toLowerCase();
+  return normalizeProfileName(name.replace(INVISIBLE_CHARACTERS, ''))
+    .normalize('NFD')
+    .replace(COMBINING_MARKS, '')
+    .toLowerCase();
 }
 
 function nameFailure(reason: ProfileNameError): ProfileNameCheck {
   return { ok: false, reason, message: PROFILE_NAME_ERROR_MESSAGES[reason] };
 }
 
-/** Prénom d'un nouveau profil : non vide, au plus `MAX_PROFILE_NAME_LENGTH` caractères, unique. */
+/**
+ * Prénom d'un nouveau profil : quelque chose de visible (sa clé n'est pas vide), au plus
+ * `MAX_PROFILE_NAME_LENGTH` caractères, unique.
+ */
 export function checkProfileName(profiles: readonly UserProfile[], name: string): ProfileNameCheck {
   const normalized = normalizeProfileName(name);
-  if (normalized === '') return nameFailure('empty');
-  if (Array.from(normalized).length > MAX_PROFILE_NAME_LENGTH) return nameFailure('too_long');
   const key = getProfileNameKey(normalized);
+  if (key === '') return nameFailure('empty');
+  if (Array.from(normalized).length > MAX_PROFILE_NAME_LENGTH) return nameFailure('too_long');
   if (profiles.some((profile) => getProfileNameKey(profile.name) === key)) {
     return nameFailure('duplicate');
   }
@@ -92,7 +105,8 @@ export function suggestAvatarId(profiles: readonly UserProfile[]): AvatarId {
 
 /**
  * Étoiles gagnées par un profil, tous jeux confondus : niveaux réussis de la sauvegarde, sans
- * catalogue (FEAT-07). Égal au décompte du catalogue tant qu'aucun niveau publié n'en est retiré.
+ * catalogue (FEAT-07). Égal au décompte du catalogue tant qu'aucun niveau publié n'en est retiré ;
+ * une sauvegarde d'une version plus récente y ajoute les étoiles que cette version ne connaît pas.
  */
 export function countProfileStars(profile: UserProfile): number {
   let stars = 0;

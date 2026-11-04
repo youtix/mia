@@ -589,6 +589,39 @@ describe('recordLevelVictory', () => {
     expect(recordLevelVictory(state, params, { now: NOW })).toBe(state);
   });
 
+  it('crédite le profil demandé, sans toucher au profil actif', () => {
+    const leo = player();
+    const zoe = player([], { id: 'p2', name: 'Zoé' });
+    const state = saveWith([leo, zoe], 'p2');
+
+    const next = recordLevelVictory(state, victory, { profileId: 'p1', now: NOW });
+
+    expect(next.profiles[0]?.gamesProgress.memory?.levels['mem-001']?.completed).toBe(true);
+    expect(next.profiles[0]?.gamesProgress.memory?.lastPlayedLevelId).toBe('mem-001');
+    expect(next.profiles[1]).toBe(zoe);
+    expect(next.activeProfileId).toBe('p2');
+  });
+
+  it('n’enregistre rien pour un profil disparu, même avec un autre profil actif', () => {
+    const state = saveWith([player()]);
+
+    expect(recordLevelVictory(state, victory, { profileId: 'disparu', now: NOW })).toBe(state);
+  });
+
+  it('garde la progression d’un jeu que cette version ne connaît pas', () => {
+    const chess: GameProgress = {
+      gameId: 'chess',
+      levels: { 'che-001': won('che-001') },
+      lastPlayedLevelId: 'che-001',
+    };
+    const state = saveWith([player([], { gamesProgress: { chess } })]);
+
+    const next = recordLevelVictory(state, victory, { now: NOW });
+
+    expect(next.profiles[0]?.gamesProgress.chess).toBe(chess);
+    expect(parseSaveStateReport(JSON.stringify(next))).toEqual({ state: next, issues: [] });
+  });
+
   it('date la victoire de l’instant présent par défaut', () => {
     vi.useFakeTimers({ now: NOW });
 
@@ -691,6 +724,36 @@ describe('Registre des jeux', () => {
 
   it.each(GAMES)('ne publie que des niveaux valides dans le catalogue de $title', (game) => {
     expect(validateLevelCatalog(game.id, game.catalog)).toEqual({ valid: true, errors: [] });
+  });
+
+  it.each(GAMES)('fait relire sans perte la progression de $title : identifiant admis', (game) => {
+    const state = recordLevelVictory(saveWith([player()]), {
+      gameId: game.id,
+      levelId: 'niveau-001',
+      moves: 1,
+      timeSeconds: 1,
+      isPerfect: false,
+    });
+
+    expect(parseSaveStateReport(JSON.stringify(state))).toEqual({ state, issues: [] });
+  });
+
+  it('ne compte au Hub ni les niveaux ni les jeux que cette version ne connaît pas', () => {
+    const profile = player([won('mem-001')], {
+      gamesProgress: {
+        memory: progressOf('memory', [won('mem-001')]),
+        chess: { gameId: 'chess', levels: { 'che-001': won('che-001') }, lastPlayedLevelId: null },
+      },
+    });
+
+    const summary = getProfileProgressSummary(profile, [
+      { ...GAME_REGISTRY.memory, catalog: CATALOG },
+    ]);
+
+    expect(summary.earnedStars).toBe(1);
+    expect(summary.games.map((game) => game.gameId)).toEqual(['memory']);
+    // Le sélecteur de profil (FEAT-06) compte sans catalogue : écart limité à ce cas.
+    expect(countProfileStars(profile)).toBe(2);
   });
 
   it('additionne la progression de tous les jeux (compteur du Hub)', () => {

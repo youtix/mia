@@ -4,6 +4,7 @@ import {
   createPrecacheEntries,
   getCacheName,
   isPrecacheable,
+  matchesRevision,
   normalizePrecachePath,
   NOT_FOUND_KEY,
   resolveAssetKey,
@@ -158,6 +159,33 @@ describe('getCacheName', () => {
 
     expect(getCacheName(added, sha256)).not.toBe(cacheName);
     expect(getCacheName(ENTRIES.slice(1), sha256)).not.toBe(cacheName);
+  });
+});
+
+describe('matchesRevision', () => {
+  /** SHA-256 complet, comme le renvoie `crypto.subtle.digest` dans le service worker. */
+  function digestOf(text: string): ArrayBuffer {
+    const digest = createHash('sha256').update(text).digest();
+    return digest.buffer.slice(digest.byteOffset, digest.byteOffset + digest.byteLength);
+  }
+
+  it('reconnaît le contenu d’une révision calculée au build', () => {
+    expect(matchesRevision(digestOf('chunk'), sha256('chunk'))).toBe(true);
+  });
+
+  it('refuse un autre contenu, même d’un seul caractère', () => {
+    expect(matchesRevision(digestOf('chunk!'), sha256('chunk'))).toBe(false);
+  });
+
+  it('refuse toujours une entrée sans révision', () => {
+    expect(matchesRevision(digestOf('chunk'), '')).toBe(false);
+  });
+
+  it('garde les zéros de tête de l’empreinte', () => {
+    const digest = new Uint8Array(32);
+    digest[1] = 0x0a;
+
+    expect(matchesRevision(digest.buffer, '000a0000')).toBe(true);
   });
 });
 

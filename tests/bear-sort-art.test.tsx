@@ -19,6 +19,9 @@ import { render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 
+/** Boîte de gauche d'un plateau, pour l'image de la règle. */
+const LEFT_BOX: BearTraits = { color: 'blue', size: 'small' };
+
 const COLORS: readonly BearColor[] = ['blue', 'yellow'];
 const SIZES: readonly BearSize[] = ['small', 'big'];
 const FADED: readonly (SortFeature | null)[] = [null, 'color', 'size'];
@@ -40,6 +43,10 @@ const EXCEPT_RULES: readonly BearSortRule[] = [
 ];
 
 const ALL_RULES: readonly BearSortRule[] = [...SORT_RULES, ...EXCEPT_RULES];
+
+/** L'échelle du dessin et ses variables de couleur, qui n'existent pas si le système réduit les animations. */
+const FADE_CLASS =
+  'motion-safe:transition-[transform,--art-body,--art-shade,--art-light,--art-outline]';
 
 /** Tous les dessins, dans toutes les combinaisons de leurs props, hors panneau STOP. */
 const ART_WITHOUT_STOP: readonly (readonly [string, ReactElement])[] = [
@@ -69,7 +76,7 @@ const ART_WITHOUT_STOP: readonly (readonly [string, ReactElement])[] = [
       (isPulsing) =>
         [
           `RulePicture ${JSON.stringify(rule)} ${String(isPulsing)}`,
-          <RulePicture key="rule" rule={rule} isPulsing={isPulsing} />,
+          <RulePicture key="rule" rule={rule} leftBox={LEFT_BOX} isPulsing={isPulsing} />,
         ] as const,
     ),
   ),
@@ -224,12 +231,39 @@ describe('BearFigure', () => {
     const { container } = render(<BearFigure color="yellow" size="big" />);
     const drawing = getElement(getSvg(container), 'svg > g');
 
-    expect(drawing).toHaveClass(
-      'motion-safe:transition-transform',
-      'motion-safe:duration-400',
-      'motion-safe:[&>*]:transition-colors',
-      'motion-safe:[&>*]:duration-400',
+    expect(drawing).toHaveClass(FADE_CLASS, 'motion-safe:duration-400');
+  });
+
+  it('fait varier la couleur par dessin, jamais forme par forme', () => {
+    const { container } = render(<BearFigure color="yellow" size="big" fadedFeature="color" />);
+    const svg = getSvg(container);
+    const drawing = getElement(svg, 'svg > g');
+
+    expect(drawing.getAttribute('class')).not.toContain('[&>*]');
+    expect(getDrawingStyle(svg).getPropertyValue('--art-body')).toBe(GREY_PALETTE.body);
+    expect(getDrawingStyle(svg).getPropertyValue('--art-outline')).toBe(GREY_PALETTE.outline);
+    // Les formes lisent les variables : aucune ne porte de couleur d'ours en propre.
+    const tones = [...drawing.children].map((shape) => shape.getAttribute('fill'));
+    expect(tones).toContain('var(--art-body)');
+    expect(tones).toContain('var(--art-light)');
+    expect(tones).not.toContain(GREY_PALETTE.body);
+    expect(drawing).toHaveAttribute('stroke', 'var(--art-outline)');
+  });
+
+  it('déclare ses variables comme couleurs, une seule fois, pour que le navigateur les fasse varier', () => {
+    render(
+      <>
+        <BearFigure color="blue" size="big" />
+        <BearFigure color="yellow" size="small" />
+        <BearBox traits={null} />
+      </>,
     );
+
+    const styles = document.head.querySelectorAll('style[data-href="bear-sort-fade"]');
+    expect(styles).toHaveLength(1);
+    for (const tone of ['body', 'shade', 'light', 'outline']) {
+      expect(styles[0]?.textContent).toContain(`@property --art-${tone}{syntax:'<color>'`);
+    }
   });
 });
 
@@ -301,12 +335,14 @@ describe('BearBox', () => {
     expect(svg.querySelector('[data-glow]')).toBeNull();
   });
 
-  it('fait varier la couleur par une transition de 400 ms', () => {
+  it('fait varier la couleur par une transition de 400 ms, sur le dessin entier', () => {
     const { container } = render(<BearBox traits={{ color: 'blue', size: 'big' }} />);
-    expect(getElement(getSvg(container), 'svg > g')).toHaveClass(
-      'motion-safe:transition-transform',
-      'motion-safe:[&>*]:transition-colors',
-      'motion-safe:[&>*]:duration-400',
+    const drawing = getElement(getSvg(container), 'svg > g');
+
+    expect(drawing).toHaveClass(FADE_CLASS, 'motion-safe:duration-400');
+    expect(drawing.getAttribute('class')).not.toContain('[&>*]');
+    expect(getDrawingStyle(getSvg(container)).getPropertyValue('--art-shade')).toBe(
+      getArtPalette('blue', null).shade,
     );
   });
 });
@@ -376,7 +412,7 @@ describe('RulePicture', () => {
   it.each(ALL_RULES.map((rule) => [getRuleLabel(rule), rule] as const))(
     'expose le nom accessible « %s »',
     (label, rule) => {
-      const { container } = render(<RulePicture rule={rule} />);
+      const { container } = render(<RulePicture rule={rule} leftBox={LEFT_BOX} />);
       const picture = screen.getByRole('img', { name: label });
 
       expect(picture).toHaveAttribute('data-rule', rule.kind === 'sort' ? rule.feature : 'except');
@@ -387,7 +423,9 @@ describe('RulePicture', () => {
   );
 
   it('couleur : une goutte bleue et une goutte jaune, aucun ours', () => {
-    const { container } = render(<RulePicture rule={{ kind: 'sort', feature: 'color' }} />);
+    const { container } = render(
+      <RulePicture rule={{ kind: 'sort', feature: 'color' }} leftBox={LEFT_BOX} />,
+    );
 
     expect(
       [...container.querySelectorAll('[data-rule-drop]')].map((drop) =>
@@ -400,7 +438,9 @@ describe('RulePicture', () => {
   });
 
   it('taille : un petit et un grand ours gris côte à côte, sans goutte ni couleur', () => {
-    const { container } = render(<RulePicture rule={{ kind: 'sort', feature: 'size' }} />);
+    const { container } = render(
+      <RulePicture rule={{ kind: 'sort', feature: 'size' }} leftBox={LEFT_BOX} />,
+    );
 
     expect(
       [...container.querySelectorAll('[data-rule-bear]')].map((bear) =>
@@ -439,7 +479,9 @@ describe('RulePicture', () => {
     [{ size: 'small' }, ['grey-small']],
     [{ size: 'big' }, ['grey-big']],
   ] as const)('sauf %j : montre %j dans le signe « non »', (forbidden, bears) => {
-    const { container } = render(<RulePicture rule={{ kind: 'except', forbidden }} />);
+    const { container } = render(
+      <RulePicture rule={{ kind: 'except', forbidden }} leftBox={LEFT_BOX} />,
+    );
 
     expect(
       [...container.querySelectorAll('[data-rule-bear]')].map((bear) =>
@@ -457,7 +499,7 @@ describe('RulePicture', () => {
 
   it('attire l’œil en douceur quand elle pulse', () => {
     const { container } = render(
-      <RulePicture rule={{ kind: 'sort', feature: 'size' }} isPulsing />,
+      <RulePicture rule={{ kind: 'sort', feature: 'size' }} leftBox={LEFT_BOX} isPulsing />,
     );
     const picture = screen.getByRole('img', { name: 'Ranger par taille' });
 
@@ -471,7 +513,9 @@ describe('RulePicture', () => {
   });
 
   it('accepte une classe du parent', () => {
-    render(<RulePicture rule={{ kind: 'sort', feature: 'color' }} className="w-40" />);
+    render(
+      <RulePicture rule={{ kind: 'sort', feature: 'color' }} leftBox={LEFT_BOX} className="w-40" />,
+    );
     expect(screen.getByRole('img', { name: 'Ranger par couleur' })).toHaveClass(
       'w-40',
       'aspect-8/5',
@@ -555,7 +599,10 @@ describe('NoBadge', () => {
     const { container } = render(<NoBadge className="size-8" />);
     const svg = getSvg(container);
     const rule = render(
-      <RulePicture rule={{ kind: 'except', forbidden: { color: 'blue', size: 'big' } }} />,
+      <RulePicture
+        rule={{ kind: 'except', forbidden: { color: 'blue', size: 'big' } }}
+        leftBox={LEFT_BOX}
+      />,
     );
 
     expect(svg).toHaveAttribute('aria-hidden', 'true');
@@ -591,7 +638,7 @@ describe('Réduction des animations et images clés', () => {
         <OwlMascot mood="idle" />
         <OwlMascot mood="happy" />
         <StopSign isPulsing />
-        <RulePicture rule={{ kind: 'sort', feature: 'color' }} isPulsing />
+        <RulePicture rule={{ kind: 'sort', feature: 'color' }} leftBox={LEFT_BOX} isPulsing />
       </>,
     );
 

@@ -71,7 +71,8 @@ export function FocusableCard({
         </span>
       ) : null}
       {isLocked ? (
-        <span className="absolute top-2 right-2 flex items-center rounded-full bg-slate-950/70 p-1.5 text-slate-300">
+        // À cheval sur le coin, comme une couronne : dans une petite tuile, il masquerait le numéro.
+        <span className="absolute -top-2 -right-2 flex items-center rounded-full bg-slate-950/70 p-1.5 text-slate-300">
           <Lock aria-hidden="true" className="size-4" />
           <span className="sr-only">, verrouillé</span>
         </span>

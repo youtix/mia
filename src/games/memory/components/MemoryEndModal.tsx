@@ -3,14 +3,14 @@
 // Module direct, pas le barrel : le JS de la page d'un jeu se limite à ce qu'elle affiche (FEAT-08).
 import { formatMoves } from '@/components/progression/labels';
 import { FocusableButton, ModalDialog } from '@/components/ui';
-import { useGridNavigation } from '@/core/navigation';
+import { END_SCREEN_GUARD_MS, useGridNavigation } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import { ArrowRight, Crown, MapIcon, RotateCcw } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { MemoryLevelConfig } from '../types';
 import { formatGroups, formatMistakes, getCrownTargetLabel, getDefeatTitle } from './labels';
 
-/** Partie terminée, figée au moment de la fin (la modale la garde pendant son animation de sortie). */
+/** Partie terminée, figée dès sa fin : une victoire enregistrée change aussitôt la couronne du niveau. */
 export interface MemoryGameResult {
   outcome: 'won' | 'lost';
   moves: number;
@@ -86,7 +86,16 @@ export function MemoryEndModal({
   );
 
   return (
-    <ModalDialog isOpen={isOpen && result !== null} title={title} subtitle={subtitle}>
+    <ModalDialog
+      // « Rejouer » ramène le curseur sur la grille : pas de retour au bouton d'origine.
+      restoreFocus={false}
+      // Boutons sans effet pendant que le résultat s'affiche : le second tap d'un double tap sur la
+      // dernière carte, ou un OK répété, ne le saute pas. Retour reste actif.
+      inputGuardMs={END_SCREEN_GUARD_MS}
+      isOpen={isOpen && result !== null}
+      title={title}
+      subtitle={subtitle}
+    >
       {result ? (
         <>
           {isWon ? (

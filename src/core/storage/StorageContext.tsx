@@ -12,17 +12,27 @@ import {
 } from 'react';
 import { applyHighContrastMode } from './contrast-mode';
 import { createDefaultSaveState, STORAGE_KEY } from './default-state';
-import { parseAndMigrateSaveState, parseBackupJson, type ImportFailure } from './migrations';
+import {
+  importFailure,
+  parseAndMigrateSaveState,
+  parseBackupJson,
+  type ImportFailure,
+} from './migrations';
 import {
   exportSaveJson,
   loadSaveState,
+  readStoredSaveRaw,
+  removeSaveBackup,
   requestPersistentStorage,
   saveState,
 } from './storage-service';
 import { applyTvModeOverride, detectNativeTv, hasNativeTvDetection } from './tv-mode';
 
-/** Résultat d'`importBackup` : en cas d'échec, `message` est prêt à afficher. */
-export type ImportResult = { ok: true } | ImportFailure;
+/**
+ * Résultat d'`importBackup` : réussi, `issues` liste ce qui a été écarté ou réparé dans le fichier ;
+ * en cas d'échec, `message` est prêt à afficher.
+ */
+export type ImportResult = { ok: true; issues: string[] } | ImportFailure;
 
 type SaveUpdater = (prev: MiaSaveState) => MiaSaveState;
 
@@ -37,11 +47,14 @@ export interface StorageContextValue {
    */
   updateState: (updater: SaveUpdater) => Promise<void>;
   updateSettings: (partial: Partial<DeviceSettings>) => Promise<void>;
-  /** Efface profils et réglages (état par défaut) */
+  /** Efface profils et réglages (état par défaut) et la copie de secours */
   resetAllData: () => Promise<void>;
   /** JSON de l'état courant (à appeler une fois `isLoaded`) */
   exportBackup: () => string;
-  /** Remplace profils et profil actif, conserve les réglages de l'appareil */
+  /**
+   * Remplace profils et profil actif, conserve les réglages de l'appareil. Contrairement à
+   * `updateState`, échoue si la sauvegarde n'a pas pu être écrite : rien n'est restauré alors.
+   */
   importBackup: (json: string) => Promise<ImportResult>;
 }
 
@@ -54,8 +67,10 @@ interface StorageStore {
   subscribe: (listener: () => void) => () => void;
   getSnapshot: () => StorageSnapshot;
   load: () => Promise<void>;
-  /** Écriture de la sauvegarde par un autre onglet (`null` : clé supprimée) */
+  /** Écriture de la sauvegarde par un autre onglet : valeur relue sur le disque (`null` : supprimée) */
   receive: (raw: string | null) => void;
+  /** Relit la sauvegarde : la page a pu manquer des écritures en dormant */
+  reload: () => Promise<void>;
   update: (updater: SaveUpdater) => Promise<void>;
   updateSettings: (partial: Partial<DeviceSettings>) => Promise<void>;
   resetAllData: () => Promise<void>;
@@ -81,7 +96,7 @@ function withSettings(prev: MiaSaveState, partial: Partial<DeviceSettings>): Mia
 function createStorageStore(): StorageStore {
   const listeners = new Set<() => void>();
   let snapshot = SERVER_SNAPSHOT;
-  let writes = Promise.resolve();
+  let writes: Promise<unknown> = Promise.resolve();
   let markLoaded: () => void = () => undefined;
   const loaded = new Promise<void>((resolve) => {
     markLoaded = resolve;
@@ -93,14 +108,20 @@ function createStorageStore(): StorageStore {
     for (const listener of listeners) listener();
   }
 
+  /** Écritures sérialisées, dans l'ordre des appels. */
+  function save(state: MiaSaveState): Promise<boolean> {
+    const written = writes.then(() => saveState(state));
+    writes = written;
+    return written;
+  }
+
   async function update(updater: SaveUpdater): Promise<void> {
     await loaded;
     const prev = snapshot.state;
     const next = updater(prev);
     if (next === prev) return;
     publish(next);
-    writes = writes.then(() => saveState(next));
-    await writes;
+    await save(next);
   }
 
   return {
@@ -119,9 +140,16 @@ function createStorageStore(): StorageStore {
     receive: (raw) => {
       publish(parseAndMigrateSaveState(raw));
     },
+    reload: async () => {
+      await writes;
+      publish(await loadSaveState());
+    },
     update,
     updateSettings: (partial) => update((prev) => withSettings(prev, partial)),
-    resetAllData: () => update(createDefaultSaveState),
+    resetAllData: async () => {
+      await update(createDefaultSaveState);
+      await removeSaveBackup();
+    },
     exportBackup: () => exportSaveJson(snapshot.state),
     importBackup: async (json) => {
       const result = parseBackupJson(json);
@@ -129,8 +157,18 @@ function createStorageStore(): StorageStore {
       if (result.issues.length > 0) {
         console.warn('[Mia]', `Sauvegarde importée avec pertes : ${result.issues.join(' ; ')}`);
       }
-      await update((prev) => ({ ...result.state, settings: prev.settings }));
-      return { ok: true };
+      await loaded;
+      const prev = snapshot.state;
+      const next: MiaSaveState = { ...result.state, settings: prev.settings };
+      publish(next);
+      if (await save(next)) return { ok: true, issues: result.issues };
+      // Rien d'enregistré : l'écran et le stockage (dont le miroir natif, qui a pu recevoir l'import)
+      // reviennent à l'état d'avant, sauf s'il y a plus récent depuis.
+      if (snapshot.state === next) {
+        publish(prev);
+        await save(prev);
+      }
+      return importFailure('write_failed');
     },
   };
 }
@@ -148,8 +186,9 @@ export interface StorageProviderProps {
 
 /**
  * Sauvegarde locale de l'appareil (profils, progression, réglages) : chargement au montage,
- * stockage persistant demandé (Web), synchronisation entre onglets, mode TV (`data-tv`, avec la
- * détection native dans l'APK) et contraste élevé (`data-contrast`).
+ * stockage persistant demandé (Web), synchronisation entre onglets et au retour du cache de
+ * navigation, mode TV (`data-tv`, avec la détection native dans l'APK) et contraste élevé
+ * (`data-contrast`).
  */
 export function StorageProvider({ children }: StorageProviderProps) {
   const [store] = useState(createStorageStore);
@@ -171,13 +210,22 @@ export function StorageProvider({ children }: StorageProviderProps) {
     void detectNativeTv().then((value) => {
       if (!cancelled) setNativeTv(value);
     });
+    // Le disque fait foi, pas `event.newValue` : l'événement arrive parfois après une écriture plus
+    // récente (de cet onglet ou d'un troisième), et chaque onglet afficherait l'écriture de l'autre.
     const onStorage = (event: StorageEvent) => {
-      if (isSaveStorageEvent(event)) store.receive(event.newValue);
+      if (isSaveStorageEvent(event)) store.receive(readStoredSaveRaw());
+    };
+    // Retour par le cache de navigation (bfcache) : Firefox et WebKit ne rejouent pas les événements
+    // `storage` manqués, et la prochaine écriture effacerait ce qu'un autre onglet a gagné entre-temps.
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) void store.reload();
     };
     window.addEventListener('storage', onStorage);
+    window.addEventListener('pageshow', onPageShow);
     return () => {
       cancelled = true;
       window.removeEventListener('storage', onStorage);
+      window.removeEventListener('pageshow', onPageShow);
     };
   }, [store]);
 

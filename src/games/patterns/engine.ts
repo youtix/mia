@@ -7,6 +7,7 @@ import type {
   PatternGameState,
   PatternItem,
   PatternLevelConfig,
+  PatternPhase,
   PatternRole,
   PatternRound,
   PatternRule,
@@ -317,18 +318,26 @@ function validateChoice(state: PatternGameState, index: number, nowMs: number): 
 }
 
 /**
- * Tap, clic ou OK sur la proposition `index`.
- * - `stop` : compté comme un geste impulsif (la couronne est perdue), le STOP continue tel quel.
+ * Tap, clic ou OK sur la proposition `index`, jugé sur la phase où le geste a commencé
+ * (`pressPhase`, celle où le doigt s'est posé ; par défaut la phase en cours, OK n'ayant pas de durée).
+ * - `stop` : compté comme un geste impulsif (la couronne est perdue), le STOP continue tel quel. Un
+ *   doigt posé pendant un STOP et levé après n'est donc pas une réponse.
  * - `choosing`, pièces : la réponse est validée.
  * - `choosing`, sons : une proposition nouvelle est écoutée (`listening`) ; celle qui est déjà prête
  *   est validée. Une réponse n'est donc jamais donnée sans avoir été entendue.
- * - Ignorée dans les autres phases (`listening` compris : un double tap ne valide jamais) et hors
- *   des propositions.
+ * - Ignorée dans les autres phases (`listening` compris : un double tap ne valide jamais), hors des
+ *   propositions et si le doigt se lève hors de `choosing` : posé avant un STOP et levé pendant, il
+ *   n'a rien d'impulsif.
  */
-export function tapChoice(state: PatternGameState, index: number, nowMs: number): PatternGameState {
+export function tapChoice(
+  state: PatternGameState,
+  index: number,
+  nowMs: number,
+  pressPhase: PatternPhase = state.phase,
+): PatternGameState {
   if (!Number.isInteger(index) || index < 0 || index >= state.round.choices.length) return state;
-  if (state.phase === 'stop') return { ...state, impulsiveTaps: state.impulsiveTaps + 1 };
-  if (state.phase !== 'choosing') return state;
+  if (pressPhase === 'stop') return { ...state, impulsiveTaps: state.impulsiveTaps + 1 };
+  if (pressPhase !== 'choosing' || state.phase !== 'choosing') return state;
   if (state.config.answerMode === 'sound' && state.armedIndex !== index) {
     return { ...state, phase: 'listening', armedIndex: index };
   }

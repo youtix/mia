@@ -56,7 +56,11 @@ export function StarBadge({
       <span>
         {earned}
         {total === undefined ? null : (
-          <span className="font-semibold text-slate-400"> / {total}</span>
+          // Sur le fond ambré d'un badge couronné, le gris ne garde pas le contraste de 4,5:1.
+          <span className={cn('font-semibold', isPerfect ? 'text-amber-200' : 'text-slate-400')}>
+            {' '}
+            / {total}
+          </span>
         )}
       </span>
       {isPerfect ? (

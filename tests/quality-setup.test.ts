@@ -352,12 +352,26 @@ describe('Couverture Vitest', () => {
 });
 
 describe('semantic-release', () => {
+  // Le titre seul d'une PR de revert (squash) est aussi un revert : voir tests/release-pipeline.test.ts.
+  const REVERT_PATTERN =
+    '^[Rr]evert:?\\s"?([\\s\\S]+?)"?\\s*(?:\\(#\\d+\\)\\s*)?(?:This reverts commit (\\w*)\\.[\\s\\S]*)?$';
+
   it('publie depuis main sans publication npm, compile l’APK et commite version et changelog', () => {
     expect(readJson('.releaserc.json')).toEqual({
       branches: ['main'],
       plugins: [
-        ['@semantic-release/commit-analyzer', { preset: 'conventionalcommits' }],
-        ['@semantic-release/release-notes-generator', { preset: 'conventionalcommits' }],
+        [
+          '@semantic-release/commit-analyzer',
+          {
+            preset: 'conventionalcommits',
+            releaseRules: [{ type: 'revert', release: 'patch' }],
+            parserOpts: { revertPattern: REVERT_PATTERN },
+          },
+        ],
+        [
+          '@semantic-release/release-notes-generator',
+          { preset: 'conventionalcommits', parserOpts: { revertPattern: REVERT_PATTERN } },
+        ],
         ['@semantic-release/changelog', { changelogFile: 'CHANGELOG.md' }],
         ['@semantic-release/npm', { npmPublish: false }],
         [
@@ -467,6 +481,7 @@ describe('GitHub', () => {
     const workflow = readYaml('.github/workflows/release-and-deploy.yml') as Workflow;
     const verify = getJob(workflow, 'verify');
     const release = getJob(workflow, 'release');
+    const build = getJob(workflow, 'build-pwa');
     const deploy = getJob(workflow, 'deploy-pwa');
 
     expect(workflow.on).toEqual({ push: { branches: ['main'] } });
@@ -482,15 +497,21 @@ describe('GitHub', () => {
     });
     expect(runsOf(release)).toContain('npx semantic-release');
 
-    expect(deploy.needs).toBe('release');
-    expect(deploy.if).toContain('needs.release.outputs.published');
-    expect(deploy.permissions).toMatchObject({ pages: 'write', 'id-token': 'write' });
-    expect(findStep(deploy, 'actions/checkout').with?.ref).toBe('${{ needs.release.outputs.tag }}');
-    expect(findStep(deploy, 'actions/configure-pages').id).toBe('pages');
-    expect(stepsOf(deploy).find((step) => step.run === 'npm run build')?.env).toEqual({
+    // Compilation sans droit sur Pages : les dépendances ne tournent jamais avec le droit de déployer.
+    expect(build.needs).toBe('release');
+    expect(build.if).toContain('needs.release.outputs.published');
+    expect(build.permissions).toEqual({ contents: 'read', pages: 'read' });
+    expect(findStep(build, 'actions/checkout').with?.ref).toBe('${{ needs.release.outputs.tag }}');
+    expect(findStep(build, 'actions/configure-pages').id).toBe('pages');
+    expect(stepsOf(build).find((step) => step.run === 'npm run build')?.env).toEqual({
       NEXT_PUBLIC_BASE_PATH: '${{ steps.pages.outputs.base_path }}',
     });
-    expect(findStep(deploy, 'actions/upload-pages-artifact').with).toEqual({ path: 'out' });
+    expect(findStep(build, 'actions/upload-pages-artifact').with).toEqual({ path: 'out' });
+
+    expect(deploy.needs).toEqual(['release', 'build-pwa']);
+    expect(deploy.if).toBe("always() && needs.build-pwa.result == 'success'");
+    expect(deploy.permissions).toEqual({ pages: 'write', 'id-token': 'write' });
+    expect(stepsOf(deploy)).toHaveLength(1);
     expect(findStep(deploy, 'actions/deploy-pages').id).toBe('deployment');
   });
 });

@@ -22,7 +22,7 @@ import {
 } from '@/core/storage';
 import { cn } from '@/lib/cn';
 import { Check, UserPlus } from 'lucide-react';
-import { useId, useState, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { AvatarBadge } from './AvatarBadge';
 
 export interface NewProfileModalProps {
@@ -78,6 +78,7 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
   const nameId = useId();
   const errorId = useId();
   const createId = useId();
+  const nameHeaderRef = useRef<HTMLDivElement>(null);
   const [quickGridRef, quickCols] = useGridColumns<HTMLDivElement>(2);
   const [avatarGridRef, avatarCols] = useGridColumns<HTMLDivElement>(4);
   const nameKey = getProfileNameKey(name);
@@ -130,14 +131,20 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
     setError(null);
   };
 
+  /** Sur un petit écran, le panneau défile jusqu'à « Créer » : le message, en haut, serait hors de vue. */
+  const refuse = (message: string) => {
+    setError(message);
+    nameHeaderRef.current?.scrollIntoView({ block: 'nearest' });
+  };
+
   const create = () => {
     if (!canAddProfile(state)) {
-      setError(PROFILE_LIMIT_MESSAGE);
+      refuse(PROFILE_LIMIT_MESSAGE);
       return;
     }
     const check = checkProfileName(state.profiles, name);
     if (!check.ok) {
-      setError(check.message);
+      refuse(check.message);
       setZone(check.reason === 'empty' && hasQuickNames ? 'quick' : 'name');
       return;
     }
@@ -159,7 +166,10 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
       <div className="flex flex-col gap-2 tv:gap-1">
         {/* Le message d'erreur partage la ligne de l'étiquette quand la largeur le permet (TV) :
             le formulaire garde sa hauteur et ne défile pas. */}
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div
+          ref={nameHeaderRef}
+          className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1"
+        >
           <label htmlFor={nameId} className="text-fluid-base font-semibold text-slate-200">
             Prénom
           </label>
@@ -175,7 +185,9 @@ function NewProfileForm({ onCancel, onCreated }: NewProfileFormProps) {
           type="text"
           value={name}
           placeholder="Écrire un prénom"
-          maxLength={MAX_PROFILE_NAME_LENGTH}
+          // `maxLength` compte les unités UTF-16 (2 par emoji) : ce plafond laisse passer tout prénom
+          // permis, et `checkProfileName` refuse au-delà de 20 caractères.
+          maxLength={MAX_PROFILE_NAME_LENGTH * 2}
           autoComplete="off"
           autoCapitalize="words"
           spellCheck={false}

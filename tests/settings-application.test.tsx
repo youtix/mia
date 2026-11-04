@@ -65,6 +65,7 @@ const UPDATE_GROUP = 'Mises à jour';
 const REPAIR_GROUP = 'Réparer';
 const REPAIR_DIALOG = 'Réparer Mia ?';
 const REPAIR_ERROR = 'Réparation impossible : pas de connexion. Réessaie une fois connecté.';
+const REPAIR_RUNNING_TEXT = 'Réparation en cours…';
 const READY_TEXT = 'Une nouvelle version est prête. Tes profils et tes étoiles sont conservés.';
 const DOWNLOADING_TEXT = 'Téléchargement de la nouvelle version…';
 const CHECKING_TEXT = 'Recherche en cours…';
@@ -290,7 +291,7 @@ describe('Section « Application »', () => {
       'Mia cherche les nouvelles versions toute seule. Tu peux aussi lancer une recherche maintenant.',
     );
     expect(screen.getByRole('group', { name: REPAIR_GROUP })).toHaveAccessibleDescription(
-      'Retélécharge tous les fichiers de Mia si l’application se comporte mal. Les profils, les étoiles et les réglages sont conservés. Une connexion est nécessaire.',
+      'Revérifie les fichiers de Mia et retélécharge ceux qui sont abîmés, si l’application se comporte mal. Les profils, les étoiles et les réglages sont conservés. Une connexion est nécessaire.',
     );
     expect(within(section).getAllByRole('button')).toEqual([
       getButton(CHECK_LABEL),
@@ -496,7 +497,7 @@ describe('Réparation', () => {
 
     const dialog = await findDialog(REPAIR_DIALOG);
     expect(dialog).toHaveAccessibleDescription(
-      'Mia va retélécharger ses fichiers depuis Internet, puis redémarrer. Les profils, les étoiles et les réglages sont conservés.',
+      'Mia va revérifier ses fichiers, retélécharger ceux qui sont abîmés, puis redémarrer. Les profils, les étoiles et les réglages sont conservés.',
     );
     expect(within(dialog).getByRole('button', { name: 'Annuler' })).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Réparer' })).toHaveClass('bg-sky-400');
@@ -531,7 +532,30 @@ describe('Réparation', () => {
     expect(repairApp).toHaveBeenCalledOnce();
     await waitForClosed(REPAIR_DIALOG);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(getStatusLine(REPAIR_GROUP)).toBeEmptyDOMElement();
+    // `reloading` : la page va se recharger, le message reste jusque-là.
+    expect(getStatusLine(REPAIR_GROUP)).toHaveTextContent(REPAIR_RUNNING_TEXT);
+  });
+
+  it('pendant la réparation, le dit, sans présenter sa copie neuve comme une mise à jour', async () => {
+    const pending = holdNextRepair();
+    await renderSettings('idle');
+
+    fireEvent.click(await openRepairDialog());
+    await waitForClosed(REPAIR_DIALOG);
+    expect(getStatusLine(REPAIR_GROUP)).toHaveTextContent(REPAIR_RUNNING_TEXT);
+
+    // Le suivi voit l'installation de la copie neuve : téléchargement, puis version prête.
+    setStatus('downloading');
+    expect(getStatusLine(UPDATE_GROUP)).toBeEmptyDOMElement();
+    setStatus('ready');
+    expect(getStatusLine(UPDATE_GROUP)).toBeEmptyDOMElement();
+    expect(screen.getByRole('button', { name: CHECK_LABEL })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: APPLY_LABEL })).not.toBeInTheDocument();
+
+    // Refusée faute de connexion : le suivi reprend ses droits.
+    await settle(pending, 'unreachable');
+    expect(getAlert(REPAIR_GROUP)).toHaveTextContent(REPAIR_ERROR);
+    expect(screen.getByRole('button', { name: APPLY_LABEL })).toBeInTheDocument();
   });
 
   it('explique un refus faute de connexion, et permet de réessayer', async () => {

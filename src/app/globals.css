@@ -90,6 +90,41 @@
     touch-action: manipulation;
   }
 
+  /*
+   * Plateaux des jeux (`GameScreen`) : aucun geste du navigateur. Une main posée qui glisse de quelques
+   * pixels lancerait un défilement, qui annule tous les pointeurs jusqu'au dernier doigt levé ; deux
+   * mains zoomeraient l'écran sans qu'un enfant sache revenir en arrière. Le pincement reste possible
+   * partout ailleurs. `data-touch-scroll` : une colonne qui peut défiler sur un écran bas (HUD).
+   */
+  [data-touch-lock],
+  [data-touch-lock] * {
+    touch-action: none;
+  }
+
+  [data-touch-lock] [data-touch-scroll],
+  [data-touch-lock] [data-touch-scroll] * {
+    touch-action: pan-y;
+  }
+
+  /*
+   * Modale au-dessus d'un plateau (écran de fin, portail sur <body>) : pas de zoom non plus, le plateau
+   * l'empêcherait ensuite d'être annulé. Le panneau défile encore, sur un écran bas.
+   */
+  body:has([data-touch-lock]) [data-dialog-root] {
+    touch-action: none;
+  }
+
+  body:has([data-touch-lock]) [data-dialog-root] [role='dialog'],
+  body:has([data-touch-lock]) [data-dialog-root] [role='dialog'] * {
+    touch-action: pan-y;
+  }
+
+  /* Ni « tirer pour actualiser », qui rechargerait une partie, ni rebond de la page. */
+  html,
+  body {
+    overscroll-behavior: none;
+  }
+
   /* Les champs restent sélectionnables (Safari iOS bloque la saisie sous user-select: none). */
   input,
   textarea,

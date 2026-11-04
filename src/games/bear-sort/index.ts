@@ -3,6 +3,7 @@
 export { BEAR_SORT_CATALOG, validateBearSortCatalog } from './catalog';
 export {
   BEAR_KINDS,
+  MAX_RESERVE_BEARS,
   continueAfterStop,
   createBearSortGame,
   dropBear,

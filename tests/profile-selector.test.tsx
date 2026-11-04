@@ -1,9 +1,10 @@
-import { AvatarBadge, ProfileSelectorModal } from '@/components/profile';
-import { NavigationProvider } from '@/core/navigation';
+import { AvatarBadge, ProfileGate, ProfileSelectorModal } from '@/components/profile';
+import { CONFIRM_GUARD_MS, installActivationGuard, NavigationProvider } from '@/core/navigation';
 import {
   AVATARS,
   createDefaultSaveState,
   DEFAULT_DEVICE_SETTINGS,
+  MAX_PROFILE_NAME_LENGTH,
   MAX_PROFILES,
   PROFILE_LIMIT_MESSAGE,
   PROFILE_NAME_ERROR_MESSAGES,
@@ -16,7 +17,7 @@ import type { LevelCompletion, MiaSaveState, UserProfile } from '@/types/mia';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
 import { useState, type ReactNode } from 'react';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, onTestFinished, vi } from 'vitest';
 
 // Plateforme Web : la sauvegarde vit dans localStorage, Preferences n'est jamais appelé.
 vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => false } }));
@@ -256,6 +257,58 @@ describe('useProfileGate', () => {
 
     await waitForClosed(SELECTOR_TITLE);
     expect(getActivePlayer()).toBe('Mamie');
+  });
+});
+
+describe('ProfileGate', () => {
+  /** Écran racine type (Hub) : ouverture volontaire du choix, refermée par `onClose`. */
+  function GateScreen() {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => {
+            setIsOpen(true);
+          }}
+        >
+          Ouvrir le choix
+        </button>
+        <output aria-label="Ouverture volontaire">{isOpen ? 'ouverte' : 'fermée'}</output>
+        <ProfileGate
+          isOpen={isOpen}
+          onClose={() => {
+            setIsOpen(false);
+          }}
+        />
+      </>
+    );
+  }
+
+  it('un choix imposé qui aboutit ferme aussi l’ouverture volontaire en cours', async () => {
+    const save = familySave();
+    storeSave(save);
+    render(<GateScreen />, { wrapper: Providers });
+    fireEvent.click(await screen.findByRole('button', { name: 'Ouvrir le choix' }));
+    await screen.findByRole('dialog', { name: SELECTOR_TITLE });
+
+    // Un autre onglet importe une sauvegarde sans profil actif : le choix devient imposé.
+    const raw = JSON.stringify({ ...save, activeProfileId: null });
+    localStorage.setItem(STORAGE_KEY, raw);
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: STORAGE_KEY, newValue: raw, storageArea: localStorage }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Fermer' })).not.toBeInTheDocument();
+    });
+    fireEvent.click(getButton(/^Mamie/));
+
+    await waitForClosed(SELECTOR_TITLE);
+    expect(screen.getByRole('status', { name: 'Ouverture volontaire' })).toHaveTextContent(
+      'fermée',
+    );
   });
 });
 
@@ -508,6 +561,7 @@ describe('ProfileSelectorModal : création rapide', () => {
     const form = await openNewProfileForm();
 
     const fullSave = { ...save, profiles: [...profiles, player('p7', 'Papi', 'owl')] };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(fullSave));
     act(() => {
       window.dispatchEvent(
         new StorageEvent('storage', {
@@ -553,6 +607,55 @@ describe('ProfileSelectorModal : création rapide', () => {
     );
     expect(field).toHaveAttribute('aria-invalid', 'true');
     expect(field).toHaveAccessibleDescription(PROFILE_NAME_ERROR_MESSAGES.duplicate);
+    expect(readSave().profiles).toHaveLength(3);
+  });
+
+  it('ramène le message de refus à l’écran : le panneau a pu défiler jusqu’à « Créer »', async () => {
+    await renderScreen(familySave());
+    const form = await openNewProfileForm();
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    fireEvent.click(within(form).getByRole('button', { name: 'Créer' }));
+
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
+    expect(scrollIntoView.mock.contexts.at(-1)).toContainElement(within(form).getByRole('alert'));
+  });
+
+  it('accepte 20 emoji, refuse 21 caractères : le champ compte en unités UTF-16', async () => {
+    await renderScreen(familySave());
+    const form = await openNewProfileForm();
+    const field = within(form).getByRole('textbox', { name: 'Prénom' });
+    const create = within(form).getByRole('button', { name: 'Créer' });
+
+    expect(field).toHaveAttribute('maxlength', String(MAX_PROFILE_NAME_LENGTH * 2));
+
+    fireEvent.change(field, { target: { value: 'a'.repeat(MAX_PROFILE_NAME_LENGTH + 1) } });
+    fireEvent.click(create);
+    expect(within(form).getByRole('alert')).toHaveTextContent(PROFILE_NAME_ERROR_MESSAGES.too_long);
+    expect(readSave().profiles).toHaveLength(3);
+
+    fireEvent.change(field, { target: { value: '🦊'.repeat(MAX_PROFILE_NAME_LENGTH) } });
+    fireEvent.click(create);
+    await waitFor(() => {
+      expect(readSave().profiles.at(-1)?.name).toBe('🦊'.repeat(MAX_PROFILE_NAME_LENGTH));
+    });
+  });
+
+  it('refuse un prénom réduit à des caractères invisibles ou doublant un prénom pris', async () => {
+    await renderScreen(familySave());
+    const form = await openNewProfileForm();
+    const field = within(form).getByRole('textbox', { name: 'Prénom' });
+    const create = within(form).getByRole('button', { name: 'Créer' });
+
+    fireEvent.change(field, { target: { value: '\u200B' } });
+    fireEvent.click(create);
+    expect(within(form).getByRole('alert')).toHaveTextContent(PROFILE_NAME_ERROR_MESSAGES.empty);
+
+    fireEvent.change(field, { target: { value: 'M\u200Bia' } });
+    fireEvent.click(create);
+    expect(within(form).getByRole('alert')).toHaveTextContent(
+      PROFILE_NAME_ERROR_MESSAGES.duplicate,
+    );
     expect(readSave().profiles).toHaveLength(3);
   });
 
@@ -693,6 +796,54 @@ describe('ProfileSelectorModal : gestion des profils', () => {
     await waitFor(() => {
       expect(readSave().profiles.map((profile) => profile.name)).toEqual(['Mia', 'Léo']);
     });
+  });
+
+  it('garde « Supprimer » sans effet 1 s : un double tap lent ne supprime personne', async () => {
+    // Garde installée comme dans l'application, sur une horloge conduite par le test.
+    onTestFinished(installActivationGuard());
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    await renderScreen(familySave());
+
+    now += CONFIRM_GUARD_MS;
+    await openManagement();
+    now += CONFIRM_GUARD_MS;
+    fireEvent.click(getButton('Supprimer Mamie 0 étoile'));
+    const confirm = await screen.findByRole('dialog', { name: 'Supprimer « Mamie » ?' });
+    const erase = within(confirm).getByRole('button', { name: 'Supprimer' });
+
+    now += CONFIRM_GUARD_MS - 1;
+    fireEvent.click(erase);
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        }),
+    );
+    expect(readSave().profiles).toHaveLength(3);
+    expect(getDialog('Supprimer « Mamie » ?')).toBeInTheDocument();
+
+    now += 1;
+    fireEvent.click(erase);
+    await waitFor(() => {
+      expect(readSave().profiles.map((profile) => profile.name)).toEqual(['Mia', 'Léo']);
+    });
+  });
+
+  it('laisse passer à la ligne un long prénom sans espace dans la confirmation', async () => {
+    const longName = 'W'.repeat(MAX_PROFILE_NAME_LENGTH);
+    const save = familySave();
+    await renderScreen({
+      ...save,
+      profiles: [...save.profiles, player('p4', longName, 'star')],
+    });
+    await openManagement();
+
+    fireEvent.click(getButton(`Supprimer ${longName} 0 étoile`));
+
+    expect(await screen.findByRole('dialog', { name: `Supprimer « ${longName} » ?` })).toHaveClass(
+      'wrap-anywhere',
+    );
   });
 
   it('à la télécommande, la confirmation part d’« Annuler »', async () => {

@@ -14,6 +14,7 @@ export const CRASH_SCREEN_TEXTS = {
   repair: 'Réparer l’application',
   repairNote:
     'Si le problème revient, répare l’application : Mia retélécharge ses fichiers. Une connexion est nécessaire.',
+  repairRunning: 'Réparation en cours…',
   repairUnreachable: 'Réparation impossible : pas de connexion. Réessaie une fois connecté.',
 } as const;
 
@@ -25,15 +26,16 @@ export const CRASH_SCREEN_TEXTS = {
 export function CrashScreen() {
   useAndroidBackExit();
   const canRepair = useAppUpdateStatus() !== 'unsupported';
-  const [isRepairRefused, setIsRepairRefused] = useState(false);
+  // `running` : la réparation télécharge ce qui manque avant de recharger, ce qui peut prendre un moment.
+  const [repairState, setRepairState] = useState<'idle' | 'running' | 'refused'>('idle');
   // Verrou plutôt que `disabled` : un bouton désactivé ne peut pas garder le focus du D-Pad.
   const isRepairingRef = useRef(false);
   const buttonsRef = useRef<HTMLDivElement>(null);
   const actions = useGridNavigation({ scopeId: 'crash-actions', rows: 1, cols: canRepair ? 2 : 1 });
 
   // Le moteur ne pose le focus DOM qu'en mode D-Pad ; en mode tactile, le premier appui ne ferait
-  // que révéler le curseur. Or le mode TV peut manquer ici : React retire de <html> ses attributs
-  // (`data-tv`) quand `global-error` remplace le layout. Avec le focus DOM, ce premier appui agit.
+  // que révéler le curseur. Une télécommande à pointeur est dans ce cas, et sur cet écran, le premier
+  // appui doit agir.
   useEffect(() => {
     buttonsRef.current?.querySelector('button')?.focus();
   }, []);
@@ -42,10 +44,10 @@ export function CrashScreen() {
   const repair = async () => {
     if (isRepairingRef.current) return;
     isRepairingRef.current = true;
-    setIsRepairRefused(false);
+    setRepairState('running');
     if ((await repairApp()) === 'unreachable') {
       isRepairingRef.current = false;
-      setIsRepairRefused(true);
+      setRepairState('refused');
     }
   };
 
@@ -83,8 +85,17 @@ export function CrashScreen() {
         <div className="flex max-w-2xl flex-col gap-2 text-fluid-sm">
           <p className="text-slate-300">{CRASH_SCREEN_TEXTS.repairNote}</p>
           {/* Ligne réservée : les boutons ne sautent pas quand le message apparaît. */}
-          <div className="min-h-6 font-semibold text-rose-300">
-            {isRepairRefused ? <p role="alert">{CRASH_SCREEN_TEXTS.repairUnreachable}</p> : null}
+          <div className="min-h-6 font-semibold">
+            {repairState === 'running' ? (
+              <p role="status" className="text-slate-300">
+                {CRASH_SCREEN_TEXTS.repairRunning}
+              </p>
+            ) : null}
+            {repairState === 'refused' ? (
+              <p role="alert" className="text-rose-300">
+                {CRASH_SCREEN_TEXTS.repairUnreachable}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

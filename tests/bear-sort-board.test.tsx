@@ -1,18 +1,23 @@
-import { NavigationProvider } from '@/core/navigation';
+import {
+  END_SCREEN_GUARD_MS,
+  installActivationGuard,
+  NavigationProvider,
+  VIEW_CHANGE_GUARD_MS,
+} from '@/core/navigation';
 import { getGameProgressSummary, type BaseLevelDefinition } from '@/core/progression';
 import {
   BearSortBoard,
   DROP_TOLERANCE_PX,
   END_SCREEN_DELAY_MS,
+  findDropZone,
+  getVoiceClipPath,
   IDLE_NUDGE_MS,
+  isPointInRect,
   MAX_NUDGES,
   MIN_MIME_MS,
   STOP_MIN_WAIT_MS,
   STOP_NUDGE_MS,
   TAP_SLOP_PX,
-  findDropZone,
-  getVoiceClipPath,
-  isPointInRect,
   type BearSortClipId,
   type BearSortLevelConfig,
   type BearTraits,
@@ -21,7 +26,7 @@ import {
 import type { UserProfile } from '@/types/mia';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
-import { StrictMode } from 'react';
+import { Profiler, StrictMode, type ProfilerOnRenderCallback } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const audio = vi.hoisted(() => ({
@@ -156,6 +161,8 @@ interface BoardOptions {
   profile?: UserProfile | null;
   /** Rendu sous `<StrictMode>` : rendus et effets doublés, comme en développement */
   strict?: boolean;
+  /** Appelé à chaque rendu validé du plateau */
+  onCommit?: ProfilerOnRenderCallback;
 }
 
 function advance(ms: number): void {
@@ -177,6 +184,7 @@ function renderBoard({
   levelIndex = 0,
   profile = null,
   strict = false,
+  onCommit,
 }: BoardOptions = {}) {
   const catalog = [definition('bs-001', 10, config), definition('bs-002', 20, COLOR_ONLY)];
   const summary = getGameProgressSummary('bear-sort', catalog, profile);
@@ -189,7 +197,14 @@ function renderBoard({
     recordVictory: vi.fn(() => Promise.resolve()),
   };
   const board = <BearSortBoard level={level} controls={controls} />;
-  render(strict ? <StrictMode>{board}</StrictMode> : board, { wrapper: NavigationProvider });
+  const counted = onCommit ? (
+    <Profiler id="plateau" onRender={onCommit}>
+      {board}
+    </Profiler>
+  ) : (
+    board
+  );
+  render(strict ? <StrictMode>{counted}</StrictMode> : counted, { wrapper: NavigationProvider });
   advance(0);
   return controls;
 }
@@ -510,10 +525,13 @@ describe('Écran', () => {
     expect(getStatus()).toHaveTextContent('Tous les ours, sauf un ours bleu');
   });
 
-  it('charge les clips de l’étoile, puis annonce la règle de la première phase', () => {
+  it('charge la règle en vigueur d’abord, le reste ensuite, et annonce la règle', async () => {
     renderBoard({ config: COLOR_THEN_SIZE });
 
-    expect(audio.preloadClips).toHaveBeenCalledOnce();
+    // Sur un réseau lent, la première phrase n'attend pas les autres clips.
+    expect(audio.preloadClips).toHaveBeenCalledExactlyOnceWith(clips('rule-color'));
+    await advanceAsync(0);
+    expect(audio.preloadClips).toHaveBeenCalledTimes(2);
     expect(new Set(audio.preloadClips.mock.lastCall?.[0])).toEqual(
       new Set(
         clips(
@@ -529,11 +547,15 @@ describe('Écran', () => {
         ),
       ),
     );
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('rule-color'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-color'),
+      expect.any(Function),
+    );
   });
 
-  it('ne charge que les clips utiles à une étoile sans STOP ou avec une règle « sauf »', () => {
+  it('ne charge que les clips utiles à une étoile sans STOP ou avec une règle « sauf »', async () => {
     renderBoard({ config: EXCEPT_BLUE });
+    await advanceAsync(0);
 
     const preloaded = audio.preloadClips.mock.lastCall?.[0];
     expect(preloaded).toContain(getVoiceClipPath('rule-except-blue'));
@@ -542,11 +564,15 @@ describe('Écran', () => {
     expect(preloaded).not.toContain(getVoiceClipPath('bounce-trap'));
   });
 
-  it('n’annonce la règle qu’une fois sous StrictMode', () => {
+  it('n’annonce la règle qu’une fois sous StrictMode', async () => {
     renderBoard({ strict: true });
+    await advanceAsync(0);
 
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('rule-color'));
-    expect(audio.preloadClips).toHaveBeenCalledOnce();
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-color'),
+      expect.any(Function),
+    );
+    expect(audio.preloadClips).toHaveBeenCalledTimes(2);
   });
 
   it('rejoue la règle quand on touche la mascotte, et vocalise de nouveau', () => {
@@ -637,6 +663,34 @@ describe('Au tap (aussi TalkBack et le clavier)', () => {
     expect(getStatus()).toHaveTextContent('Choisis d’abord un ours');
   });
 
+  it('ne clique qu’une fois quand Entrée reste enfoncée sur un bouton', () => {
+    renderBoard();
+    fireEvent.click(getBear(SMALL_BLUE));
+    const box = getBox(RIGHT_BOX);
+    act(() => {
+      box.focus();
+    });
+
+    // Le premier appui garde son clic natif ; chaque répétition serait un rebond de plus.
+    expect(press('Enter')).toBe(false);
+    expect(press('Enter', { repeat: true })).toBe(true);
+    expect(press(' ', { repeat: true })).toBe(true);
+
+    act(() => {
+      getMascot().focus();
+    });
+    expect(press('Enter', { repeat: true })).toBe(true);
+    expect(press('a', { repeat: true })).toBe(false);
+  });
+
+  it('ne zoome pas l’anneau de focus d’une boîte : elle remplit sa case, jusqu’au bord rogné', () => {
+    renderBoard();
+
+    expect(getBox(LEFT_BOX)).toHaveClass('focus-visible:ring-4', 'focus-visible:scale-100');
+    expect(getBox(LEFT_BOX)).not.toHaveClass('focus-visible:scale-[1.04]');
+    expect(getMascot()).toHaveClass('focus-visible:scale-[1.04]');
+  });
+
   it('traite un petit déplacement comme un tap', () => {
     mockLayout();
     renderBoard();
@@ -699,7 +753,8 @@ describe('Au doigt', () => {
 
     expect(bear).toHaveAttribute('data-dragging', 'true');
     expect(bear.style.transform).toBe('translate(-75px, -350px)');
-    expect(bear).toHaveClass('touch-none', 'transition-none');
+    expect(bear.style.transition).toBe('none');
+    expect(bear).toHaveClass('touch-none');
     expect(bear.parentElement).toHaveClass('z-30');
     // Un autre pointeur n'influence pas le glissement en cours.
     fireEvent.pointerMove(bear, { clientX: 400, clientY: 400, pointerId: 8, isPrimary: false });
@@ -712,6 +767,49 @@ describe('Au doigt', () => {
     expect(queryBear(SMALL_BLUE)).toBeNull();
     expect(getPlacedBears(getBox(LEFT_BOX))).toHaveLength(1);
     expect(audio.playEffect).toHaveBeenCalledExactlyOnceWith('success');
+  });
+
+  it('ne redessine pas le plateau à chaque mouvement du doigt', () => {
+    mockLayout();
+    const onCommit = vi.fn();
+    renderBoard({ onCommit });
+    const bear = getBear(SMALL_BLUE);
+
+    fireEvent.pointerDown(bear, { ...ORIGIN, ...POINTER });
+    fireEvent.pointerMove(bear, { clientX: 100, clientY: 75, ...POINTER });
+    expect(bear).toHaveAttribute('data-dragging', 'true');
+    onCommit.mockClear();
+
+    for (let step = 1; step <= 10; step += 1) {
+      fireEvent.pointerMove(bear, { clientX: 100 + step, clientY: 75, ...POINTER });
+    }
+
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(bear.style.transform).toBe('translate(-65px, -350px)');
+  });
+
+  it('garde l’ours sous le doigt quand le plateau se redessine pendant le glissement', () => {
+    mockLayout();
+    renderBoard();
+    const bear = getBear(SMALL_BLUE);
+
+    fireEvent.pointerDown(bear, { ...ORIGIN, ...POINTER });
+    fireEvent.pointerMove(bear, { clientX: 100, clientY: 75, ...POINTER });
+    fireEvent.click(getMascot());
+
+    expect(bear.style.transform).toBe('translate(-75px, -350px)');
+  });
+
+  it('rend sa transition à l’ours lâché : il revient avec son petit ressort', () => {
+    mockLayout();
+    renderBoard();
+    const bear = getBear(SMALL_BLUE);
+
+    dragBear(bear, { x: 200, y: 300 });
+
+    expect(bear.style.transform).toBe('');
+    expect(bear.style.transition).toBe('');
+    expect(bear).toHaveClass('motion-safe:transition-transform');
   });
 
   it('compte un dépôt lâché à moins de 40 px d’une boîte', () => {
@@ -793,6 +891,33 @@ describe('Au doigt', () => {
     expect(queryBear(SMALL_BLUE)).toBeNull();
   });
 
+  it('rend l’ours lâché à moins de sa taille de son point de départ, même sur une boîte', () => {
+    mockLayout(NEAR_RESERVE);
+    const controls = renderBoard();
+    const bear = getBear(BIG_YELLOW);
+
+    /** Press sous le bord de la réserve, lâché plus haut : l'ours fait 50 px. */
+    const slip = (fromY: number, toY: number) => {
+      fireEvent.pointerDown(bear, { clientX: 50, clientY: fromY, ...POINTER });
+      fireEvent.pointerMove(bear, { clientX: 50, clientY: toY, ...POINTER });
+      fireEvent.pointerUp(bear, { clientX: 50, clientY: toY, ...POINTER });
+    };
+
+    // Juste au-dessus de la réserve, à portée de la boîte ; puis sur la boîte elle-même.
+    slip(112, 104);
+    slip(112, 90);
+    slip(130, 81);
+
+    expect(audio.playEffect).not.toHaveBeenCalled();
+    expect(bear).not.toHaveAttribute('data-wiggling');
+    expect(bear.style.transform).toBe('');
+
+    // Dès qu'il a fait sa propre taille, le dépôt compte.
+    slip(130, 80);
+    expect(audio.playEffect).toHaveBeenCalledExactlyOnceWith('bounce');
+    expect(controls.recordVictory).not.toHaveBeenCalled();
+  });
+
   it('rend l’ours quand le système interrompt le geste, même au-dessus d’une boîte', () => {
     mockLayout();
     renderBoard();
@@ -803,6 +928,46 @@ describe('Au doigt', () => {
     expect(bear).not.toHaveAttribute('data-dragging');
     expect(bear.style.transform).toBe('');
     expect(audio.playEffect).not.toHaveBeenCalled();
+  });
+
+  it('souris relâchée hors de la fenêtre (pointerup perdu) : l’ours revient au lieu de suivre le curseur', () => {
+    mockLayout();
+    renderBoard();
+    const bear = getBear(SMALL_BLUE);
+    const mouse = { pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+
+    fireEvent.pointerDown(bear, { ...ORIGIN, ...mouse, button: 0, buttons: 1 });
+    fireEvent.pointerMove(bear, { clientX: 100, clientY: 75, ...mouse, buttons: 1 });
+    expect(bear).toHaveAttribute('data-dragging', 'true');
+    // Alt+Tab, bouton relâché ailleurs : le mouvement suivant arrive sans bouton enfoncé.
+    fireEvent.pointerMove(bear, { clientX: 50, clientY: 50, ...mouse, buttons: 0 });
+
+    expect(bear).not.toHaveAttribute('data-dragging');
+    expect(bear.style.transform).toBe('');
+    fireEvent.pointerUp(bear, { clientX: 50, clientY: 50, ...mouse });
+    expect(getBear(SMALL_BLUE)).toBe(bear);
+    expect(audio.playEffect).not.toHaveBeenCalled();
+  });
+
+  it('capture perdue sans pointerup : l’ours revient, sauf celui saisi ensuite', () => {
+    mockLayout();
+    renderBoard();
+    const first = getBear(SMALL_BLUE);
+    const second = getBear(BIG_YELLOW);
+
+    fireEvent.pointerDown(first, { ...ORIGIN, ...POINTER });
+    fireEvent.pointerMove(first, { clientX: 100, clientY: 75, ...POINTER });
+    fireEvent.lostPointerCapture(first, POINTER);
+    expect(first).not.toHaveAttribute('data-dragging');
+    expect(first.style.transform).toBe('');
+
+    // La souris garde son identifiant : saisir un autre ours retire la capture au précédent.
+    fireEvent.pointerDown(first, { ...ORIGIN, ...POINTER });
+    fireEvent.pointerMove(first, { clientX: 100, clientY: 75, ...POINTER });
+    fireEvent.pointerDown(second, { ...ORIGIN, ...POINTER });
+    fireEvent.pointerMove(second, { clientX: 350, clientY: 50, ...POINTER });
+    fireEvent.lostPointerCapture(first, POINTER);
+    expect(second).toHaveAttribute('data-dragging', 'true');
   });
 
   it('ignore le clic qui suit un glissement, mais pas un clic au clavier', () => {
@@ -930,6 +1095,65 @@ describe('Au doigt', () => {
 
     dragBear(getBear(BIG_BLUE), { x: 50, y: 50 });
     expect(queryBear(BIG_BLUE)).toBeNull();
+  });
+
+  describe('avec la garde d’activation', () => {
+    let removeGuard: () => void;
+
+    beforeEach(() => {
+      removeGuard = installActivationGuard();
+    });
+
+    afterEach(() => {
+      removeGuard();
+    });
+
+    const FINGER = { pointerId: 21, isPrimary: true, pointerType: 'touch' };
+
+    /** Le doigt se pose et se lève sans clic du navigateur ; la garde clique alors le bouton. */
+    function pressWithoutClick(element: HTMLElement, holdMs: number): void {
+      vi.spyOn(document, 'elementFromPoint').mockReturnValue(element);
+      fireEvent.pointerDown(element, { ...ORIGIN, ...FINGER });
+      advance(holdMs);
+      fireEvent.pointerUp(element, { ...ORIGIN, ...FINGER });
+      advance(200);
+    }
+
+    it('choisit l’ours après un appui long, qui ne donne aucun clic sur Android', () => {
+      renderBoard();
+      advance(VIEW_CHANGE_GUARD_MS);
+      const bear = getBear(SMALL_BLUE);
+
+      pressWithoutClick(bear, 700);
+
+      expect(bear).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('choisit l’ours juste après un glissement, sans y voir le clic de ce glissement', () => {
+      mockLayout();
+      renderBoard();
+      advance(VIEW_CHANGE_GUARD_MS);
+      const bear = getBear(SMALL_BLUE);
+      dragBear(bear, { x: 200, y: 300 });
+
+      pressWithoutClick(bear, 40);
+
+      expect(bear).toHaveAttribute('aria-pressed', 'true');
+    });
+
+    it('passe le panneau STOP au second doigt, une main restant posée', async () => {
+      renderBoard({ config: COLOR_THEN_SIZE });
+      advance(VIEW_CHANGE_GUARD_MS);
+      tapBearThenBox(SMALL_BLUE, LEFT_BOX);
+      tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+      await advanceAsync(STOP_MIN_WAIT_MS);
+
+      // La main posée ailleurs reste sur l'écran pendant toute la tape.
+      fireEvent.pointerDown(document.body, { clientX: 5, clientY: 5, ...FINGER, pointerId: 22 });
+      pressWithoutClick(getStopSign(), 40);
+
+      expect(queryStopOverlay()).toBeNull();
+    });
   });
 
   it('glisse même si la capture du pointeur échoue', () => {
@@ -1189,7 +1413,10 @@ describe('Inaction', () => {
     expect(getBear(SMALL_BLUE)).not.toHaveAttribute('data-wiggling');
 
     advance(1);
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('rule-color'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-color'),
+      expect.any(Function),
+    );
     expect(getRulePicture()).toHaveAttribute('data-pulsing', 'true');
     expect(getBear(SMALL_BLUE)).toHaveAttribute('data-wiggling', 'true');
     expect(getBear(BIG_BLUE)).not.toHaveAttribute('data-wiggling');
@@ -1204,7 +1431,10 @@ describe('Inaction', () => {
     audio.playClips.mockClear();
 
     advance(IDLE_NUDGE_MS);
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('nudge-more'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('nudge-more'),
+      expect.any(Function),
+    );
     expect(getRulePicture()).toHaveAttribute('data-pulsing', 'true');
     expect(getReserve().querySelector('[data-wiggling]')).toBeNull();
 
@@ -1267,6 +1497,56 @@ describe('Inaction', () => {
     expect(audio.playClips).toHaveBeenCalledTimes(MAX_NUDGES + 1);
   });
 
+  it('ne se tait pas pour de bon quand l’enfant touche une boîte sans ours choisi', () => {
+    renderBoard();
+    audio.playClips.mockClear();
+
+    // Un toucher toutes les 3 s pendant une minute : la voix ne se tait pas, et n'est pas repoussée.
+    for (let tapCount = 0; tapCount < 20; tapCount += 1) {
+      advance(3000);
+      fireEvent.click(getBox(LEFT_BOX));
+    }
+
+    expect(audio.playClips).toHaveBeenCalledTimes(5);
+    expect(lastVoice()).toEqual(clips('rule-color'));
+  });
+
+  it('ne se tait pas pour de bon quand l’enfant presse une flèche inutile, au D-Pad', () => {
+    forceTvMode();
+    renderBoard();
+    audio.playClips.mockClear();
+
+    for (let pressCount = 0; pressCount < 20; pressCount += 1) {
+      advance(3000);
+      press('ArrowUp');
+    }
+
+    expect(audio.playClips).toHaveBeenCalledTimes(5);
+    expect(getBears()).toHaveLength(3);
+  });
+
+  it('ne dépense aucun rappel tant que la page est masquée', () => {
+    renderBoard();
+    audio.playClips.mockClear();
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+
+    advance(IDLE_NUDGE_MS * 4);
+    expect(audio.playClips).not.toHaveBeenCalled();
+    expect(getRulePicture()).not.toHaveAttribute('data-pulsing');
+
+    // De retour, l'enfant a droit à tous ses rappels.
+    hidden.mockReturnValue(false);
+    advance(IDLE_NUDGE_MS);
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-color'),
+      expect.any(Function),
+    );
+    expect(getRulePicture()).toHaveAttribute('data-pulsing', 'true');
+
+    advance(IDLE_NUDGE_MS * 5);
+    expect(audio.playClips).toHaveBeenCalledTimes(MAX_NUDGES);
+  });
+
   it('attend que l’ours tenu soit lâché, et s’arrête de remuer au premier geste', () => {
     mockLayout();
     renderBoard();
@@ -1320,7 +1600,10 @@ describe('Panneau STOP', () => {
     expect(queryStopOverlay()).not.toBeNull();
     expect(audio.playEffect).toHaveBeenLastCalledWith('stop');
     // Pendant l'attente, la voix met seulement en garde : la nouvelle règle est dite au redémarrage.
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('stop-warning'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('stop-warning'),
+      expect.any(Function),
+    );
     expect(getStatus()).toHaveTextContent(`Stop ! ${SIZE_RULE}`);
 
     const sign = getStopSign();
@@ -1392,7 +1675,10 @@ describe('Panneau STOP', () => {
     fireEvent.click(getStopSign());
 
     expect(queryStopOverlay()).toBeNull();
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('rule-size'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-size'),
+      expect.any(Function),
+    );
     expect(getStatus()).toHaveTextContent(SIZE_RULE);
     expect(getMascot()).toHaveAttribute('data-mood', 'talking');
     await advanceAsync(MIN_MIME_MS);
@@ -1438,7 +1724,7 @@ describe('Panneau STOP', () => {
     expect(audio.playClips).not.toHaveBeenCalled();
 
     await advanceAsync(1);
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('stop-go'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('stop-go'), expect.any(Function));
 
     await advanceAsync(STOP_NUDGE_MS);
     expect(audio.playClips).toHaveBeenCalledTimes(2);
@@ -1467,6 +1753,47 @@ describe('Panneau STOP', () => {
     expect(lastVoice()).toEqual(clips('rule-size'));
   });
 
+  it('ne dépense aucun rappel du panneau tant que la page est masquée', async () => {
+    renderBoard({ config: COLOR_THEN_SIZE });
+    tapBearThenBox(SMALL_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+    await advanceAsync(STOP_MIN_WAIT_MS);
+    audio.playClips.mockClear();
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+
+    await advanceAsync(STOP_NUDGE_MS * 4);
+    expect(audio.playClips).not.toHaveBeenCalled();
+
+    hidden.mockReturnValue(false);
+    await advanceAsync(STOP_NUDGE_MS * 5);
+    expect(audio.playClips).toHaveBeenCalledTimes(MAX_NUDGES);
+    expect(lastVoice()).toEqual(clips('stop-go'));
+  });
+
+  it('dit au lecteur d’écran que l’attente est finie, seulement quand le panneau répond', async () => {
+    renderBoard({ config: COLOR_THEN_SIZE });
+    const voice = deferred();
+    audio.playClips.mockImplementationOnce(() => voice.promise);
+    tapBearThenBox(SMALL_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+
+    // Les 5 s ne suffisent pas : la voix met encore en garde.
+    await advanceAsync(STOP_MIN_WAIT_MS);
+    expect(getStatus()).toHaveTextContent(`Stop ! ${SIZE_RULE}`);
+
+    await voice.resolve();
+    expect(getStatus()).toHaveTextContent('À toi ! Appuie sur le panneau.');
+    expect(getStopSign()).toHaveAttribute('data-active', 'true');
+  });
+
+  it('coupe le flou du voile sur téléviseur, où il ferait décrocher un boîtier modeste', () => {
+    renderBoard({ config: COLOR_THEN_SIZE });
+    tapBearThenBox(SMALL_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+
+    expect(queryStopOverlay()).toHaveClass('backdrop-blur-sm', 'tv:backdrop-blur-none');
+  });
+
   it('n’empile pas les minuteurs sous StrictMode', async () => {
     renderBoard({ config: COLOR_THEN_SIZE, strict: true });
     tapBearThenBox(SMALL_BLUE, LEFT_BOX);
@@ -1477,7 +1804,7 @@ describe('Panneau STOP', () => {
     await advanceAsync(STOP_MIN_WAIT_MS);
     await advanceAsync(STOP_NUDGE_MS);
 
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('stop-go'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('stop-go'), expect.any(Function));
   });
 
   it('annonce une règle « sauf » au redémarrage, la mascotte disant non', async () => {
@@ -1660,7 +1987,10 @@ describe('Télécommande', () => {
     audio.playClips.mockClear();
 
     expect(press('Enter')).toBe(true);
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('rule-color'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-color'),
+      expect.any(Function),
+    );
     expect(getStatus()).toHaveTextContent(COLOR_RULE);
 
     press('ArrowLeft');
@@ -1774,6 +2104,87 @@ describe('Télécommande', () => {
   });
 });
 
+describe('Clavier et curseur', () => {
+  function getBack(): HTMLElement {
+    return screen.getByRole('button', { name: 'Retour' });
+  }
+
+  function focusWithTab(element: HTMLElement): void {
+    press('Tab');
+    act(() => {
+      element.focus();
+    });
+  }
+
+  it('rend l’anneau et les touches au panneau STOP quand le focus y revient depuis Retour', async () => {
+    forceTvMode();
+    const controls = renderBoard({ config: COLOR_THEN_SIZE });
+    press('ArrowLeft');
+    press('ArrowLeft');
+    await advanceAsync(STOP_MIN_WAIT_MS);
+    const sign = getStopSign();
+    expect(sign).toHaveFocus();
+
+    focusWithTab(getBack());
+    expect(getBack()).toHaveAttribute('data-focused', 'true');
+    expect(sign).not.toHaveAttribute('data-focused');
+
+    focusWithTab(sign);
+    expect(getBack()).not.toHaveAttribute('data-focused');
+    expect(sign).toHaveAttribute('data-focused', 'true');
+
+    expect(press('Enter')).toBe(true);
+    expect(queryStopOverlay()).toBeNull();
+    press('Enter');
+    expect(controls.exitToMap).not.toHaveBeenCalled();
+  });
+
+  it('laisse le focus sur la mascotte ou une boîte atteinte au Tab depuis Retour', () => {
+    forceTvMode();
+    renderBoard();
+
+    focusWithTab(getBack());
+    focusWithTab(getMascot());
+    expect(getMascot()).toHaveFocus();
+    expect(getBack()).not.toHaveAttribute('data-focused');
+    expect(getFocusedBear()).toBe(getBear(SMALL_BLUE));
+
+    focusWithTab(getBack());
+    focusWithTab(getBox(RIGHT_BOX));
+    expect(getBox(RIGHT_BOX)).toHaveFocus();
+
+    // Une flèche, elle, ramène au curseur : l'ours rangé laisse la main au suivant.
+    press('ArrowLeft');
+    expect(queryBear(SMALL_BLUE)).toBeNull();
+    expect(getBear(BIG_BLUE)).toHaveFocus();
+  });
+
+  it('range à la flèche l’ours du curseur, et l’échelle d’indices vise alors celui-là', () => {
+    renderBoard();
+    const chosen = getBear(BIG_YELLOW);
+    const cursor = getBear(SMALL_BLUE);
+    fireEvent.click(chosen);
+    expect(chosen).toHaveAttribute('aria-pressed', 'true');
+    // Tab vers un autre ours : il devient le curseur, le premier reste choisi.
+    focusWithTab(cursor);
+
+    press('ArrowRight');
+    expect(chosen).toHaveAttribute('aria-pressed', 'false');
+    press('ArrowRight');
+    press('ArrowRight');
+
+    expect(getBox(LEFT_BOX)).toHaveAttribute('data-glowing', 'true');
+    expect(getBox(RIGHT_BOX)).not.toHaveAttribute('data-glowing');
+    expect(cursor).toHaveAttribute('data-wiggling', 'true');
+    expect(getStatus()).toHaveTextContent(`Essaie ici : ${LEFT_BOX}`);
+
+    // La flèche vers la boîte éclairée aboutit.
+    press('ArrowLeft');
+    expect(queryBear(SMALL_BLUE)).toBeNull();
+    expect(getPlacedBears(getBox(LEFT_BOX))).toHaveLength(1);
+  });
+});
+
 describe('Fin de partie', () => {
   /** Range les trois ours de `COLOR_ONLY`, sans erreur. */
   function winPerfectly(): void {
@@ -1840,6 +2251,8 @@ describe('Fin de partie', () => {
     expect(dialog.querySelector('[data-star-award]')).toHaveAttribute('data-crown', 'true');
     expect(getVisibleText(document.body)).toBe('');
     expect(within(dialog).getByRole('heading', { level: 2 }).parentElement).toHaveClass('sr-only');
+    // La couronne n'est qu'un dessin : le lecteur d'écran l'apprend par la description.
+    expect(dialog).toHaveAccessibleDescription('Tu as la couronne !');
   });
 
   it('ne couronne pas après un rebond, et n’en parle jamais', () => {
@@ -1857,7 +2270,10 @@ describe('Fin de partie', () => {
       timeSeconds: 0,
       isPerfect: false,
     });
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('star-won'));
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('star-won'),
+      expect.any(Function),
+    );
     const dialog = getDialog();
     expect(dialog.querySelector('[data-star-award]')).not.toHaveAttribute('data-crown');
     expect(getVisibleText(dialog)).toBe('');
@@ -1875,6 +2291,7 @@ describe('Fin de partie', () => {
     advance(END_SCREEN_DELAY_MS);
 
     expect(getDialog().querySelector('[data-star-award]')).toHaveAttribute('data-crown', 'true');
+    expect(getDialog()).toHaveAccessibleDescription('Tu as la couronne !');
   });
 
   it('propose étoile suivante, rejouer et carte, en boutons-icônes', () => {
@@ -1936,20 +2353,23 @@ describe('Fin de partie', () => {
   it('rejoue une nouvelle partie, et annonce de nouveau la règle', async () => {
     const controls = renderBoard();
     winPerfectly();
-    advance(END_SCREEN_DELAY_MS);
+    await advanceAsync(END_SCREEN_DELAY_MS);
     audio.playClips.mockClear();
     audio.preloadClips.mockClear();
-    audio.stopClips.mockClear();
 
+    // La règle de la nouvelle partie remplace la voix de la victoire (`playClips` coupe la séquence
+    // en cours) : rien à arrêter à part.
     fireEvent.click(within(getDialog()).getByRole('button', { name: 'Rejouer' }));
-    expect(audio.stopClips).toHaveBeenCalledOnce();
     await advanceAsync(1000);
 
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(getBears()).toHaveLength(3);
     expect(getPlacedBears(getBox(LEFT_BOX))).toHaveLength(0);
-    expect(audio.preloadClips).toHaveBeenCalledOnce();
-    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(clips('rule-color'));
+    expect(audio.preloadClips).toHaveBeenCalledTimes(2);
+    expect(audio.playClips).toHaveBeenCalledExactlyOnceWith(
+      clips('rule-color'),
+      expect.any(Function),
+    );
 
     // Le temps repart de zéro, et une seconde victoire s'enregistre.
     advance(4000);
@@ -1959,6 +2379,89 @@ describe('Fin de partie', () => {
       moves: 3,
       timeSeconds: 5,
       isPerfect: true,
+    });
+  });
+
+  it('arrête l’image de la règle qui pulsait encore quand une nouvelle partie commence', () => {
+    renderBoard();
+    tapBearThenBox(SMALL_BLUE, RIGHT_BOX);
+    fireEvent.click(getBox(LEFT_BOX));
+    tapBearThenBox(BIG_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+    advance(END_SCREEN_DELAY_MS);
+    expect(getRulePicture()).toHaveAttribute('data-pulsing', 'true');
+
+    fireEvent.click(within(getDialog()).getByRole('button', { name: 'Rejouer' }));
+
+    expect(getRulePicture()).not.toHaveAttribute('data-pulsing');
+  });
+
+  describe('garde : la récompense se pose avant que les boutons répondent', () => {
+    let removeGuard: () => void;
+
+    beforeEach(() => {
+      removeGuard = installActivationGuard();
+    });
+
+    afterEach(() => {
+      removeGuard();
+    });
+
+    it('ignore un tap pendant 800 ms, puis l’accepte', () => {
+      const controls = renderBoard();
+      advance(VIEW_CHANGE_GUARD_MS);
+      winPerfectly();
+      advance(END_SCREEN_DELAY_MS);
+      const next = within(getDialog()).getByRole('button', { name: 'Étoile suivante' });
+
+      advance(300);
+      fireEvent.click(next);
+      expect(controls.playLevel).not.toHaveBeenCalled();
+
+      // Au-delà de la garde ordinaire d'une modale (600 ms), pas encore de celle d'un écran de fin.
+      advance(400);
+      fireEvent.click(next);
+      expect(controls.playLevel).not.toHaveBeenCalled();
+
+      advance(END_SCREEN_GUARD_MS - 700);
+      fireEvent.click(next);
+      expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('bs-002');
+    });
+
+    it('ignore OK à la télécommande pendant 800 ms, mais pas les flèches', () => {
+      forceTvMode();
+      const controls = renderBoard();
+      press('ArrowLeft');
+      press('ArrowLeft');
+      press('ArrowRight');
+      advance(END_SCREEN_DELAY_MS);
+
+      advance(300);
+      expect(press('Enter')).toBe(true);
+      advance(400);
+      expect(press('Enter')).toBe(true);
+      expect(controls.playLevel).not.toHaveBeenCalled();
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+      press('ArrowRight');
+      expect(within(getDialog()).getByRole('button', { name: 'Rejouer' })).toHaveFocus();
+      press('ArrowLeft');
+
+      advance(END_SCREEN_GUARD_MS - 700);
+      expect(press('Enter')).toBe(true);
+      expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('bs-002');
+    });
+
+    it('laisse Retour répondre tout de suite', () => {
+      forceTvMode();
+      const controls = renderBoard();
+      press('ArrowLeft');
+      press('ArrowLeft');
+      press('ArrowRight');
+      advance(END_SCREEN_DELAY_MS);
+
+      expect(press('Backspace')).toBe(true);
+      expect(controls.exitToMap).toHaveBeenCalledOnce();
     });
   });
 
@@ -2099,6 +2602,30 @@ describe('Geste de la première étoile', () => {
   });
 });
 
+describe('Mise en page (vérifiée dans un vrai navigateur ; jsdom ne lit que les classes)', () => {
+  it('réserve toujours la place des ours : les boîtes ne bougent pas quand le dernier s’en va', () => {
+    renderBoard();
+
+    expect(getReserve()).toHaveClass('min-h-(--bear-slot)');
+    tapBearThenBox(SMALL_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+
+    expect(getBears()).toHaveLength(0);
+    expect(getReserve()).toHaveClass('min-h-(--bear-slot)');
+  });
+
+  it('garde les ours rangés sur la face de la boîte : trois de front dans la petite', () => {
+    renderBoard();
+    tapBearThenBox(SMALL_BLUE, LEFT_BOX);
+    tapBearThenBox(BIG_YELLOW, RIGHT_BOX);
+    const layerOf = (name: string) => getPlacedBears(getBox(name))[0]?.parentElement;
+
+    expect(layerOf(LEFT_BOX)).toHaveClass('inset-x-[19%]');
+    expect(layerOf(RIGHT_BOX)).toHaveClass('inset-x-[10%]');
+  });
+});
+
 describe('Humeur de la mascotte', () => {
   it('parle au moins 2 s même son coupé, puis se repose', async () => {
     renderBoard();
@@ -2120,6 +2647,30 @@ describe('Humeur de la mascotte', () => {
     expect(getMascot()).toHaveAttribute('data-mood', 'talking');
 
     await voice.resolve();
+    expect(getMascot()).toHaveAttribute('data-mood', 'idle');
+  });
+
+  it('mime aussi la voix retenue jusqu’au premier geste, quand elle part enfin', async () => {
+    const late = deferred();
+    audio.playClips.mockImplementationOnce(
+      (_paths: readonly string[], onDeferredStart?: (voice: Promise<void>) => void) => {
+        // Navigateur qui bloque le son : la promesse est résolue aussitôt, la voix part plus tard.
+        setTimeout(() => {
+          onDeferredStart?.(late.promise);
+        }, MIN_MIME_MS * 2);
+        return Promise.resolve();
+      },
+    );
+    renderBoard();
+    await advanceAsync(MIN_MIME_MS);
+    expect(getMascot()).toHaveAttribute('data-mood', 'idle');
+
+    await advanceAsync(MIN_MIME_MS);
+    expect(getMascot()).toHaveAttribute('data-mood', 'talking');
+    await advanceAsync(MIN_MIME_MS * 3);
+    expect(getMascot()).toHaveAttribute('data-mood', 'talking');
+
+    await late.resolve();
     expect(getMascot()).toHaveAttribute('data-mood', 'idle');
   });
 

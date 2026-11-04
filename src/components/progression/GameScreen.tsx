@@ -13,10 +13,10 @@ import {
   type LevelVictoryParams,
 } from '@/core/progression';
 import { useMiaStorage } from '@/core/storage';
-import type { GameId } from '@/types/mia';
+import type { GameId, UserProfile } from '@/types/mia';
 import { Hourglass } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
-import { Fragment, Suspense, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, Suspense, use, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { LEVEL_SEARCH_PARAM, useGameNavigation } from './routes';
 import { StarMapScreen } from './StarMapScreen';
 import { WaitingScreen } from './WaitingScreen';
@@ -32,8 +32,21 @@ export interface LevelControls<TConfig = unknown> {
   playLevel: (levelId: string) => void;
   /** Retour à la Carte des Étoiles (bouton « Carte des Étoiles », Retour) */
   exitToMap: () => void;
-  /** Enregistre la victoire du niveau affiché dans le profil actif (étoile, couronne, scores) */
+  /** Enregistre la victoire du niveau affiché dans le profil qui l'a lancé (étoile, couronne, scores) */
   recordVictory: (result: LevelResult) => Promise<void>;
+}
+
+/** Profil qui joue le niveau monté : celui qui l'a lancé, même si un autre onglet change de joueur. */
+const LevelPlayerContext = createContext<UserProfile | null>(null);
+
+/**
+ * Profil qui joue le niveau, pour ses réglages de jeu (FEAT-19) : celui que `GameScreen` a retenu au
+ * lancement, comme l'étoile qu'il gagnera ; hors de `GameScreen`, le profil actif.
+ */
+export function useLevelPlayer(): UserProfile | null {
+  const player = use(LevelPlayerContext);
+  const { activeProfile } = useMiaStorage();
+  return player ?? activeProfile;
 }
 
 export interface GameScreenProps<TConfig = unknown> {
@@ -50,7 +63,8 @@ export interface GameScreenProps<TConfig = unknown> {
 /**
  * Page d'un jeu : Carte des Étoiles, ou niveau lancé désigné par `?level=<definition.id>`
  * (identifiant stable : les numéros d'étoile changent quand des niveaux sont publiés). Un niveau
- * inconnu ou verrouillé affiche la carte. Le choix du joueur est imposé sans profil actif.
+ * inconnu ou verrouillé affiche la carte. Le choix du joueur est imposé sans profil actif. Un niveau
+ * lancé appartient au profil actif à son montage, même si le profil actif change ensuite.
  */
 export function GameScreen<TConfig = unknown>(props: GameScreenProps<TConfig>) {
   // `useSearchParams` : au pré-rendu statique, la page s'arrête à cette limite (écran d'attente).
@@ -61,16 +75,30 @@ export function GameScreen<TConfig = unknown>(props: GameScreenProps<TConfig>) {
   );
 }
 
+/** Niveau en cours et profil actif à son montage : le joueur de la partie. */
+interface LevelRun {
+  levelId: string;
+  profileId: string;
+}
+
 function GameScreenContent<TConfig>({ gameId, catalog, renderLevel }: GameScreenProps<TConfig>) {
   const game = GAME_REGISTRY[gameId];
   const { state, isLoaded, activeProfile, updateState } = useMiaStorage();
   const levelId = useSearchParams().get(LEVEL_SEARCH_PARAM);
   const navigation = useGameNavigation();
+  // Un autre onglet peut changer le profil actif en pleine partie : elle reste au profil qui l'a
+  // lancée tant qu'il existe (son étoile, sa progression, ce niveau qui reste débloqué pour lui).
+  const [run, setRun] = useState<LevelRun | null>(null);
+  const runProfile =
+    activeProfile && run?.levelId === levelId
+      ? state.profiles.find((profile) => profile.id === run.profileId)
+      : undefined;
+  const player = runProfile ?? activeProfile;
   // Le registre type ses catalogues en `unknown` : sans catalogue fourni, `TConfig` vaut `unknown`.
   const levels = catalog ?? (game.catalog as readonly BaseLevelDefinition<TConfig>[]);
   const summary = useMemo(
-    () => getGameProgressSummary(gameId, levels, activeProfile),
-    [gameId, levels, activeProfile],
+    () => getGameProgressSummary(gameId, levels, player),
+    [gameId, levels, player],
   );
   const requested =
     levelId === null
@@ -79,6 +107,13 @@ function GameScreenContent<TConfig>({ gameId, catalog, renderLevel }: GameScreen
   const level = requested?.isUnlocked ? requested : null;
   const isUnplayableRequest = levelId !== null && level === null;
   const hasActiveProfile = activeProfile !== null;
+
+  // Montage d'un niveau, sortie, ou joueur disparu : état ajusté pendant le rendu, sans effet.
+  const currentRun =
+    level && player ? { levelId: level.definition.id, profileId: player.id } : null;
+  if (currentRun?.levelId !== run?.levelId || currentRun?.profileId !== run?.profileId) {
+    setRun(currentRun);
+  }
 
   // Niveau inconnu ou verrouillé (adresse périmée ou modifiée) : la carte s'affiche et l'adresse
   // est nettoyée, sinon le niveau s'ouvrirait de lui-même une fois débloqué. Avec un profil actif
@@ -91,7 +126,7 @@ function GameScreenContent<TConfig>({ gameId, catalog, renderLevel }: GameScreen
   if (!isLoaded || state.profiles.length === 0) {
     // Sans profil, `ProfileGate` crée « Joueur 1 » : attendre plutôt que d'afficher une carte vide.
     screen = <WaitingScreen title={game.title} />;
-  } else if (level && hasActiveProfile) {
+  } else if (level && player) {
     // Avec un profil actif seulement : un plateau jouerait, et parlerait, derrière ce choix.
     const controls: LevelControls<TConfig> = {
       summary,
@@ -99,17 +134,25 @@ function GameScreenContent<TConfig>({ gameId, catalog, renderLevel }: GameScreen
       exitToMap: navigation.exitToMap,
       recordVictory: (result) =>
         updateState((prev) =>
-          recordLevelVictory(prev, { ...result, gameId, levelId: level.definition.id }),
+          recordLevelVictory(
+            prev,
+            { ...result, gameId, levelId: level.definition.id },
+            { profileId: player.id },
+          ),
         ),
     };
     screen = (
-      <Fragment key={level.definition.id}>
-        {renderLevel ? (
-          renderLevel(level, controls)
-        ) : (
-          <LevelPlaceholder gameTitle={game.title} level={level} onExit={navigation.exitToMap} />
-        )}
-      </Fragment>
+      // Joueur disparu en pleine partie : celle du suivant repart de zéro.
+      // `contents` : sans boîte, seule compte la règle `touch-action: none` de `data-touch-lock`.
+      <LevelPlayerContext key={`${player.id}/${level.definition.id}`} value={player}>
+        <div data-touch-lock className="contents">
+          {renderLevel ? (
+            renderLevel(level, controls)
+          ) : (
+            <LevelPlaceholder gameTitle={game.title} level={level} onExit={navigation.exitToMap} />
+          )}
+        </div>
+      </LevelPlayerContext>
     );
   } else {
     screen = (

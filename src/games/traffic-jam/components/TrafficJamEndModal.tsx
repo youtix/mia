@@ -3,7 +3,7 @@
 // Module direct, pas le barrel : le JS de la page d'un jeu se limite à ce qu'elle affiche (FEAT-08).
 import { formatMoves } from '@/components/progression/labels';
 import { FocusableButton, ModalDialog } from '@/components/ui';
-import { useGridNavigation } from '@/core/navigation';
+import { END_SCREEN_GUARD_MS, useGridNavigation } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import { ArrowRight, Crown, MapIcon, RotateCcw } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -35,7 +35,8 @@ export interface TrafficJamEndModalProps {
 /**
  * Fin de niveau, choix imposé (ni ✕, ni fond, ni Échap : Retour mène à la Carte des Étoiles) :
  * « Étoile Suivante » (pré-focalisée), « Rejouer », « Carte des Étoiles ». Modèle : la modale de
- * fin de Memory (FEAT-10).
+ * fin de Memory (FEAT-10). Boutons inactifs à l'ouverture : OK arrête aussi le véhicule, celui qui
+ * suit le coup gagnant sauterait sinon ce résumé.
  */
 export function TrafficJamEndModal({
   isOpen,
@@ -81,6 +82,7 @@ export function TrafficJamEndModal({
       isOpen={isOpen && result !== null}
       title={`Étoile #${String(starNumber)} gagnée !`}
       subtitle={subtitle}
+      inputGuardMs={END_SCREEN_GUARD_MS}
     >
       {result ? (
         <>

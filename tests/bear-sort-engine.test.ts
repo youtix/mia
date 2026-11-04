@@ -13,6 +13,7 @@ import {
   isBearForbidden,
   isConflictBear,
   isPerfectWin,
+  MAX_RESERVE_BEARS,
 } from '@/games/bear-sort/engine';
 import type {
   Bear,
@@ -403,6 +404,25 @@ describe('getBearSortConfigErrors', () => {
     ]);
   });
 
+  it('refuse plus d’ours dans la réserve que n’en tient une rangée, ours restés compris', () => {
+    const counts = (count: number): BearCounts => ({
+      'blue-small': count,
+      'yellow-big': count,
+    });
+
+    expect(MAX_RESERVE_BEARS).toBe(10);
+    expect(getBearSortConfigErrors(level(phase(BY_COLOR, counts(5))))).toEqual([]);
+    expect(getBearSortConfigErrors(level(phase(BY_COLOR, counts(6))))).toEqual([
+      'phase 1 : 12 ours dans la réserve (10 au plus, sur une rangée en paysage)',
+    ]);
+    // 4 ours restés de la phase 1, 8 ajoutés : c'est la réserve qui compte, pas la phase.
+    expect(
+      getBearSortConfigErrors(
+        level(phase(BY_COLOR, counts(4), 4), phase(BY_SIZE, { 'blue-big': 4, 'yellow-small': 4 })),
+      ),
+    ).toEqual(['phase 2 : 12 ours dans la réserve (10 au plus, sur une rangée en paysage)']);
+  });
+
   it('liste les boîtes, puis chaque phase dans l’ordre, en nommant la phase', () => {
     const config: BearSortLevelConfig = {
       zones: [SMALL_BLUE, SMALL_YELLOW],
@@ -493,7 +513,7 @@ describe('createBearSortGame', () => {
 
   it('mélange la réserve avec le rng injecté, de façon reproductible', () => {
     const config = level(
-      phase(BY_COLOR, { 'blue-small': 4, 'blue-big': 4, 'yellow-small': 4, 'yellow-big': 4 }),
+      phase(BY_COLOR, { 'blue-small': 3, 'blue-big': 3, 'yellow-small': 2, 'yellow-big': 2 }),
     );
     const sorted = createBearSortGame(config, FIRST);
     const shuffled = createBearSortGame(config, seeded(42));
@@ -615,7 +635,7 @@ describe('dropBear', () => {
       moves: 1,
       mistakes: 1,
       errorStreak: 1,
-      lastBounce: { bearUid: '0-0', zoneId: 'right', kind: 'slip' },
+      lastBounce: { bearUid: '0-0', kind: 'slip' },
     });
   });
 
@@ -628,7 +648,7 @@ describe('dropBear', () => {
       moves: 2,
       mistakes: 2,
       errorStreak: 2,
-      lastBounce: { bearUid: '0-3', zoneId: 'left', kind: 'slip' },
+      lastBounce: { bearUid: '0-3', kind: 'slip' },
     });
   });
 
@@ -704,7 +724,6 @@ describe('Nature des rebonds', () => {
     expect(game.rule).toEqual(BY_SIZE);
     expect(drop(game, 'blue-big', 'left').lastBounce).toEqual({
       bearUid: bearOf(game, 'blue-big').uid,
-      zoneId: 'left',
       kind: 'old-rule',
     });
     expect(drop(game, 'yellow-small', 'right').lastBounce?.kind).toBe('old-rule');
@@ -740,7 +759,6 @@ describe('Nature des rebonds', () => {
 
     expect(drop(alone, 'blue-small', 'open').lastBounce).toEqual({
       bearUid: bearOf(alone, 'blue-small').uid,
-      zoneId: 'open',
       kind: 'forbidden',
     });
     expect(afterSort.previousRule).toEqual(BY_COLOR);
@@ -881,7 +899,7 @@ describe('Enchaînement des phases', () => {
     const stopped: BearSortState = {
       ...finishPhase(createBearSortGame(TWO_PHASES, FIRST)),
       errorStreak: 4,
-      lastBounce: { bearUid: '0-3', zoneId: 'left', kind: 'slip' },
+      lastBounce: { bearUid: '0-3', kind: 'slip' },
     };
 
     expect(continueAfterStop(stopped, FIRST)).toMatchObject({ errorStreak: 0, lastBounce: null });

@@ -58,6 +58,16 @@ export function createPrecacheEntries(
     .sort(compareByUrl);
 }
 
+/**
+ * Ce SHA-256 est-il celui du contenu annoncé par la révision (SHA-256 tronqué de `scripts/build-sw.ts`) ?
+ * Une entrée sans révision ne correspond jamais : rien ne prouve alors que sa copie est la bonne.
+ */
+export function matchesRevision(digest: ArrayBuffer, revision: string): boolean {
+  if (revision === '') return false;
+  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0'));
+  return hex.join('').startsWith(revision);
+}
+
 /** Nom du cache versionné : CACHE_PREFIX + empreinte de l'ensemble des (url, revision). */
 export function getCacheName(entries: PrecacheEntry[], hash: (text: string) => string): string {
   const manifest = [...entries]

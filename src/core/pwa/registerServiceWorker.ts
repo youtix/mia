@@ -1,6 +1,9 @@
 import { CACHE_PREFIX } from '@/core/pwa/precache';
 import { Capacitor } from '@capacitor/core';
 
+/** Paramètre d'URL du script inscrit par une réparation (`repairApp`) : `sw.js?repair=…`. */
+export const REPAIR_SCRIPT_PARAM = 'repair';
+
 export interface ServiceWorkerEnvironment {
   /** `process.env.NODE_ENV` : le cache casserait le rechargement à chaud de `next dev`. */
   nodeEnv: string | undefined;
@@ -64,6 +67,8 @@ export async function unregisterStaleServiceWorkers(): Promise<void> {
 /**
  * Enregistre `${basePath}/sw.js` avec le scope `${basePath}/` (GitHub Pages sert Mia sous /mia/).
  * `NEXT_PUBLIC_BASE_PATH` est lu à l'appel, pas au chargement du module, pour rester testable.
+ * Une inscription laissée par une réparation est gardée telle quelle : inscrire le même script sous
+ * son URL normale lancerait une installation, proposée ensuite comme une nouvelle version.
  * Renvoie null si la garde refuse ou si l'enregistrement échoue : l'erreur est journalisée
  * (console.warn), jamais propagée à l'interface, Mia reste utilisable en ligne.
  * Hors production dans un navigateur (`next dev`), désinscrit d'abord les service workers laissés
@@ -77,8 +82,14 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
   }
 
   const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? '';
+  const script = `${basePath}/sw.js`;
+  const scope = `${basePath}/`;
   try {
-    return await navigator.serviceWorker.register(`${basePath}/sw.js`, { scope: `${basePath}/` });
+    const current = await navigator.serviceWorker.getRegistration(scope);
+    const newest = current?.installing ?? current?.waiting ?? current?.active;
+    const repairUrl = new URL(`${script}?${REPAIR_SCRIPT_PARAM}=`, window.location.href).href;
+    if (current && newest?.scriptURL.startsWith(repairUrl)) return current;
+    return await navigator.serviceWorker.register(script, { scope });
   } catch (error) {
     console.warn('Service worker non enregistré : Mia reste utilisable en ligne.', error);
     return null;

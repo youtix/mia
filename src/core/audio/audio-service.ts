@@ -23,7 +23,12 @@ const EFFECTS: Readonly<Record<SoundEffect, readonly EffectNote[]>> = {
     { type: 'sine', frequency: 659, start: 0, duration: 0.12 },
     { type: 'sine', frequency: 880, start: 0.09, duration: 0.2 },
   ],
-  bounce: [{ type: 'sine', frequency: 300, endFrequency: 170, start: 0, duration: 0.24 }],
+  // Le grave porte le rebond sur un téléviseur ou un casque ; l'octave, sur un haut-parleur de
+  // téléphone, qui ne rend presque rien sous 400 Hz.
+  bounce: [
+    { type: 'sine', frequency: 300, endFrequency: 170, start: 0, duration: 0.24 },
+    { type: 'sine', frequency: 600, endFrequency: 340, start: 0, duration: 0.24 },
+  ],
   stop: [
     { type: 'triangle', frequency: 523, start: 0, duration: 0.18 },
     { type: 'triangle', frequency: 392, start: 0.2, duration: 0.3 },
@@ -48,6 +53,13 @@ const RESUME_TIMEOUT_MS = 150;
 
 /** Filet de sécurité d'une fin de clip : certains WebView perdent l'évènement `ended`. */
 const CLIP_END_MARGIN_MS = 500;
+
+/**
+ * Sortie audio qui vient de s'ouvrir (contexte créé ou repris) : un téléviseur (HDMI) ou un casque
+ * Bluetooth peut mettre un instant à la rouvrir, et couper les premiers mots. La voix ne part donc
+ * qu'à ce délai du réveil.
+ */
+const WAKE_LEAD_SECONDS = 0.3;
 
 /** Clip toujours pas chargé après ce délai : il est sauté, le jeu n'attend pas un réseau mort. */
 const CLIP_LOAD_TIMEOUT_MS = 4000;
@@ -98,7 +110,20 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function playEffectNotes(context: AudioContext, notes: readonly EffectNote[]): void {
+/** Arrête une source tout de suite, y compris une note dont le début est encore à venir. */
+function stopSource(source: AudioScheduledSourceNode): void {
+  try {
+    source.stop();
+  } catch {
+    // Déjà terminé : rien à arrêter.
+  }
+}
+
+function playEffectNotes(
+  context: AudioContext,
+  notes: readonly EffectNote[],
+  playing: Set<OscillatorNode>,
+): void {
   const now = context.currentTime;
   for (const note of notes) {
     const start = now + note.start;
@@ -117,7 +142,17 @@ function playEffectNotes(context: AudioContext, notes: readonly EffectNote[]): v
     gain.connect(context.destination);
     oscillator.start(start);
     oscillator.stop(end);
+    playing.add(oscillator);
+    oscillator.onended = () => {
+      playing.delete(oscillator);
+    };
   }
+}
+
+/** Séquence retenue jusqu'au premier geste, et qui l'attend pour savoir quand elle part enfin. */
+interface PendingSequence {
+  paths: readonly string[];
+  onDeferredStart?: (voice: Promise<void>) => void;
 }
 
 export function createAudioService({
@@ -131,9 +166,13 @@ export function createAudioService({
   /** Interrompt le clip en cours de lecture, ou l'attente de son chargement. */
   let stopCurrentClip: (() => void) | null = null;
   /** Séquence bloquée par le navigateur : elle part au premier geste, si rien ne l'a remplacée. */
-  let pending: readonly string[] | null = null;
-  /** Son coupé après coup : `state` peut encore dire `running`, le temps que le navigateur suspende. */
+  let pending: PendingSequence | null = null;
+  /** `suspend()` demandé : `state` peut encore dire `running`, le temps que le navigateur suspende. */
   let isSuspendRequested = false;
+  /** Dernier réveil de la sortie audio (`performance.now()`). */
+  let wokeAt = Number.NEGATIVE_INFINITY;
+  /** Notes d'effet pas encore finies, certaines encore à venir. */
+  const effectNotes = new Set<OscillatorNode>();
   const buffers = new Map<string, Promise<AudioBuffer | null>>();
 
   function stopClips(): void {
@@ -142,28 +181,54 @@ export function createAudioService({
     stopCurrentClip?.();
   }
 
+  function isAwake(audio: AudioContext): boolean {
+    return isRunning(audio) && !isSuspendRequested;
+  }
+
+  function wakeContext(audio: AudioContext): Promise<void> {
+    isSuspendRequested = false;
+    return audio.resume().catch(ignoreRejection);
+  }
+
+  /**
+   * Libère la sortie audio (batterie, HDMI, Bluetooth). Les effets s'arrêtent d'abord : `suspend()`
+   * figerait leurs notes, dont la fin partirait à la reprise, sur le début de la voix suivante.
+   */
+  function releaseContext(audio: AudioContext): void {
+    for (const note of effectNotes) stopSource(note);
+    effectNotes.clear();
+    isSuspendRequested = true;
+    void audio.suspend().catch(ignoreRejection);
+  }
+
   function listenToPage(audio: AudioContext): void {
     const playPending = () => {
       const waiting = pending;
-      if (waiting && isRunning(audio)) void playClips(waiting);
+      if (!waiting || !isRunning(audio)) return;
+      const { paths, onDeferredStart } = waiting;
+      const voice = playClips(paths, onDeferredStart);
+      onDeferredStart?.(voice);
     };
     const unlock = () => {
-      if (!isEnabled || isRunning(audio)) return;
-      void audio.resume().then(playPending, ignoreRejection);
+      if (!isEnabled || isAwake(audio)) return;
+      void wakeContext(audio);
     };
     for (const type of UNLOCK_EVENTS) {
       window.addEventListener(type, unlock, { capture: true, passive: true });
     }
-    // Le contexte peut démarrer après le délai laissé à `resume()`, sans geste de plus à attendre.
-    audio.onstatechange = playPending;
+    // Après un geste, ou tout seul après le délai laissé à `resume()` : la voix en attente part alors.
+    audio.onstatechange = () => {
+      if (audio.state === 'running') wokeAt = performance.now();
+      playPending();
+    };
     // Application en arrière-plan : la voix se tait et sa promesse est résolue, le jeu n'attend pas
     // un clip que personne n'entend (le système peut aussi suspendre le contexte sans `ended`).
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         stopClips();
-        void audio.suspend().catch(ignoreRejection);
+        releaseContext(audio);
       } else if (isEnabled) {
-        void audio.resume().catch(ignoreRejection);
+        void wakeContext(audio);
       }
     });
   }
@@ -171,7 +236,10 @@ export function createAudioService({
   function getContext(): AudioContext | null {
     if (context) return context;
     context = createContext();
-    if (context) listenToPage(context);
+    if (context) {
+      wokeAt = performance.now();
+      listenToPage(context);
+    }
     return context;
   }
 
@@ -180,11 +248,18 @@ export function createAudioService({
     if (cached) return cached;
     const loading = fetchClip(resolveAudioUrl(path))
       .then((data) => audio.decodeAudioData(data))
-      .catch(() => {
-        // Réessayé au prochain appel : le réseau peut revenir avant que le cache ne soit prêt.
-        buffers.delete(path);
-        return null;
-      });
+      .then(
+        (buffer) => {
+          // Y compris après le délai de `waitForBuffer`, qui l'avait retiré du cache.
+          buffers.set(path, Promise.resolve(buffer));
+          return buffer;
+        },
+        () => {
+          // Réessayé au prochain appel : le réseau peut revenir avant que le cache ne soit prêt.
+          buffers.delete(path);
+          return null;
+        },
+      );
     buffers.set(path, loading);
     return loading;
   }
@@ -192,6 +267,7 @@ export function createAudioService({
   /**
    * Attend un clip. Ni un arrêt, ni un réseau qui ne répond plus n'attendent son chargement, qui
    * finira quand même dans le cache : un jeu peut suspendre sa suite à la fin de la voix (panneau STOP).
+   * Passé le délai, le prochain appel réessaie aussi : ce chargement ne répondra peut-être jamais.
    */
   function waitForBuffer(audio: AudioContext, path: string): Promise<AudioBuffer | null> {
     return new Promise((resolve) => {
@@ -199,7 +275,10 @@ export function createAudioService({
         clearTimeout(timer);
         resolve(buffer);
       };
-      const timer = setTimeout(finish, CLIP_LOAD_TIMEOUT_MS, null);
+      const timer = setTimeout(() => {
+        buffers.delete(path);
+        finish(null);
+      }, CLIP_LOAD_TIMEOUT_MS);
       stopCurrentClip = () => {
         finish(null);
       };
@@ -208,6 +287,7 @@ export function createAudioService({
   }
 
   function playBuffer(audio: AudioContext, buffer: AudioBuffer): Promise<void> {
+    const leadSeconds = Math.max(0, WAKE_LEAD_SECONDS - (performance.now() - wokeAt) / 1000);
     return new Promise((resolve) => {
       const source = audio.createBufferSource();
       const finish = () => {
@@ -216,31 +296,35 @@ export function createAudioService({
         stopCurrentClip = null;
         resolve();
       };
-      const safetyTimer = setTimeout(finish, buffer.duration * 1000 + CLIP_END_MARGIN_MS);
+      const stop = () => {
+        stopSource(source);
+        finish();
+      };
+      // La source s'arrête aussi : si le système a suspendu le contexte, `ended` ne viendra pas et
+      // elle repartirait à la reprise, par-dessus le clip suivant.
+      const safetyTimer = setTimeout(
+        stop,
+        (buffer.duration + leadSeconds) * 1000 + CLIP_END_MARGIN_MS,
+      );
       source.buffer = buffer;
       source.connect(audio.destination);
       source.onended = finish;
-      stopCurrentClip = () => {
-        source.onended = null;
-        try {
-          source.stop();
-        } catch {
-          // Déjà terminé : rien à arrêter.
-        }
-        finish();
-      };
-      source.start();
+      stopCurrentClip = stop;
+      if (leadSeconds > 0) source.start(audio.currentTime + leadSeconds);
+      else source.start();
     });
   }
 
   async function ensureRunning(audio: AudioContext): Promise<boolean> {
-    if (isRunning(audio) && !isSuspendRequested) return true;
-    isSuspendRequested = false;
-    await Promise.race([audio.resume().catch(ignoreRejection), delay(RESUME_TIMEOUT_MS)]);
+    if (isAwake(audio)) return true;
+    await Promise.race([wakeContext(audio), delay(RESUME_TIMEOUT_MS)]);
     return isRunning(audio);
   }
 
-  async function playClips(paths: readonly string[]): Promise<void> {
+  async function playClips(
+    paths: readonly string[],
+    onDeferredStart?: PendingSequence['onDeferredStart'],
+  ): Promise<void> {
     stopClips();
     if (!isEnabled || paths.length === 0) return;
     const audio = getContext();
@@ -251,7 +335,7 @@ export function createAudioService({
     const isAudible = await ensureRunning(audio);
     if (current !== sequence) return;
     if (!isAudible) {
-      pending = paths;
+      pending = { paths, onDeferredStart };
       return;
     }
     for (const path of paths) {
@@ -267,11 +351,8 @@ export function createAudioService({
       isEnabled = enabled;
       if (enabled) return;
       stopClips();
-      // Rien ne joue : la sortie audio est libérée (batterie, HDMI, Bluetooth) jusqu'à la voix suivante.
-      if (context) {
-        isSuspendRequested = true;
-        void context.suspend().catch(ignoreRejection);
-      }
+      // Rien ne joue : la sortie audio reste libérée jusqu'à la voix suivante.
+      if (context) releaseContext(context);
     },
     preloadClips: async (paths) => {
       if (!isEnabled) return;
@@ -282,9 +363,9 @@ export function createAudioService({
     playClips,
     stopClips,
     playEffect: (effect) => {
-      if (!isEnabled) return;
+      if (!isEnabled || document.hidden) return;
       const audio = getContext();
-      if (audio && isRunning(audio)) playEffectNotes(audio, EFFECTS[effect]);
+      if (audio && isAwake(audio)) playEffectNotes(audio, EFFECTS[effect], effectNotes);
     },
   };
 }

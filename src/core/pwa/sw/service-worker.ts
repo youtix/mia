@@ -9,6 +9,7 @@ import {
   NOT_FOUND_KEY,
   RESTORE_PRECACHE_MESSAGE,
   SKIP_WAITING_MESSAGE,
+  matchesRevision,
   resolveAssetKey,
   resolveNavigationKey,
   type PrecacheEntry,
@@ -28,31 +29,87 @@ function toAbsoluteUrl(key: string): string {
   return new URL(key, self.registration.scope).href;
 }
 
+/**
+ * Copie déjà en cache au contenu identique à cette entrée, si l'empreinte de ses octets le prouve : un
+ * fichier abîmé ou périmé ne se transmet pas d'une version à l'autre. Une copie illisible est écartée.
+ */
+async function findIdenticalCopy(
+  entry: PrecacheEntry,
+  sources: Cache[],
+): Promise<Response | undefined> {
+  for (const source of sources) {
+    try {
+      const copy = await source.match(toAbsoluteUrl(entry.url));
+      if (!copy) continue;
+      const digest = await crypto.subtle.digest('SHA-256', await copy.clone().arrayBuffer());
+      if (matchesRevision(digest, entry.revision)) return copy;
+    } catch {
+      // Copie illisible : la source suivante, sinon le réseau.
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Télécharge une entrée et vérifie que ses octets sont ceux de ce build. cache: 'reload' contourne le
+ * cache HTTP (GitHub Pages sert avec max-age=600), pas le CDN : juste après une publication, un de ses
+ * nœuds peut encore servir l'ancienne page. Pré-cachée sous le nom de la nouvelle version, elle
+ * mélangerait les deux hors-ligne ; l'installation échoue plutôt, et la recherche suivante la retente.
+ * Une entrée sans révision (jamais produite par scripts/build-sw.ts) n'a rien à comparer.
+ */
+async function download(entry: PrecacheEntry): Promise<Response> {
+  const response = await fetch(new Request(toAbsoluteUrl(entry.url), { cache: 'reload' }));
+  if (!response.ok) throw new TypeError(`${entry.url} a répondu ${String(response.status)}`);
+  if (entry.revision !== '') {
+    const digest = await crypto.subtle.digest('SHA-256', await response.clone().arrayBuffer());
+    if (!matchesRevision(digest, entry.revision)) {
+      throw new Error(`${entry.url} ne correspond pas à cette version (CDN pas encore à jour)`);
+    }
+  }
+  return response;
+}
+
 async function precacheAll(): Promise<void> {
   const cache = await caches.open(CACHE_NAME);
-  // cache: 'reload' contourne le cache HTTP (GitHub Pages sert avec max-age=600) : sans cela, une
-  // ancienne page pourrait être pré-cachée avec les chunks de la nouvelle version.
-  await cache.addAll(
-    PRECACHE_ENTRIES.map((entry) => new Request(toAbsoluteUrl(entry.url), { cache: 'reload' })),
+  const names = await caches.keys();
+  const sources = await Promise.all(
+    names.filter((name) => name.startsWith(CACHE_PREFIX)).map((name) => caches.open(name)),
   );
-  // Une autre version activée pendant le téléchargement purge ce cache : `addAll` a rempli un objet
-  // orphelin, et ce worker attendrait ensuite sans rien pour répondre. Échouer le rend `redundant` ;
-  // la prochaine recherche le retélécharge.
+  // Une version change peu de fichiers : les autres (chunks hachés, polices, clips) sont recopiés
+  // plutôt que retéléchargés.
+  const copies = await Promise.all(
+    PRECACHE_ENTRIES.map(async (entry) => ({
+      entry,
+      copy: await findIdenticalCopy(entry, sources),
+    })),
+  );
+  // Rien n'est stocké avant que tout soit arrivé et vérifié : un échec ne laisse ainsi rien de neuf
+  // dans ce cache, et l'ancienne version reste en place.
+  const responses = await Promise.all(
+    copies.map(async ({ entry, copy }) => ({
+      url: toAbsoluteUrl(entry.url),
+      response: copy ?? (await download(entry)),
+    })),
+  );
+  await Promise.all(responses.map(({ url, response }) => cache.put(url, response)));
+  // Une autre version activée pendant le téléchargement purge ce cache : il a été rempli comme un
+  // objet orphelin, et ce worker attendrait ensuite sans rien pour répondre. Échouer le rend
+  // `redundant` ; la prochaine recherche le retélécharge.
   if (!(await caches.has(CACHE_NAME))) throw new Error('Pré-cache purgé pendant le téléchargement');
 }
 
 /**
- * Refait le pré-cache s'il a disparu. Sous Chromium, une réparation (FEAT-20) lancée avec un autre
- * onglet ouvert supprime le cache sans remplacer le worker : l'inscription survit à son client
- * restant, `register` la reprend, et aucune installation ne suit tant que `sw.js` ne change pas. Sans
- * cela, le hors-ligne resterait perdu jusqu'à la prochaine version. Le worker actif reprend ensuite
- * la main sur la page ; un worker en attente n'en a pas le droit (`InvalidStateError`).
+ * Refait le pré-cache s'il a disparu ou s'il est incomplet (éviction par le navigateur) : sans cela,
+ * le hors-ligne resterait perdu jusqu'à la prochaine version. Le worker actif reprend ensuite la main
+ * sur la page ; un worker en attente n'en a pas le droit, et `claim` le refuse (`InvalidStateError`).
+ * Ce refus est ignoré, plutôt que de comparer `self.serviceWorker` au worker actif : Firefox ne
+ * l'expose pas, et la comparaison y échouait toujours.
  */
 async function restorePrecache(): Promise<void> {
   const cache = await caches.open(CACHE_NAME);
-  if ((await cache.keys()).length > 0) return;
+  if ((await cache.keys()).length >= PRECACHE_ENTRIES.length) return;
   await precacheAll();
-  if (self.registration.active === self.serviceWorker) await self.clients.claim();
+  await self.clients.claim().catch(() => undefined);
 }
 
 /** Supprime les caches des versions précédentes : seule la version activée reste installée. */
@@ -65,9 +122,17 @@ async function purgeStaleCaches(): Promise<void> {
   );
 }
 
+/**
+ * Copie pré-cachée de `key`. Un stockage en erreur (disque plein, données de site corrompues ou
+ * bloquées) ne fait pas échouer la page : la requête passe alors par le réseau.
+ */
 async function fromCache(key: string): Promise<Response | undefined> {
-  const cache = await caches.open(CACHE_NAME);
-  return cache.match(toAbsoluteUrl(key));
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    return await cache.match(toAbsoluteUrl(key));
+  } catch {
+    return undefined;
+  }
 }
 
 /** Copie d'une réponse du cache (même corps, mêmes en-têtes), jamais marquée `redirected`. */
@@ -82,7 +147,7 @@ function copyResponse(
 /**
  * Réponse de navigation sans l'indicateur `redirected` (comme `cleanRedirect` de Workbox).
  * `serve` (`npm start`) et d'autres hébergeurs répondent 301 à `memory/index.html` → `memory/` :
- * `cache.addAll` suit la redirection et stocke une réponse marquée `redirected`, que le navigateur
+ * `fetch` suit la redirection, et le cache stocke une réponse marquée `redirected`, que le navigateur
  * transforme en erreur réseau quand elle répond à une navigation (mode de redirection `manual`).
  * GitHub Pages sert `index.html` en 200 : la réponse est alors rendue telle quelle.
  */

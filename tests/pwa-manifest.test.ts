@@ -63,6 +63,13 @@ describe('Manifeste PWA', () => {
     }
   });
 
+  it('a une identité propre à Mia, pas celle de toute l’origine partagée de GitHub Pages', () => {
+    // Spécification du manifeste : `id` se résout sur l'origine de `start_url`, pas sur son chemin.
+    const origin = 'https://youtix.github.io';
+
+    expect(new URL(manifest.id, origin).href).toBe(`${origin}/mia`);
+  });
+
   it('déclare des icônes qui existent toutes dans public/', () => {
     for (const icon of manifest.icons) {
       expect(existsSync(join(PUBLIC_DIR, icon.src)), icon.src).toBe(true);

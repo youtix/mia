@@ -858,6 +858,36 @@ describe('Carte des Étoiles', () => {
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
+  it('garde le message au-dessus de la barre de navigation du système (plein écran, Android 15+)', async () => {
+    await renderMemory(familySave());
+
+    const region = screen.getByRole('status');
+    expect(region.className).toContain(
+      'bottom-[calc(max(var(--safe-area-y),env(safe-area-inset-bottom))_+_1rem)]',
+    );
+    expect(region.className).toContain(
+      'tv:bottom-[calc(max(var(--safe-area-y),env(safe-area-inset-bottom))_+_4rem)]',
+    );
+  });
+
+  it('garde lisible le total d’un compteur couronné, sur son fond ambré', async () => {
+    await renderMemory(championSave());
+
+    const badge = within(screen.getByRole('banner')).getByRole('img', {
+      name: '12 étoiles sur 12, parfait',
+    });
+    const total = within(badge).getByText('/ 12');
+    expect(total).toHaveClass('text-amber-200');
+    expect(total).not.toHaveClass('text-slate-400');
+  });
+
+  it('pose le cadenas d’une étoile verrouillée à cheval sur le coin, hors de son numéro', async () => {
+    await renderMemory(familySave());
+
+    const lock = within(getTile(9)).getByText(', verrouillé').parentElement;
+    expect(lock).toHaveClass('absolute', '-top-2', '-right-2');
+  });
+
   it('donne le même message avec OK de la télécommande', async () => {
     await renderMemory(forceTvMode(familySave()));
     await waitFor(() => {
@@ -989,9 +1019,10 @@ describe('Niveau lancé', () => {
     const renderLevel = vi.fn((current: EnrichedLevelItem, controls: LevelControls) => (
       <TestBoard level={current} controls={controls} />
     ));
+    // L'Étoile #1 est débloquée même sans profil : seul le choix du joueur retient le plateau.
     await renderMemory(
       familySave({ activeProfileId: null }),
-      '/memory/?level=mem-005',
+      '/memory/?level=mem-001',
       renderLevel,
     );
 
@@ -1000,7 +1031,7 @@ describe('Niveau lancé', () => {
 
     fireEvent.click(within(dialog).getByRole('button', { name: /^Léo/ }));
     expect(
-      await screen.findByRole('heading', { name: 'Plateau de l’étoile #5' }),
+      await screen.findByRole('heading', { name: 'Plateau de l’étoile #1' }),
     ).toBeInTheDocument();
   });
 

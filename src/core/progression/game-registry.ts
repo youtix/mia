@@ -50,8 +50,8 @@ export const GAMES: readonly GameManifest[] = Object.values(GAME_REGISTRY);
 
 /**
  * Progression d'un profil sur tous les jeux (compteur du Hub et carte de chaque jeu). Seuls les
- * niveaux des catalogues comptent : sans niveau inconnu dans la sauvegarde, le total est égal à
- * `countProfileStars`. `games` est injectable (tests).
+ * niveaux des catalogues comptent : sans niveau ni jeu inconnus dans la sauvegarde, le total est
+ * égal à `countProfileStars`. `games` est injectable (tests).
  */
 export function getProfileProgressSummary(
   profile: UserProfile | null,

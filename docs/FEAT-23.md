@@ -27,9 +27,6 @@ L'interface est décrite par [FEAT-24](./FEAT-24.md), le catalogue par [FEAT-25]
 src/
 ├── types/
 │   └── mia.ts                         # GameId : ajout de 'bear-sort'
-├── core/
-│   └── storage/
-│       └── migrations.ts              # KNOWN_GAMES : la progression de 'bear-sort' est conservée au chargement
 └── games/
     └── bear-sort/
         ├── types.ts                   # Traits, règles, phases, configuration, état, rebonds, échelon d'indice
@@ -120,7 +117,7 @@ export interface BearSortState {
 }
 ```
 
-* `Bear` ajoute aux traits un `uid` stable dans la partie (`phase-rang`, par exemple `1-3`) : clé React et cible d'un dépôt. `BearSortZone` porte `id`, `traits` (`null` pour la boîte ouverte) et `bears` (rangés pendant la phase, dans l'ordre). `BearBounce` porte `bearUid`, `zoneId` et `kind`.
+* `Bear` ajoute aux traits un `uid` stable dans la partie (`phase-rang`, par exemple `1-3`) : clé React et cible d'un dépôt. `BearSortZone` porte `id`, `traits` (`null` pour la boîte ouverte) et `bears` (rangés pendant la phase, dans l'ordre). `BearBounce` porte `bearUid` et `kind`.
 * **Ours en conflit** (`isConflictBear(zones, bear)`) : sa couleur et sa taille l'envoient dans deux boîtes différentes. Avec une petite boîte bleue et une grande boîte jaune, ce sont le grand ours bleu et le petit ours jaune ; un ours sans conflit va dans la même boîte quelle que soit la règle. Seuls les ours en conflit exigent d'inhiber l'ancienne règle : c'est leur part qui règle la difficulté.
 * **Règle « sauf »** (`isBearForbidden(rule, bear)`) : un ours est interdit s'il porte **toutes** les caractéristiques de `forbidden`. Avec « sauf un petit ours bleu », le grand ours bleu et le petit ours jaune restent permis (les faux amis du dernier palier). Toujours faux pour une règle `sort`.
 
@@ -177,6 +174,7 @@ Après un changement, avec deux boîtes, presque toute erreur est une erreur d'a
 * **Règle `sort`** : les ours ajoutés remplissent les deux boîtes selon la caractéristique triée. Après une règle `sort`, la caractéristique change (« même règle que la phase précédente ») et au moins un ours ajouté est en conflit (« aucun ours en conflit après le changement de règle »).
 * **Règle `except`** : uniquement en dernière phase (« une règle « sauf » termine toujours l'étoile ») ; au moins un ours interdit et un ours permis parmi les ours ajoutés.
 * **`placements`** : `null` à la dernière phase ; sinon un entier ≥ 1 **strictement inférieur à la réserve au début de la phase** (ours ajoutés + ours restés de la précédente), pour que le STOP interrompe des ours qui attendent.
+* **Réserve** : au plus `MAX_RESERVE_BEARS` (10) ours au début de chaque phase, ours restés compris : ils tiennent sur une rangée en paysage et sur deux en portrait ([FEAT-24](./FEAT-24.md)) ; une rangée de plus prendrait sa place aux boîtes et à l'image de la règle.
 
 ---
 
@@ -196,7 +194,7 @@ Après un changement, avec deux boîtes, presque toute erreur est une erreur d'a
 - [x] `tests/bear-sort-engine.test.ts` couvre le dépôt, chaque nature de rebond, le STOP, les ours restés, la fin de phase d'une règle « sauf », la couronne, l'échelle d'indices et chaque règle de validation ; seuil de couverture de 90 % sur `src/games/bear-sort/*.ts`.
 - [x] Le moteur reste en TypeScript pur, sans React ni DOM, et aucune action ne modifie l'état reçu.
 - [x] Une étoile ne se perd jamais : aucun état `lost`, un rebond laisse l'ours dans la réserve.
-- [x] La sauvegarde conserve la progression de `bear-sort` (`GameId`, `KNOWN_GAMES`), sans montée de version du schéma ni nouveau champ.
+- [x] La sauvegarde conserve la progression de `bear-sort` (`GameId`), sans montée de version du schéma ni nouveau champ : elle garde celle de tout identifiant de jeu bien formé ([FEAT-05 §5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)).
 - [x] `npm run validate:all` (`format:check`, `lint`, `typecheck`, `validate:levels`, `test:coverage`, `build`) passe sans aucune erreur.
 - [x] Si un commit est créé, il respecte le format **Conventional Commits** (`feat(bear-sort): implement pure sorting game engine`).
 
@@ -218,6 +216,6 @@ Décisions prises avec le propriétaire au fil de trois séries de questions, av
 | **Validation** | `getBearSortConfigErrors` plutôt qu'une fonction booléenne : un message par anomalie, repris tel quel par `validateBearSortCatalog` ([FEAT-25](./FEAT-25.md)), comme `getMemoryConfigErrors` ([FEAT-09](./FEAT-09.md)). La réserve est suivie d'une phase à l'autre : `placements` est comparé à ce qui attend réellement. |
 | **Hasard** | Réserve mélangée à la création et à chaque STOP, par le `rng` injecté (partie reproductible en test). `uid` attribué avant le mélange : `phase-rang`, unique dans toute la partie. |
 | **Couverture** | Seuil de 90 % sur `src/games/bear-sort/*.ts` dans `vitest.config.ts` (moteur, catalogue, voix, libellés ; pas les composants de [FEAT-24](./FEAT-24.md)), comme Memory et Traffic Jam. |
-| **Tests** | `tests/bear-sort-engine.test.ts` (environnement `node`) : sortes d'ours, conflit, ours interdits et faux amis, chaque règle de `getBearSortConfigErrors` (réserve suivie d'une phase à l'autre, ordre des messages), création (réserve, ordre des boîtes, `rng` injecté et générateur défaillant, configuration invalide), `getTargetZoneId`, `dropBear` (dépôt, rebond, série de rebonds, cas ignorés, état reçu jamais modifié), nature des rebonds, enchaînement des phases (STOP, règle annoncée, ours restés, nouveau mélange, compteurs conservés), règle « sauf » (fin automatique, faux amis, jamais de STOP après), échelle d'indices, `getNextBearUid`, couronne, parties complètes à graine (aucun ours perdu). `tests/quality-setup.test.ts` fige le seuil de 90 % et le scope `bear-sort` ; `tests/progression-engine.test.ts`, le registre. |
-| **Périmètre** | TypeScript pur, sans React ni DOM ; barrel `index.ts`. Aucune montée de version du schéma de sauvegarde : `GameId` et `KNOWN_GAMES` gagnent `bear-sort`, une sauvegarde plus ancienne se charge sans changement. |
+| **Tests** | `tests/bear-sort-engine.test.ts` (environnement `node`) : sortes d'ours, conflit, ours interdits et faux amis, chaque règle de `getBearSortConfigErrors` (réserve suivie d'une phase à l'autre et plafonnée à 10 ours, ordre des messages), création (réserve, ordre des boîtes, `rng` injecté et générateur défaillant, configuration invalide), `getTargetZoneId`, `dropBear` (dépôt, rebond, série de rebonds, cas ignorés, état reçu jamais modifié), nature des rebonds, enchaînement des phases (STOP, règle annoncée, ours restés, nouveau mélange, compteurs conservés), règle « sauf » (fin automatique, faux amis, jamais de STOP après), échelle d'indices, `getNextBearUid`, couronne, parties complètes à graine (aucun ours perdu). `tests/quality-setup.test.ts` fige le seuil de 90 % et le scope `bear-sort` ; `tests/progression-engine.test.ts`, le registre. |
+| **Périmètre** | TypeScript pur, sans React ni DOM ; barrel `index.ts`. Aucune montée de version du schéma de sauvegarde : `GameId` gagne `bear-sort`, et aucune table de la sauvegarde n'est à compléter, puisqu'elle garde la progression de tout identifiant de jeu bien formé (minuscules et chiffres, mots séparés par un tiret) ; une sauvegarde plus ancienne se charge sans changement. La progression des joueurs vit sous `gamesProgress['bear-sort']` : **cet identifiant ne doit plus changer** ([FEAT-05 §5](./FEAT-05.md#5-décisions-dimplémentation-session-de-cadrage)). |
 | **Git** | Commit prévu à l'intégration : `feat(bear-sort): implement pure sorting game engine`. |

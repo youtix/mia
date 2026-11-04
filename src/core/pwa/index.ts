@@ -1,5 +1,6 @@
 export {
   FOREGROUND_CHECK_INTERVAL_MS,
+  REPAIR_SCRIPT_TIMEOUT_MS,
   appUpdate,
   createAppUpdateController,
   getAppVersion,
@@ -17,6 +18,7 @@ export {
   createPrecacheEntries,
   getCacheName,
   isPrecacheable,
+  matchesRevision,
   normalizePrecachePath,
   resolveAssetKey,
   resolveNavigationKey,

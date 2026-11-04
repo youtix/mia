@@ -36,7 +36,7 @@ export function SettingsGroup({ ref, title, description, children }: SettingsGro
 }
 
 export interface SettingsFeedbackMessage {
-  /** `success` : action réussie ; `info` : action en cours ; `error` : action refusée ou échouée */
+  /** `success` : action réussie ; `info` : action en cours ; `error` : action refusée, échouée ou réussie en partie */
   tone: 'success' | 'info' | 'error';
   text: string;
 }

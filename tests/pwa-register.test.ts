@@ -39,6 +39,9 @@ interface StaleRegistration {
 
 const getRegistrations = vi.fn<() => Promise<StaleRegistration[]>>();
 
+/** Inscription en place, s'il y en a une (par défaut, aucune). */
+const getRegistration = vi.fn<(scope?: string) => Promise<unknown>>();
+
 function staleRegistration(): StaleRegistration {
   return { unregister: vi.fn(() => Promise.resolve(true)) };
 }
@@ -47,7 +50,7 @@ function staleRegistration(): StaleRegistration {
 function stubServiceWorker(): void {
   Object.defineProperty(navigator, 'serviceWorker', {
     configurable: true,
-    value: { register, getRegistrations },
+    value: { register, getRegistrations, getRegistration },
   });
 }
 
@@ -196,6 +199,8 @@ describe('registerServiceWorker', () => {
     register.mockResolvedValue(registration);
     getRegistrations.mockReset();
     getRegistrations.mockResolvedValue([]);
+    getRegistration.mockReset();
+    getRegistration.mockResolvedValue(undefined);
     stubServiceWorker();
     vi.stubEnv('NODE_ENV', 'production');
   });
@@ -231,6 +236,43 @@ describe('registerServiceWorker', () => {
       ['/sw.js', { scope: '/' }],
       ['/mia/sw.js', { scope: '/mia/' }],
     ]);
+  });
+
+  it.each([
+    ['actif', 'active'],
+    ['en attente', 'waiting'],
+    ['en cours d’installation', 'installing'],
+  ])(
+    'garde l’inscription d’une réparation, son worker %s : aucune installation de plus',
+    async (_label, slot) => {
+      vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/mia');
+      const repaired = {
+        scope: new URL('/mia/', window.location.href).href,
+        [slot]: {
+          scriptURL: new URL('/mia/sw.js?repair=1730000000000', window.location.href).href,
+        },
+      };
+      getRegistration.mockResolvedValue(repaired);
+
+      await expect(registerServiceWorker()).resolves.toBe(repaired);
+
+      expect(getRegistration).toHaveBeenCalledExactlyOnceWith('/mia/');
+      expect(register).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['le worker en place a l’URL normale', '/mia/sw.js'],
+    ['l’inscription est celle d’une autre application', '/sw.js?repair=1'],
+    ['le script est celui d’une autre application', '/autre/mia/sw.js?repair=1'],
+  ])('enregistre comme d’habitude quand %s', async (_label, path) => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/mia');
+    const scriptURL = new URL(path, window.location.href).href;
+    getRegistration.mockResolvedValue({ active: { scriptURL } });
+
+    await expect(registerServiceWorker()).resolves.toBe(registration);
+
+    expect(register).toHaveBeenCalledExactlyOnceWith('/mia/sw.js', { scope: '/mia/' });
   });
 
   it('ne désinscrit rien en production', async () => {
@@ -357,6 +399,8 @@ describe('ServiceWorkerRegistrar', () => {
     stubServiceWorker();
     vi.stubEnv('NODE_ENV', 'production');
     vi.stubEnv('NEXT_PUBLIC_BASE_PATH', '/mia');
+    getRegistration.mockReset();
+    getRegistration.mockResolvedValue(undefined);
     start = vi.spyOn(appUpdate, 'start').mockImplementation(() => undefined);
   });
 
@@ -437,7 +481,7 @@ describe('ServiceWorkerRegistrar', () => {
       });
     });
 
-    it('ne démarre pas quand l’enregistrement échoue', async () => {
+    it('démarre sans inscription quand l’enregistrement échoue : le suivi le retentera', async () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       register.mockRejectedValue(new Error('SecurityError'));
       setReadyState('complete');
@@ -448,10 +492,10 @@ describe('ServiceWorkerRegistrar', () => {
       });
       await flushPromises();
 
-      expect(start).not.toHaveBeenCalled();
+      expect(start).toHaveBeenCalledExactlyOnceWith(null);
     });
 
-    it('ne démarre pas en développement', async () => {
+    it('sans inscription en développement : le suivi refuse de lui-même (pwa-update.test.ts)', async () => {
       vi.stubEnv('NODE_ENV', 'development');
       setReadyState('complete');
 
@@ -461,10 +505,10 @@ describe('ServiceWorkerRegistrar', () => {
       });
       await flushPromises();
 
-      expect(start).not.toHaveBeenCalled();
+      expect(start).toHaveBeenCalledExactlyOnceWith(null);
     });
 
-    it('ne démarre pas dans l’APK Capacitor', async () => {
+    it('sans inscription dans l’APK Capacitor : le suivi refuse de lui-même (pwa-update.test.ts)', async () => {
       platform.native = true;
       setReadyState('complete');
 
@@ -472,7 +516,7 @@ describe('ServiceWorkerRegistrar', () => {
       await flushPromises();
 
       expect(register).not.toHaveBeenCalled();
-      expect(start).not.toHaveBeenCalled();
+      expect(start).toHaveBeenCalledExactlyOnceWith(null);
     });
   });
 });

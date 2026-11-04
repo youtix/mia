@@ -1,4 +1,11 @@
-import { NavigationProvider } from '@/core/navigation';
+import {
+  END_SCREEN_GUARD_MS,
+  findNearestTarget,
+  installActivationGuard,
+  NavigationProvider,
+  VIEW_CHANGE_GUARD_MS,
+  type Direction,
+} from '@/core/navigation';
 import { getGameProgressSummary, type BaseLevelDefinition } from '@/core/progression';
 import {
   EXIT_ANIMATION_MS,
@@ -20,6 +27,7 @@ import {
   type TrafficJamLevelConfig,
   type VehicleDef,
 } from '@/games/traffic-jam';
+import { findVehicleTarget } from '@/games/traffic-jam/components/vehicle-cursor';
 import type { UserProfile } from '@/types/mia';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
@@ -38,6 +46,12 @@ const TRIVIAL = ['......', '......', 'HH....', '......', '......', '......'];
 
 /** Camion horizontal et plot de chantier devant le hero : insoluble. */
 const WALLED = ['......', '......', 'HH#...', '......', 'BBB...', '......'];
+
+/**
+ * Position de tj-011 où le camion B n'est le plus proche d'aucun véhicule, dans aucune direction :
+ * sans recours, les flèches ne l'atteignent jamais.
+ */
+const STRANDED_TRUCK = ['.FCAAA', '.FCG..', 'HHEG..', 'DDE.B.', 'II..B.', '....B.'];
 
 const CELL_PX = 50;
 const CREATED_AT = '2026-10-01T09:00:00.000Z';
@@ -142,8 +156,8 @@ async function advanceAsync(ms: number): Promise<void> {
 }
 
 /** jsdom n'a pas de mise en page : le parking mesure `CELL_PX` × 6 de côté. */
-function mockParkingSize(): void {
-  const size = CELL_PX * 6;
+function mockParkingSize(cellPx = CELL_PX): void {
+  const size = cellPx * 6;
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     x: 0,
     y: 0,
@@ -185,6 +199,7 @@ function getRemoteHints(): HTMLElement {
 
 interface DragOptions {
   pointerId?: number;
+  pointerType?: string;
   release?: 'pointerUp' | 'pointerCancel';
 }
 
@@ -193,16 +208,17 @@ function drag(
   vehicle: HTMLElement,
   axis: 'x' | 'y',
   distancePx: number,
-  { pointerId = 1, release = 'pointerUp' }: DragOptions = {},
+  { pointerId = 1, pointerType, release = 'pointerUp' }: DragOptions = {},
 ): void {
   const origin = { clientX: 100, clientY: 100 };
   const moved =
     axis === 'x'
       ? { ...origin, clientX: origin.clientX + distancePx }
       : { ...origin, clientY: origin.clientY + distancePx };
-  fireEvent.pointerDown(vehicle, { ...origin, pointerId, isPrimary: true });
-  fireEvent.pointerMove(vehicle, { ...moved, pointerId, isPrimary: true });
-  fireEvent[release](vehicle, { ...moved, pointerId, isPrimary: true });
+  const pointer = { pointerId, pointerType, isPrimary: true };
+  fireEvent.pointerDown(vehicle, { ...origin, ...pointer });
+  fireEvent.pointerMove(vehicle, { ...moved, ...pointer });
+  fireEvent[release](vehicle, { ...moved, ...pointer });
 }
 
 const setPointerCapture = vi.fn();
@@ -273,6 +289,21 @@ describe('Rendu du parking', () => {
     expect(getHud()).not.toHaveTextContent('Objectif Parfait');
   });
 
+  it('ne laisse défiler le HUD, sous le verrou tactile des plateaux, que s’il déborde', () => {
+    renderBoard();
+    // Sans mise en page (jsdom), rien ne déborde : une main posée qui glisse ne fige rien.
+    expect(getHud()).not.toHaveAttribute('data-touch-scroll');
+    expect(getHud()).toHaveClass('landscape:overflow-y-auto');
+
+    // Colonne d'un écran bas : le contenu dépasse, le HUD défile au doigt.
+    vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockReturnValue(480);
+    vi.spyOn(Element.prototype, 'clientHeight', 'get').mockReturnValue(300);
+    fireEvent.click(screen.getByRole('button', { name: 'Recommencer' }));
+
+    expect(getHud()).toHaveAttribute('data-touch-scroll');
+    expect(getBoard().querySelector('[data-touch-scroll]')).toBeNull();
+  });
+
   it('masque l’objectif tant que le nombre optimal de coups est inconnu', () => {
     renderBoard({ optimalMoves: 0 });
 
@@ -311,6 +342,66 @@ describe('Partie à la télécommande', () => {
     expect(getVehicle('A').querySelector('[data-arrow="end"]')).not.toBeNull();
     expect(getRemoteHints()).toHaveTextContent('Arrêter');
     expect(getRemoteHints()).toHaveTextContent('Avancer / Reculer');
+  });
+
+  it('entoure en ambre le véhicule ciblé, en émeraude le véhicule démarré qui a le focus clavier', () => {
+    forceTvMode();
+    renderBoard();
+
+    const hero = getVehicle('hero');
+    expect(hero).toHaveFocus();
+    expect(hero).toHaveClass('ring-amber-400', 'focus-visible:ring-amber-400');
+    expect(hero).not.toHaveClass('ring-emerald-400');
+
+    press('Enter');
+    expect(hero).toHaveFocus();
+    expect(hero).toHaveClass('ring-emerald-400');
+    // `focus-visible:` l'emporterait sur l'anneau de l'état 2 : aucune classe ambrée ne reste.
+    expect(hero.className).not.toContain('amber');
+
+    press('Enter');
+    expect(hero).toHaveClass('ring-amber-400', 'focus-visible:ring-amber-400');
+  });
+
+  it('atteint aux flèches un véhicule qui n’est le plus proche d’aucun autre', () => {
+    forceTvMode();
+    renderBoard({ lines: STRANDED_TRUCK, optimalMoves: 16 });
+
+    press('ArrowDown');
+    expect(getVehicle('D')).toHaveFocus();
+    press('ArrowDown');
+    expect(getVehicle('I')).toHaveFocus();
+    press('ArrowRight');
+    expect(getVehicle('B')).toHaveFocus();
+    expect(getVehicle('B')).toHaveAttribute('data-focused', 'true');
+    press('ArrowLeft');
+    expect(getVehicle('I')).toHaveFocus();
+    // Ce véhicule n'a pas perdu de voisin pour autant : le camion E reste à droite de la voiture D.
+    press('ArrowUp');
+    expect(getVehicle('D')).toHaveFocus();
+    press('ArrowRight');
+    expect(getVehicle('E')).toHaveFocus();
+  });
+
+  it('aides de la télécommande sur le HUD : celles de ses boutons, pas celles du véhicule', () => {
+    forceTvMode();
+    renderBoard();
+    expect(getRemoteHints()).toHaveTextContent('Démarrer');
+
+    // Haut jusqu'au HUD (au-dessus du véhicule le plus haut).
+    for (
+      let presses = 0;
+      presses < 6 && document.activeElement !== getButton('Annuler');
+      presses += 1
+    ) {
+      press('ArrowUp');
+    }
+    expect(getButton('Annuler')).toHaveFocus();
+    expect(getRemoteHints()).toHaveTextContent('Sélectionner');
+    expect(getRemoteHints()).not.toHaveTextContent('Démarrer');
+
+    press('ArrowDown');
+    expect(getRemoteHints()).toHaveTextContent('Démarrer');
   });
 
   it('cumule les pas d’une même session en un seul coup et compte un nouveau coup par session', () => {
@@ -369,6 +460,98 @@ describe('Partie à la télécommande', () => {
     press('ArrowUp');
     expect(getButton('Annuler')).toHaveFocus();
     press('Enter');
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getVehicle('A')).toHaveAccessibleName(/lignes 3 à 4/);
+  });
+
+  it('garde une session à un seul coup après avoir annulé sous son démarrage', () => {
+    forceTvMode();
+    renderBoard();
+
+    // Deux sessions sur A (2 coups), puis A redémarrée.
+    press('ArrowRight');
+    press('Enter');
+    press('ArrowDown');
+    press('Enter');
+    press('Enter');
+    press('ArrowDown');
+    press('Enter');
+    expect(getHud()).toHaveTextContent('Coups : 2');
+    press('Enter');
+
+    // « Annuler » au pointeur ou avec Tab laisse le moteur démarré.
+    fireEvent.click(getButton('Annuler'));
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getVehicle('A')).toHaveAttribute('data-locked', 'true');
+
+    // Le premier pas ouvre un coup, sans rejoindre celui de la session précédente ; les suivants s'y cumulent.
+    press('ArrowDown');
+    expect(getHud()).toHaveTextContent('Coups : 2');
+    press('ArrowDown');
+    expect(getHud()).toHaveTextContent('Coups : 2');
+    press('ArrowUp');
+    expect(getHud()).toHaveTextContent('Coups : 2');
+    expect(getVehicle('A')).toHaveAccessibleName(/lignes 4 à 5/);
+
+    // Annuler ramène A d'un seul geste au coup de la première session.
+    fireEvent.click(getButton('Annuler'));
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getVehicle('A')).toHaveAccessibleName(/lignes 3 à 4/);
+  });
+
+  it('ouvre un nouveau coup après avoir annulé le coup de la session en cours', () => {
+    forceTvMode();
+    renderBoard();
+
+    press('ArrowRight');
+    press('Enter');
+    press('ArrowDown', 2);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+
+    fireEvent.click(getButton('Annuler'));
+    expect(getHud()).toHaveTextContent('Coups : 0');
+    expect(getVehicle('A')).toHaveAttribute('data-locked', 'true');
+
+    press('ArrowDown');
+    press('ArrowDown');
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getVehicle('A')).toHaveAccessibleName(/lignes 4 à 5/);
+  });
+
+  it('coupe le moteur quand un doigt prend un autre véhicule : la flèche suivante ne compte aucun coup', () => {
+    mockParkingSize();
+    forceTvMode();
+    renderBoard();
+
+    press('Enter');
+    expect(getVehicle('hero')).toHaveAttribute('data-locked', 'true');
+
+    drag(getVehicle('A'), 'y', -CELL_PX, { pointerType: 'touch' });
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getRemoteHints()).toHaveTextContent('Démarrer');
+
+    // Le hero garde le focus DOM et le curseur : la flèche ne fait que passer au véhicule voisin.
+    press('ArrowRight');
+    expect(getVehicle('A')).toHaveFocus();
+    expect(getBoard().querySelector('[data-locked]')).toBeNull();
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getVehicle('hero')).toHaveAccessibleName(/colonnes 1 à 2/);
+  });
+
+  it('coupe aussi le moteur quand le doigt prend le véhicule démarré lui-même', () => {
+    mockParkingSize();
+    forceTvMode();
+    renderBoard();
+
+    press('ArrowRight');
+    press('Enter');
+    expect(getVehicle('A')).toHaveAttribute('data-locked', 'true');
+
+    drag(getVehicle('A'), 'y', CELL_PX, { pointerType: 'touch' });
+    expect(getHud()).toHaveTextContent('Coups : 1');
+
+    press('ArrowDown');
+    expect(getVehicle('A')).not.toHaveAttribute('data-locked');
     expect(getHud()).toHaveTextContent('Coups : 1');
     expect(getVehicle('A')).toHaveAccessibleName(/lignes 3 à 4/);
   });
@@ -728,7 +911,7 @@ describe('Partie au doigt', () => {
     expect(getVehicle('A')).toHaveAccessibleName(/lignes 3 à 4/);
   });
 
-  it('ignore un pointeur secondaire, un bouton de souris secondaire et un parking non mesuré', () => {
+  it('ignore un bouton de souris secondaire et un parking non mesuré', () => {
     renderBoard();
     drag(getVehicle('A'), 'y', 100);
     expect(getVehicle('A').style.transform).toBe('');
@@ -736,7 +919,6 @@ describe('Partie au doigt', () => {
 
     mockParkingSize();
     const car = getVehicle('A');
-    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, pointerId: 2, isPrimary: false });
     fireEvent.pointerDown(car, {
       clientX: 100,
       clientY: 100,
@@ -745,9 +927,258 @@ describe('Partie au doigt', () => {
       pointerType: 'mouse',
       button: 2,
     });
-    fireEvent.pointerMove(car, { clientX: 100, clientY: 200, pointerId: 2, isPrimary: false });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 200, pointerId: 3, isPrimary: true });
     expect(car).not.toHaveAttribute('data-dragging');
     expect(setPointerCapture).not.toHaveBeenCalled();
+  });
+
+  it('souris relâchée hors de la fenêtre (pointerup perdu) : le véhicule ne suit plus le curseur', () => {
+    mockParkingSize();
+    renderBoard();
+    const car = getVehicle('A');
+    const mouse = { pointerId: 1, isPrimary: true, pointerType: 'mouse' };
+
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, button: 0, buttons: 1, ...mouse });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 100 + CELL_PX, buttons: 1, ...mouse });
+    expect(car).toHaveAttribute('data-dragging', 'true');
+    // Alt+Tab, bouton relâché ailleurs : le mouvement suivant arrive sans bouton enfoncé.
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 100 + 3 * CELL_PX, buttons: 0, ...mouse });
+
+    expect(car).not.toHaveAttribute('data-dragging');
+    expect(car.style.transform).toBe('');
+    expect(getHud()).toHaveTextContent('Coups : 1');
+  });
+
+  it('capture perdue sans pointerup : le glissement s’arrête, sauf celui d’un véhicule saisi ensuite', () => {
+    mockParkingSize();
+    renderBoard();
+    const car = getVehicle('A');
+    const hero = getVehicle('hero');
+    const pointer = { pointerId: 1, isPrimary: true };
+
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 100 + CELL_PX, ...pointer });
+    fireEvent.lostPointerCapture(car, pointer);
+    expect(car).not.toHaveAttribute('data-dragging');
+    expect(getHud()).toHaveTextContent('Coups : 1');
+
+    // La souris garde son identifiant : saisir un autre véhicule retire la capture au précédent.
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerDown(hero, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.lostPointerCapture(car, pointer);
+    expect(hero).toHaveAttribute('data-dragging', 'true');
+  });
+
+  it('fenêtre redimensionnée en plein glissement : bornes et aimantation suivent les nouvelles cases', () => {
+    mockParkingSize();
+    renderBoard();
+    const car = getVehicle('A');
+    const pointer = { pointerId: 1, isPrimary: true };
+
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 130, ...pointer });
+    // Rotation : les cases passent de 50 à 30 px. Le doigt, à 60 px du départ, est à 2 cases.
+    mockParkingSize(30);
+    fireEvent.pointerUp(car, { clientX: 100, clientY: 160, ...pointer });
+
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(car).toHaveAccessibleName(/lignes 4 à 5/);
+  });
+
+  it('ne fait pas défiler le parking jusqu’au hero qui sort, même si une touche réveille le curseur', () => {
+    mockParkingSize();
+    renderBoard();
+    drag(getVehicle('A'), 'y', -CELL_PX, { pointerType: 'touch' });
+    drag(getVehicle('hero'), 'x', 4 * CELL_PX, { pointerType: 'touch' });
+    expect(getVehicle('hero')).toHaveAttribute('data-exiting', 'true');
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    press('ArrowRight');
+
+    expect(getVehicle('hero')).toHaveFocus();
+    expect(scrollIntoView.mock.contexts).not.toContain(getVehicle('hero'));
+  });
+
+  it('joue le coup du point de lever, même si le dernier mouvement n’est pas encore rendu', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const car = getVehicle('A');
+    const pointer = { pointerId: 1, isPrimary: true };
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 130, ...pointer });
+    // Même tâche du navigateur : React n'a pas encore rendu le dernier `pointermove`.
+    act(() => {
+      fireEvent.pointerMove(car, { clientX: 100, clientY: 195, ...pointer });
+      fireEvent.pointerUp(car, { clientX: 100, clientY: 195, ...pointer });
+    });
+
+    expect(car).toHaveAccessibleName(/lignes 4 à 5/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(car.style.transform).toBe('');
+  });
+
+  it('lit le lever lui-même et le borne comme un mouvement', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const pointer = { pointerId: 1, isPrimary: true };
+    // Lever très au-delà de la voiture A, sans `pointermove` avant lui : le hero s'arrête contre elle.
+    const hero = getVehicle('hero');
+    fireEvent.pointerDown(hero, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerUp(hero, { clientX: 900, clientY: 100, ...pointer });
+    expect(hero).toHaveAccessibleName(/colonnes 2 à 3/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+
+    // Les bornes sont celles du contact, même une fois la voie libérée pendant le geste.
+    const car = getVehicle('A');
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerUp(car, { clientX: 100, clientY: 200, ...pointer });
+    expect(car).toHaveAccessibleName(/lignes 4 à 5/);
+    expect(getHud()).toHaveTextContent('Coups : 2');
+  });
+
+  it('borne le lever aux bornes du contact quand un coup au clavier libère la voie entre-temps', () => {
+    mockParkingSize();
+    forceTvMode();
+    renderBoard();
+
+    // Le hero tenu au doigt bute sur la voiture A (une case), qui part ensuite à la télécommande.
+    const hero = getVehicle('hero');
+    const pointer = { pointerId: 1, isPrimary: true };
+    fireEvent.pointerDown(hero, { clientX: 100, clientY: 100, ...pointer });
+    press('ArrowRight');
+    press('Enter');
+    press('ArrowDown');
+    press('Enter');
+    expect(getVehicle('A')).toHaveAccessibleName(/lignes 3 à 4/);
+
+    fireEvent.pointerUp(hero, { clientX: 900, clientY: 100, ...pointer });
+    expect(hero).toHaveAccessibleName(/colonnes 2 à 3/);
+    expect(getHud()).toHaveTextContent('Coups : 2');
+  });
+
+  it('garde le dernier mouvement reçu sur `pointercancel`, qui n’a pas de coordonnées fiables', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const car = getVehicle('A');
+    const pointer = { pointerId: 1, isPrimary: true };
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    // Chromium envoie `pointercancel` en (0, 0) : le lire ferait remonter la voiture.
+    act(() => {
+      fireEvent.pointerMove(car, { clientX: 100, clientY: 195, ...pointer });
+      fireEvent.pointerCancel(car, { clientX: 0, clientY: 0, ...pointer });
+    });
+
+    expect(car).toHaveAccessibleName(/lignes 4 à 5/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    // Le coup reste remboursable.
+    fireEvent.click(getButton('Annuler'));
+    expect(getHud()).toHaveTextContent('Coups : 0');
+    expect(car).toHaveAccessibleName(/lignes 2 à 3/);
+  });
+
+  it('glisse au second doigt : une main posée hors des véhicules ne bloque pas le jeu', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const car = getVehicle('A');
+    const finger = { pointerId: 9, isPrimary: false };
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...finger });
+    expect(setPointerCapture).toHaveBeenCalledExactlyOnceWith(9);
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 150, ...finger });
+    expect(car).toHaveAttribute('data-dragging', 'true');
+    expect(car.style.transform).toBe('translateY(50px)');
+    fireEvent.pointerUp(car, { clientX: 100, clientY: 150, ...finger });
+
+    expect(car).toHaveAccessibleName(/lignes 3 à 4/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+  });
+
+  it('laisse un autre doigt jouer quand une main repose sur un véhicule', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const resting = getVehicle('A');
+    const hero = getVehicle('hero');
+    const palm = { pointerId: 1, isPrimary: true };
+    const finger = { pointerId: 2, isPrimary: false };
+    fireEvent.pointerDown(resting, { clientX: 100, clientY: 100, ...palm });
+    // Une main posée tremble de quelques pixels : le véhicule n'a pas vraiment quitté sa place.
+    fireEvent.pointerMove(resting, { clientX: 100, clientY: 104, ...palm });
+
+    fireEvent.pointerDown(hero, { clientX: 100, clientY: 100, ...finger });
+    expect(resting).not.toHaveAttribute('data-dragging');
+    fireEvent.pointerMove(hero, { clientX: 150, clientY: 100, ...finger });
+    expect(hero).toHaveAttribute('data-dragging', 'true');
+
+    // La main posée ne commande plus rien : elle peut bouger, ou se lever.
+    fireEvent.pointerMove(resting, { clientX: 100, clientY: 250, ...palm });
+    expect(resting).not.toHaveAttribute('data-dragging');
+    fireEvent.pointerUp(resting, { clientX: 100, clientY: 250, ...palm });
+    expect(hero).toHaveAttribute('data-dragging', 'true');
+
+    fireEvent.pointerUp(hero, { clientX: 150, clientY: 100, ...finger });
+    expect(hero).toHaveAccessibleName(/colonnes 2 à 3/);
+    expect(resting).toHaveAccessibleName(/lignes 2 à 3/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+  });
+
+  it('laisse un autre doigt jouer quand la main repose sur un véhicule bloqué dans son sens', () => {
+    mockParkingSize();
+    renderBoard();
+
+    // Le hero touche le muret gauche : le doigt qui glisse vers la gauche ne le déplace pas.
+    const blocked = getVehicle('hero');
+    const palm = { pointerId: 1, isPrimary: true };
+    fireEvent.pointerDown(blocked, { clientX: 100, clientY: 100, ...palm });
+    fireEvent.pointerMove(blocked, { clientX: 40, clientY: 100, ...palm });
+
+    drag(getVehicle('A'), 'y', CELL_PX, { pointerId: 2 });
+    expect(getHud()).toHaveTextContent('Coups : 1');
+    expect(getVehicle('A')).toHaveAccessibleName(/lignes 3 à 4/);
+  });
+
+  it('refuse un autre doigt pendant un glissement : un véhicule à la fois', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const car = getVehicle('A');
+    const hero = getVehicle('hero');
+    const pointer = { pointerId: 1, isPrimary: true };
+    const finger = { pointerId: 2, isPrimary: false };
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 150, ...pointer });
+
+    // Revenue à sa place, la voiture reste tenue : le glissement n'est pas fini.
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 100, ...pointer });
+    fireEvent.pointerDown(hero, { clientX: 100, clientY: 100, ...finger });
+    fireEvent.pointerMove(hero, { clientX: 150, clientY: 100, ...finger });
+    expect(setPointerCapture).toHaveBeenCalledExactlyOnceWith(1);
+    expect(hero).not.toHaveAttribute('data-dragging');
+    fireEvent.pointerUp(hero, { clientX: 150, clientY: 100, ...finger });
+
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 150, ...pointer });
+    fireEvent.pointerUp(car, { clientX: 100, clientY: 150, ...pointer });
+    expect(car).toHaveAccessibleName(/lignes 3 à 4/);
+    expect(hero).toHaveAccessibleName(/colonnes 1 à 2/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
+  });
+
+  it('remplace par un nouveau pointeur principal un glissement dont le relâchement s’est perdu', () => {
+    mockParkingSize();
+    renderBoard();
+
+    const car = getVehicle('A');
+    fireEvent.pointerDown(car, { clientX: 100, clientY: 100, pointerId: 1, isPrimary: true });
+    fireEvent.pointerMove(car, { clientX: 100, clientY: 150, pointerId: 1, isPrimary: true });
+
+    drag(getVehicle('hero'), 'x', CELL_PX, { pointerId: 2 });
+    expect(car).not.toHaveAttribute('data-dragging');
+    expect(car).toHaveAccessibleName(/lignes 2 à 3/);
+    expect(getVehicle('hero')).toHaveAccessibleName(/colonnes 2 à 3/);
+    expect(getHud()).toHaveTextContent('Coups : 1');
   });
 
   it('gagne au doigt, puis rejoue ou revient à la carte depuis la modale', async () => {
@@ -847,6 +1278,102 @@ describe('Partie au doigt', () => {
   });
 });
 
+describe('Modale de fin sous la garde d’activation', () => {
+  let removeGuard: () => void;
+
+  beforeEach(() => {
+    removeGuard = installActivationGuard();
+  });
+
+  afterEach(() => {
+    removeGuard();
+  });
+
+  /** Partie gagnée à la télécommande, moteur démarré jusqu'au coup gagnant. */
+  function winWithRemote(): void {
+    // `AppShell` arme la garde au montage : OK ne démarre un véhicule qu'ensuite.
+    advance(VIEW_CHANGE_GUARD_MS);
+    press('ArrowRight');
+    press('Enter');
+    press('ArrowUp');
+    press('Enter');
+    press('ArrowLeft');
+    press('Enter');
+    press('ArrowRight', 4);
+    expect(getVehicle('hero')).toHaveAttribute('data-exiting', 'true');
+  }
+
+  it('ignore OK pendant la sortie du hero puis les premiers instants de la modale', () => {
+    forceTvMode();
+    const controls = renderBoard();
+    winWithRemote();
+
+    // OK qui arrêterait le véhicule, par réflexe après la dernière flèche.
+    press('Enter');
+    advance(EXIT_ANIMATION_MS);
+    const dialog = screen.getByRole('dialog', { name: 'Étoile #1 gagnée !' });
+    expect(press('Enter')).toBe(true);
+    advance(END_SCREEN_GUARD_MS - 1);
+    expect(press('Enter')).toBe(true);
+    expect(controls.playLevel).not.toHaveBeenCalled();
+    expect(dialog).toBeInTheDocument();
+
+    advance(1);
+    press('Enter');
+    expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('tj-002');
+  });
+
+  it('laisse les flèches et Retour agir pendant la garde', () => {
+    forceTvMode();
+    const controls = renderBoard();
+    winWithRemote();
+    advance(EXIT_ANIMATION_MS);
+
+    press('ArrowDown');
+    expect(getButton('Rejouer')).toHaveFocus();
+    press('Backspace');
+    expect(controls.exitToMap).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['Étoile Suivante (#2)', 'playLevel'],
+    ['Carte des Étoiles', 'exitToMap'],
+  ] as const)('ignore le doigt sur « %s » pendant la garde', (name, command) => {
+    mockParkingSize();
+    const controls = renderBoard();
+    drag(getVehicle('A'), 'y', -CELL_PX, { pointerType: 'touch' });
+    drag(getVehicle('hero'), 'x', 4 * CELL_PX, { pointerType: 'touch' });
+    advance(EXIT_ANIMATION_MS);
+
+    fireEvent.click(getButton(name));
+    advance(END_SCREEN_GUARD_MS - 1);
+    fireEvent.click(getButton(name));
+    expect(controls[command]).not.toHaveBeenCalled();
+
+    advance(1);
+    fireEvent.click(getButton(name));
+    expect(controls[command]).toHaveBeenCalledOnce();
+  });
+
+  it('ignore le doigt sur « Rejouer » pendant la garde', () => {
+    mockParkingSize();
+    renderBoard();
+    drag(getVehicle('A'), 'y', -CELL_PX, { pointerType: 'touch' });
+    drag(getVehicle('hero'), 'x', 4 * CELL_PX, { pointerType: 'touch' });
+    advance(EXIT_ANIMATION_MS);
+
+    fireEvent.click(getButton('Rejouer'));
+    advance(END_SCREEN_GUARD_MS - 1);
+    fireEvent.click(getButton('Rejouer'));
+    expect(getHud()).toHaveTextContent('Coups : 2');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    advance(1);
+    fireEvent.click(getButton('Rejouer'));
+    expect(getHud()).toHaveTextContent('Coups : 0');
+  });
+});
+
 describe('Indice', () => {
   it('montre le véhicule à déplacer et sa case cible, puis s’efface au coup suivant', () => {
     mockParkingSize();
@@ -916,6 +1443,78 @@ describe('Indice', () => {
     drag(getVehicle('hero'), 'x', 4 * CELL_PX);
     fireEvent.click(getButton('Indice'));
     expect(getStatus()).toHaveTextContent(HINT_WON_MESSAGE);
+  });
+});
+
+describe('Curseur aux flèches', () => {
+  const DIRECTIONS: readonly Direction[] = ['left', 'right', 'up', 'down'];
+
+  /** Les flèches de deux véhicules à l'écart ne suffisent pas : il faut deux recours de suite. */
+  const TWO_REPAIRS = ['..JJJ.', 'AALLBB', '.HH...', 'IIEECC', '.F.KK.', '.FDDGG'];
+
+  function parseVehicles(lines: string[]): readonly VehicleDef[] {
+    return parseTrafficJamAscii(lines, { optimalMoves: 0 }).vehicles;
+  }
+
+  /** Flèches dont la cible n'est pas celle de `findNearestTarget`, en `véhicule:direction`. */
+  function listRepairedMoves(vehicles: readonly VehicleDef[]): string[] {
+    const centerOf = (vehicle: VehicleDef) => ({
+      id: vehicle.id,
+      x: vehicle.col + (vehicle.axis === 'H' ? vehicle.length / 2 : 0.5),
+      y: vehicle.row + (vehicle.axis === 'V' ? vehicle.length / 2 : 0.5),
+    });
+    return vehicles.flatMap((vehicle) => {
+      const others = vehicles.filter((other) => other.id !== vehicle.id).map(centerOf);
+      return DIRECTIONS.filter(
+        (direction) =>
+          findVehicleTarget(vehicles, vehicle.id, direction) !==
+          findNearestTarget(centerOf(vehicle), others, direction),
+      ).map((direction) => `${vehicle.id}:${direction}`);
+    });
+  }
+
+  /** Véhicules qu'un départ n'atteint pas aux flèches, pour chaque départ (`départ→véhicule`). */
+  function listUnreachable(vehicles: readonly VehicleDef[]): string[] {
+    const targets = new Map(
+      vehicles.map(({ id }) => [
+        id,
+        DIRECTIONS.map((direction) => findVehicleTarget(vehicles, id, direction)),
+      ]),
+    );
+    return vehicles.flatMap(({ id: startId }) => {
+      const reached = new Set<string | null>([startId]);
+      for (const id of reached) {
+        for (const targetId of targets.get(id ?? '') ?? []) {
+          if (targetId !== null) reached.add(targetId);
+        }
+      }
+      return vehicles.filter(({ id }) => !reached.has(id)).map(({ id }) => `${startId}→${id}`);
+    });
+  }
+
+  it('garde `findNearestTarget` tel quel quand tout est déjà atteignable', () => {
+    const vehicles = parseVehicles(LEVEL);
+
+    expect(listRepairedMoves(vehicles)).toEqual([]);
+    expect(findVehicleTarget(vehicles, 'hero', 'right')).toBe('A');
+    expect(findVehicleTarget(vehicles, 'hero', 'left')).toBeNull();
+  });
+
+  it('ne détourne qu’une flèche pour atteindre le camion de la position de tj-011', () => {
+    const vehicles = parseVehicles(STRANDED_TRUCK);
+
+    expect(listUnreachable(vehicles)).toEqual([]);
+    expect(listRepairedMoves(vehicles)).toEqual(['I:right']);
+    expect(findVehicleTarget(vehicles, 'I', 'right')).toBe('B');
+  });
+
+  it('enchaîne les recours quand un seul ne suffit pas, flèches sans cible comprises', () => {
+    const vehicles = parseVehicles(TWO_REPAIRS);
+
+    expect(listUnreachable(vehicles)).toEqual([]);
+    expect(listRepairedMoves(vehicles)).toEqual(['A:right', 'E:right']);
+    // Au bord du plateau, aucun recours n'invente de cible : Haut rejoint toujours le HUD.
+    expect(findVehicleTarget(vehicles, 'J', 'up')).toBeNull();
   });
 });
 

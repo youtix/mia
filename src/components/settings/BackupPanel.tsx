@@ -7,12 +7,18 @@ import {
   FOCUS_VISIBLE_CLASSES,
   FOCUSED_CLASSES,
 } from '@/components/ui/focus-styles';
-import { useGridNavigation, useNavigation, type Direction } from '@/core/navigation';
+import {
+  CONFIRM_GUARD_MS,
+  useGridNavigation,
+  useNavigation,
+  type Direction,
+} from '@/core/navigation';
 import { parseBackupJson, useMiaStorage } from '@/core/storage';
 import { cn } from '@/lib/cn';
 import { Capacitor } from '@capacitor/core';
 import { Copy, Download, FolderOpen, Save, Trash2, TriangleAlert, Upload } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { ConfirmActions } from './ConfirmActions';
 import {
   BACKUP_MESSAGES,
@@ -20,7 +26,12 @@ import {
   describeDownload,
   getBackupFileName,
 } from './labels';
-import { SettingsFeedback, SettingsGroup, type SettingsFeedbackMessage } from './SettingsGroup';
+import {
+  SettingsFeedback,
+  SettingsGroup,
+  type SettingsFeedbackMessage,
+  type SettingsFeedbackProps,
+} from './SettingsGroup';
 import { SettingsSection } from './SettingsSection';
 
 /** Délai avant de révoquer l'URL du Blob téléchargé : certains navigateurs le lisent après le clic. */
@@ -35,6 +46,8 @@ const BACKUP_ZONES: readonly BackupZone[] = ['export', 'file', 'paste', 'reset']
 interface PendingImport {
   json: string;
   profileCount: number;
+  /** Une partie du fichier a été écartée ou réparée à la lecture */
+  isPartial: boolean;
 }
 
 /** Réinitialisation : 0 fermée, 1 première confirmation, 2 confirmation finale. */
@@ -71,6 +84,23 @@ async function copyToClipboard(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Résultat d'une action, ramené à l'écran : le message est sous le bouton, en bas du groupe, et au
+ * D-Pad le curseur montre seulement le bouton (sur une TV, le message resterait sous le pied de page).
+ */
+function BackupFeedback({ message }: SettingsFeedbackProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (message) ref.current?.scrollIntoView({ block: 'nearest' });
+  }, [message]);
+
+  return (
+    <div ref={ref}>
+      <SettingsFeedback message={message} />
+    </div>
+  );
 }
 
 export interface BackupPanelProps {
@@ -114,6 +144,11 @@ export function BackupPanel({
   const [exportFeedback, setExportFeedback] = useState<SettingsFeedbackMessage | null>(null);
   const [importFeedback, setImportFeedback] = useState<SettingsFeedbackMessage | null>(null);
   const [pasted, setPasted] = useState('');
+  // Au D-Pad, le champ de collage se traverse : Chromium ouvre le clavier virtuel dès qu'un champ
+  // reçoit le focus après un premier geste, et il couvrirait l'écran de la TV à chaque passage. Il
+  // reste fermé (`inputmode="none"`) jusqu'à OK sur le champ, et se referme quand le champ est quitté.
+  const [isPasteKeyboardAllowed, setIsPasteKeyboardAllowed] = useState(false);
+  const isRefocusingPasteRef = useRef(false);
   const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   // Même valeur, lue par « Remplacer » : la modale fermée garde ses boutons (et leurs anciennes
   // props) le temps de l'animation de sortie, un second appui ne doit pas importer deux fois.
@@ -222,7 +257,11 @@ export function BackupPanel({
       return;
     }
     setImportFeedback(null);
-    updatePendingImport({ json, profileCount: result.state.profiles.length });
+    updatePendingImport({
+      json,
+      profileCount: result.state.profiles.length,
+      isPartial: result.issues.length > 0,
+    });
   };
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -247,11 +286,24 @@ export function BackupPanel({
   };
 
   const handlePasteKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    // Au doigt, Entrée (touche « OK » du clavier virtuel) lance l'import ; au D-Pad elle reste
-    // native (sur Android TV, OK sur le champ ouvre le clavier virtuel).
-    if (event.key !== 'Enter' || event.nativeEvent.isComposing || inputMode !== 'touch') return;
-    event.preventDefault();
-    importPasted();
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    if (inputMode === 'touch') {
+      // Au doigt, Entrée (touche « OK » du clavier virtuel) lance l'import.
+      event.preventDefault();
+      importPasted();
+      return;
+    }
+    // Au D-Pad, Entrée reste native (sur Android TV, OK sur le champ ouvre le clavier virtuel) : le
+    // champ perd `inputmode="none"`, puis reprend le focus pour que Chromium ouvre le clavier.
+    if (isPasteKeyboardAllowed) return;
+    const input = event.currentTarget;
+    flushSync(() => {
+      setIsPasteKeyboardAllowed(true);
+    });
+    isRefocusingPasteRef.current = true;
+    input.blur();
+    input.focus();
+    isRefocusingPasteRef.current = false;
   };
 
   /** Un seul import par confirmation : la sauvegarde en attente est consommée avant l'`await`. */
@@ -262,7 +314,11 @@ export function BackupPanel({
     const result = await importBackup(pending.json);
     if (result.ok) {
       setPasted('');
-      setImportFeedback({ tone: 'success', text: BACKUP_MESSAGES.restored });
+      setImportFeedback(
+        result.issues.length > 0
+          ? { tone: 'error', text: BACKUP_MESSAGES.restoredPartially }
+          : { tone: 'success', text: BACKUP_MESSAGES.restored },
+      );
     } else {
       setImportFeedback({ tone: 'error', text: result.message });
     }
@@ -319,7 +375,7 @@ export function BackupPanel({
             Copier
           </FocusableButton>
         </div>
-        <SettingsFeedback message={exportFeedback} />
+        <BackupFeedback message={exportFeedback} />
       </SettingsGroup>
 
       <SettingsGroup
@@ -367,6 +423,7 @@ export function BackupPanel({
             autoCapitalize="off"
             spellCheck={false}
             enterKeyHint="go"
+            inputMode={inputMode === 'dpad' && !isPasteKeyboardAllowed ? 'none' : undefined}
             data-focused={pasteZone.isItemFocused(0) || undefined}
             className={cn(
               INPUT_CLASSES,
@@ -378,6 +435,9 @@ export function BackupPanel({
               setPasted(event.target.value);
             }}
             onFocus={focusZone('paste')}
+            onBlur={() => {
+              if (!isRefocusingPasteRef.current) setIsPasteKeyboardAllowed(false);
+            }}
             onKeyDown={handlePasteKeyDown}
           />
           <FocusableButton
@@ -392,7 +452,7 @@ export function BackupPanel({
             Importer
           </FocusableButton>
         </div>
-        <SettingsFeedback message={importFeedback} />
+        <BackupFeedback message={importFeedback} />
       </SettingsGroup>
 
       <SettingsGroup
@@ -416,10 +476,11 @@ export function BackupPanel({
 
       <ModalDialog
         isOpen={pendingImport !== null}
+        inputGuardMs={CONFIRM_GUARD_MS}
         title="Remplacer les profils actuels ?"
         subtitle={
           pendingImport
-            ? `${describeBackupProfiles(pendingImport.profileCount)} Les profils et les étoiles de cet appareil seront remplacés, les réglages conservés. Exporte d’abord ta progression si tu veux la garder.`
+            ? `${describeBackupProfiles(pendingImport.profileCount)} ${pendingImport.isPartial ? `${BACKUP_MESSAGES.partialFile} ` : ''}Les profils et les étoiles de cet appareil seront remplacés, les réglages conservés. Exporte d’abord ta progression si tu veux la garder.`
             : undefined
         }
         onClose={() => {
@@ -445,6 +506,7 @@ export function BackupPanel({
           Annuler, Retour ou Échap à l'une ou l'autre abandonne tout. */}
       <ModalDialog
         isOpen={resetStep > 0}
+        inputGuardMs={CONFIRM_GUARD_MS}
         title="Réinitialiser Mia ?"
         subtitle="Tous les profils, leurs étoiles et les réglages de cet appareil seront effacés. Exporte d’abord ta progression si tu veux la garder."
         onClose={cancelReset}
@@ -459,6 +521,7 @@ export function BackupPanel({
         />
         <ModalDialog
           isOpen={resetStep === 2}
+          inputGuardMs={CONFIRM_GUARD_MS}
           title="Tout effacer définitivement ?"
           onClose={cancelReset}
           className="border-rose-400"

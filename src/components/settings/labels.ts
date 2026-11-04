@@ -23,7 +23,7 @@ export const SETTINGS_TEXTS = {
   tvModeNote:
     'Force la mise en page TV (marges, aides de la télécommande) quand la détection automatique se trompe, par exemple avec une télécommande à pointeur.',
   soundNote:
-    'Voix et sons des jeux. Son coupé, les cloches et tambours de Suites Logiques s’affichent en images. Voix de synthèse Piper « MLS » (corpus Multilingual LibriSpeech, CC BY 4.0).',
+    'Voix et sons des jeux. Son coupé, les cloches et tambours de Suites Logiques s’affichent en images. Voix générée avec le modèle Piper « MLS » (corpus Multilingual LibriSpeech : Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert), puis modifiée : coupée et ralentie. Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/',
   contrastNote: 'Texte plus clair, bordures et anneau de focus renforcés, fonds opaques.',
 } as const;
 
@@ -43,9 +43,16 @@ export const GAME_SETTINGS_TEXTS = {
     'Multiplie le temps pendant lequel deux cartes différentes restent visibles avant de se cacher.',
 } as const;
 
-/** « Réglages de Léo » : en tête de la section « Jeux », le profil dont les réglages sont affichés. */
+/** Début d'un prénom qui appelle « d’ » : voyelle, h muet, y devant une consonne (Yves, pas Yann). */
+const ELIDING_NAME_START = /^(?:[aeiouh]|y[^aeiou])/i;
+
+/**
+ * « Réglages de Léo », « Réglages d’Alice » : en tête de la section « Jeux », le profil dont les
+ * réglages sont affichés. Lettre lue sans son accent (décomposition NFD : « É » → « E » + accent).
+ */
 export function describeProfileSettings(name: string): string {
-  return `Réglages de ${name}`;
+  const preposition = ELIDING_NAME_START.test(name.normalize('NFD')) ? 'd’' : 'de ';
+  return `Réglages ${preposition}${name}`;
 }
 
 export interface TimeFactorOption {
@@ -82,12 +89,20 @@ export const BACKUP_MESSAGES = {
     'Copie impossible : le presse-papiers n’est pas disponible sur cet appareil.',
   fileUnreadable: 'Lecture du fichier impossible.',
   pasteEmpty: 'Colle d’abord le contenu d’une sauvegarde.',
+  /** Fichier en partie invalide : annoncé dans la confirmation, avant de remplacer les profils */
+  partialFile:
+    'Une partie de ce fichier est illisible : des profils ou des étoiles peuvent manquer.',
   restored: 'Sauvegarde restaurée.',
+  restoredPartially:
+    'Sauvegarde restaurée, mais une partie du fichier était illisible : des profils ou des étoiles peuvent manquer.',
 } as const;
 
-/** « Sauvegarde téléchargée : mia-sauvegarde-2026-10-29.json ». */
+/**
+ * « Téléchargement lancé : mia-sauvegarde-2026-10-29.json. … ». La page ne sait pas si le navigateur a
+ * enregistré le fichier (certains le refusent en silence) : elle ne l'affirme pas, et donne l'autre voie.
+ */
 export function describeDownload(fileName: string): string {
-  return `Sauvegarde téléchargée : ${fileName}`;
+  return `Téléchargement lancé : ${fileName}. Si aucun fichier n’apparaît, utilise « Copier ».`;
 }
 
 /** Nom du fichier exporté, `mia-sauvegarde-AAAA-MM-JJ.json`, à la date locale du jour. */
@@ -124,12 +139,13 @@ export const APPLICATION_TEXTS = {
   downloadFailed: 'Le téléchargement a échoué. Réessaie plus tard.',
   repairTitle: 'Réparer',
   repairDescription:
-    'Retélécharge tous les fichiers de Mia si l’application se comporte mal. Les profils, les étoiles et les réglages sont conservés. Une connexion est nécessaire.',
+    'Revérifie les fichiers de Mia et retélécharge ceux qui sont abîmés, si l’application se comporte mal. Les profils, les étoiles et les réglages sont conservés. Une connexion est nécessaire.',
   repairAction: 'Réparer l’application',
   repairDialogTitle: 'Réparer Mia ?',
   repairDialogSubtitle:
-    'Mia va retélécharger ses fichiers depuis Internet, puis redémarrer. Les profils, les étoiles et les réglages sont conservés.',
+    'Mia va revérifier ses fichiers, retélécharger ceux qui sont abîmés, puis redémarrer. Les profils, les étoiles et les réglages sont conservés.',
   repairConfirm: 'Réparer',
+  repairRunning: 'Réparation en cours…',
   repairUnreachable: 'Réparation impossible : pas de connexion. Réessaie une fois connecté.',
 } as const;
 

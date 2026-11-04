@@ -88,7 +88,6 @@ export type BearBounceKind = 'old-rule' | 'slip' | 'forbidden';
 
 export interface BearBounce {
   bearUid: string;
-  zoneId: BearSortZoneId;
   kind: BearBounceKind;
 }
 

@@ -1,18 +1,12 @@
 'use client';
 
 import { FocusableButton, ModalDialog } from '@/components/ui';
-import { useGridNavigation } from '@/core/navigation';
+import { END_SCREEN_GUARD_MS, useGridNavigation } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import { motion } from 'framer-motion';
 import { ArrowRight, Crown, MapIcon, RotateCcw, Star } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { END_ACTION_LABELS, formatEndTitle, getCrownSentence } from './labels';
-
-/**
- * Boutons sans effet pendant que l'étoile et la couronne se posent : un enfant qui tape encore, au
- * même endroit que sa réponse, ne saute pas sa récompense. Retour reste actif.
- */
-export const END_INPUT_GUARD_MS = 800;
 
 /** Partie gagnée, figée à la victoire (la modale la garde pendant son animation de sortie). */
 export interface PatternsGameResult {
@@ -77,6 +71,9 @@ export function PatternsEndModal({
       isTextless
       // « Rejouer » replace le curseur sur les propositions : pas de retour au bouton d'origine.
       restoreFocus={false}
+      // Boutons sans effet pendant que l'étoile et la couronne se posent : un enfant qui tape encore,
+      // au même endroit que sa réponse, ne saute pas sa récompense. Retour reste actif.
+      inputGuardMs={END_SCREEN_GUARD_MS}
       isOpen={isOpen && result !== null}
       title={formatEndTitle(starNumber)}
       subtitle={result ? getCrownSentence(result.isPerfect, result.hadCrown) : undefined}
@@ -145,16 +142,6 @@ function EndActions({ actions, onBack }: { actions: EndAction[]; onBack: () => v
     cols: actions.length,
     onBack,
   });
-  const [isReady, setIsReady] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, END_INPUT_GUARD_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, []);
 
   return (
     <div className="flex w-full gap-3">
@@ -168,8 +155,7 @@ function EndActions({ actions, onBack }: { actions: EndAction[]; onBack: () => v
           size="lg"
           className="min-h-16 flex-1 tv:min-h-20"
           leftIcon={action.icon}
-          // Tape et OK : le moteur D-Pad clique le bouton, comme au doigt.
-          onClick={isReady ? action.onClick : undefined}
+          onClick={action.onClick}
         />
       ))}
     </div>

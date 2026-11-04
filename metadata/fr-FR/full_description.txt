@@ -1,4 +1,4 @@
-Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits dès 3 ans, raisonnement sur des suites logiques, flexibilité mentale et inhibition.
+Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits, raisonnement sur des suites logiques (dès 4 ans), flexibilité mentale et inhibition (dès 3 ans).
 
 Une seule application pour trois usages :
 
@@ -17,4 +17,4 @@ Une progression par étoiles sur cinq paliers de difficulté, de Très Facile à
 
 Respect de la vie privée : Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqueur et sans service Google. Toutes les données restent sur l'appareil.
 
-Voix de la mascotte : voix de synthèse Piper « MLS » (corpus Multilingual LibriSpeech, CC BY 4.0).
+Voix de la mascotte : voix générée avec Piper « MLS » (corpus Multilingual LibriSpeech : Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert), puis modifiée. Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/

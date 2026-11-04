@@ -8,11 +8,26 @@ const RESUME_TIMEOUT_MS = 150;
 /** Marge du filet de sécurité après la durée d'un clip (`CLIP_END_MARGIN_MS`). */
 const CLIP_END_MARGIN_MS = 500;
 
+/** Délai de la voix après le réveil de la sortie audio (`WAKE_LEAD_SECONDS`), ici sa création. */
+const WAKE_LEAD_MS = 300;
+
 /** Délai après lequel un clip toujours pas chargé est sauté (`CLIP_LOAD_TIMEOUT_MS`). */
 const CLIP_LOAD_TIMEOUT_MS = 4000;
 
 /** Gain de crête des effets (`EFFECT_PEAK_GAIN`) : doux, surtout pour le rebond. */
 const EFFECT_PEAK_GAIN = 0.18;
+
+/** Attaque des effets (`EFFECT_ATTACK_SECONDS`). */
+const EFFECT_ATTACK_MS = 15;
+
+/** Note d'un effet, telle que l'annonce FEAT-22 §3.4. */
+interface EffectNote {
+  type: OscillatorType;
+  hz: number;
+  toHz?: number;
+  atMs: number;
+  lengthMs: number;
+}
 
 /** Tampon décodé : garde l'URL du fichier, pour vérifier ce qui est joué. */
 interface FakeBuffer {
@@ -27,10 +42,22 @@ class FakeParam {
 
 class FakeOscillator {
   type = '';
+  onended: (() => void) | null = null;
+  /** Fin de la note sur l'horloge du contexte : le dernier `stop` l'emporte, sans date c'est maintenant */
+  endTime = Infinity;
   readonly frequency = new FakeParam();
   readonly connect = vi.fn<(target: unknown) => void>();
   readonly start = vi.fn<(when: number) => void>();
-  readonly stop = vi.fn<(when: number) => void>();
+  readonly stop = vi.fn((when?: number): void => {
+    this.endTime = when ?? this.clock.currentTime;
+  });
+
+  constructor(private readonly clock: { readonly currentTime: number }) {}
+
+  /** Fin de la note, telle que le navigateur la signale. */
+  end(): void {
+    this.onended?.();
+  }
 }
 
 class FakeGain {
@@ -42,7 +69,7 @@ class FakeSource {
   buffer: FakeBuffer | null = null;
   onended: (() => void) | null = null;
   readonly connect = vi.fn<(target: unknown) => void>();
-  readonly start = vi.fn<() => void>();
+  readonly start = vi.fn<(when?: number) => void>();
   readonly stop = vi.fn<() => void>();
 
   /** Fin de lecture, telle que le navigateur la signale. */
@@ -58,19 +85,20 @@ class FakeAudioContext {
   /** Durée des clips décodés, en secondes */
   clipSeconds = 1;
   onstatechange: (() => void) | null = null;
-  readonly currentTime = 10;
+  /** Horloge du contexte, que `suspend()` fige avec tout ce qui est programmé */
+  currentTime = 10;
   readonly destination = { name: 'haut-parleurs' };
   readonly sources: FakeSource[] = [];
   readonly oscillators: FakeOscillator[] = [];
   readonly gains: FakeGain[] = [];
 
   readonly resume = vi.fn((): Promise<void> => {
-    if (!this.isBlocked) this.state = 'running';
+    if (!this.isBlocked) this.changeState('running');
     return Promise.resolve();
   });
 
   readonly suspend = vi.fn((): Promise<void> => {
-    this.state = 'suspended';
+    this.changeState('suspended');
     return Promise.resolve();
   });
 
@@ -85,7 +113,7 @@ class FakeAudioContext {
   });
 
   readonly createOscillator = vi.fn((): FakeOscillator => {
-    const oscillator = new FakeOscillator();
+    const oscillator = new FakeOscillator(this);
     this.oscillators.push(oscillator);
     return oscillator;
   });
@@ -100,11 +128,37 @@ class FakeAudioContext {
     this.state = state;
   }
 
+  /** `statechange` part après la promesse de `resume()`, comme dans Chromium et Firefox. */
+  private changeState(state: AudioContextState): void {
+    if (state === this.state) return;
+    this.state = state;
+    void Promise.resolve().then(() => this.onstatechange?.());
+  }
+
   /** Le navigateur démarre le contexte de lui-même, après coup. */
   startByItself(): void {
     this.isBlocked = false;
-    this.state = 'running';
-    this.onstatechange?.();
+    this.changeState('running');
+  }
+
+  /** Le système suspend le contexte sans rien dire à la page (appel sur iOS, erreur de rendu). */
+  stopBySystem(): void {
+    this.changeState('suspended');
+  }
+
+  /** iOS interrompt un contexte qui dort encore (appel, Siri) : il change d'état sans démarrer. */
+  interruptBySystem(): void {
+    this.changeState('interrupted');
+  }
+
+  /** Fait avancer l'horloge : suspendu, le contexte ne joue rien, ses notes restent figées. */
+  advance(seconds: number): void {
+    if (this.state === 'running') this.currentTime += seconds;
+  }
+
+  /** Notes qui sonneront encore dès que le contexte tournera : une note figée en fait partie. */
+  notesStillToPlay(): FakeOscillator[] {
+    return this.oscillators.filter((note) => note.endTime > this.currentTime);
   }
 
   lastSource(): FakeSource {
@@ -113,10 +167,21 @@ class FakeAudioContext {
     return source;
   }
 
-  /** URL des clips lancés, dans l'ordre. */
+  /** URL des clips lancés et reliés à la sortie, dans l'ordre. */
   played(): (string | undefined)[] {
-    return this.sources.map((source) => source.buffer?.url);
+    return this.sources
+      .filter(
+        ({ connect, start }) =>
+          start.mock.calls.length > 0 && connect.mock.calls.some(([to]) => to === this.destination),
+      )
+      .map((source) => source.buffer?.url);
   }
+}
+
+function at<T>(items: readonly T[], index: number): T {
+  const item = items[index];
+  if (item === undefined) throw new Error(`Rien à l’index ${String(index)}`);
+  return item;
 }
 
 /** Contenu d'un fichier simulé : son URL, que `decodeAudioData` retrouve. */
@@ -489,6 +554,21 @@ describe('Réglage « Son »', () => {
     expect(context.resume).not.toHaveBeenCalled();
   });
 
+  it('remis : un geste réveille le contexte, même si sa suspension n’a pas encore eu lieu', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+    context.resume.mockClear();
+
+    service.setEnabled(false);
+    service.setEnabled(true);
+    gesture(context);
+    await flush();
+
+    expect(context.resume).toHaveBeenCalledOnce();
+  });
+
   it('coupé puis remis : oublie la séquence en attente du premier geste', async () => {
     const { context, service } = setupBlocked();
     await service.playClips(['un.mp3']);
@@ -555,6 +635,24 @@ describe('Son bloqué avant le premier geste', () => {
       expect(context.played()).toEqual(['/un.mp3', '/deux.mp3']);
     },
   );
+
+  it('donne la promesse de la séquence quand elle part enfin, résolue à sa fin', async () => {
+    const { context, service } = setupBlocked();
+    const onDeferredStart = vi.fn();
+    await service.playClips(['un.mp3'], onDeferredStart);
+    expect(onDeferredStart).not.toHaveBeenCalled();
+
+    gesture(context, 'pointerup');
+    await flush();
+    expect(onDeferredStart).toHaveBeenCalledOnce();
+    const voice = track(onDeferredStart.mock.calls[0]?.[0] as Promise<void>);
+    await flush();
+    expect(voice.settled).toBe(false);
+
+    context.lastSource().end();
+    await flush();
+    expect(voice.settled).toBe(true);
+  });
 
   it('ne lance la séquence qu’une fois, même au doigt où plusieurs évènements s’enchaînent', async () => {
     const { context, service } = setupBlocked();
@@ -684,6 +782,22 @@ describe('Son bloqué avant le premier geste', () => {
     context.startByItself();
     await flush();
 
+    expect(context.played()).toEqual(['/un.mp3']);
+  });
+
+  it('garde la séquence en attente quand le contexte change d’état sans démarrer', async () => {
+    const { context, service } = setupBlocked();
+    await service.playClips(['un.mp3']);
+    context.resume.mockClear();
+
+    context.interruptBySystem();
+    await vi.advanceTimersByTimeAsync(RESUME_TIMEOUT_MS);
+
+    expect(context.resume).not.toHaveBeenCalled();
+    expect(context.sources).toEqual([]);
+
+    gesture(context);
+    await flush();
     expect(context.played()).toEqual(['/un.mp3']);
   });
 
@@ -903,6 +1017,40 @@ describe('Clips illisibles', () => {
     expect(context.played()).toEqual(['/deux.mp3', '/lent.mp3']);
   });
 
+  it('retente au prochain appel un clip dont le chargement n’a jamais répondu', async () => {
+    const { context, fetchClip, service } = setup();
+    fetchClip.mockReturnValueOnce(new Promise<ArrayBuffer>(() => undefined));
+
+    const first = track(service.playClips(['lent.mp3']));
+    await vi.advanceTimersByTimeAsync(CLIP_LOAD_TIMEOUT_MS);
+    expect(first.settled).toBe(true);
+    expect(context.sources).toEqual([]);
+
+    // Le réseau est revenu : le clip part tout de suite, sans attendre encore 4 s.
+    void service.playClips(['lent.mp3']);
+    await flush();
+
+    expect(fetchClip.mock.calls).toEqual([['/lent.mp3'], ['/lent.mp3']]);
+    expect(context.played()).toEqual(['/lent.mp3']);
+  });
+
+  it('retente aussi un clip dont le préchargement ne répond pas', async () => {
+    const { context, fetchClip, service } = setup();
+    fetchClip.mockReturnValueOnce(new Promise<ArrayBuffer>(() => undefined));
+    void service.preloadClips(['lent.mp3']);
+    await flush();
+
+    void service.playClips(['lent.mp3']);
+    await vi.advanceTimersByTimeAsync(CLIP_LOAD_TIMEOUT_MS);
+    expect(fetchClip).toHaveBeenCalledOnce();
+
+    void service.playClips(['lent.mp3']);
+    await flush();
+
+    expect(fetchClip).toHaveBeenCalledTimes(2);
+    expect(context.played()).toEqual(['/lent.mp3']);
+  });
+
   it('résout la promesse sans rien jouer quand aucun clip n’est lisible', async () => {
     const { context, fetchClip, service } = setup();
     fetchClip.mockRejectedValue(new Error('Hors ligne'));
@@ -939,10 +1087,47 @@ describe('Clips illisibles', () => {
   });
 });
 
+describe('Réveil de la sortie audio', () => {
+  it('laisse la sortie se rouvrir avant la première voix, puis enchaîne sans délai', async () => {
+    const { context, service } = setup();
+
+    void service.playClips(['un.mp3', 'deux.mp3']);
+    await flush();
+    // Un téléviseur (HDMI) ou un casque Bluetooth couperait sinon les premiers mots.
+    expect(context.lastSource().start).toHaveBeenCalledExactlyOnceWith(
+      context.currentTime + WAKE_LEAD_MS / 1000,
+    );
+
+    await vi.advanceTimersByTimeAsync(1000);
+    context.lastSource().end();
+    await flush();
+    expect(context.lastSource().start).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it('repart du délai après une reprise du contexte', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    await vi.advanceTimersByTimeAsync(5000);
+
+    setPageHidden(true);
+    await flush();
+    setPageHidden(false);
+    await flush();
+    void service.playClips(['deux.mp3']);
+    await flush();
+
+    expect(context.lastSource().start).toHaveBeenCalledExactlyOnceWith(
+      context.currentTime + WAKE_LEAD_MS / 1000,
+    );
+  });
+});
+
 describe('Filet de sécurité', () => {
   it('résout un clip dont `ended` ne vient jamais, après sa durée et la marge', async () => {
     const { context, service } = setup();
-    const safetyMs = context.clipSeconds * 1000 + CLIP_END_MARGIN_MS;
+    // Premier clip du contexte, juste créé : il part après le délai de réveil.
+    const safetyMs = context.clipSeconds * 1000 + WAKE_LEAD_MS + CLIP_END_MARGIN_MS;
 
     const run = track(service.playClips(['un.mp3']));
     await flush();
@@ -959,12 +1144,56 @@ describe('Filet de sécurité', () => {
 
     const run = track(service.playClips(['long.mp3', 'deux.mp3']));
     await flush();
-    await vi.advanceTimersByTimeAsync(3000 + CLIP_END_MARGIN_MS - 1);
+    await vi.advanceTimersByTimeAsync(3000 + WAKE_LEAD_MS + CLIP_END_MARGIN_MS - 1);
     expect(context.sources).toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(1);
     expect(context.played()).toEqual(['/long.mp3', '/deux.mp3']);
     expect(run.settled).toBe(false);
+  });
+
+  it('arrête le clip quand le filet de sécurité expire, sans quoi il repartirait à la reprise', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3', 'deux.mp3']);
+    await flush();
+    const first = context.lastSource();
+    // Le système suspend le contexte : `ended` n'arrivera pas, et le clip reste figé en cours de route.
+    context.stopBySystem();
+
+    await vi.advanceTimersByTimeAsync(
+      context.clipSeconds * 1000 + WAKE_LEAD_MS + CLIP_END_MARGIN_MS,
+    );
+
+    expect(first.stop).toHaveBeenCalledOnce();
+    expect(context.lastSource()).not.toBe(first);
+    expect(context.lastSource().stop).not.toHaveBeenCalled();
+  });
+
+  it('tolère un clip déjà terminé quand le filet de sécurité expire', async () => {
+    const { context, service } = setup();
+    const run = track(service.playClips(['un.mp3']));
+    await flush();
+    context.lastSource().stop.mockImplementation(() => {
+      throw new DOMException('Déjà terminé', 'InvalidStateError');
+    });
+
+    await vi.advanceTimersByTimeAsync(
+      context.clipSeconds * 1000 + WAKE_LEAD_MS + CLIP_END_MARGIN_MS,
+    );
+
+    expect(run.settled).toBe(true);
+  });
+
+  it('n’arrête pas un clip arrivé au bout normalement', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+
+    context.lastSource().end();
+    await flush();
+    await vi.advanceTimersByTimeAsync(context.clipSeconds * 1000 + CLIP_END_MARGIN_MS);
+
+    expect(context.lastSource().stop).not.toHaveBeenCalled();
   });
 
   it('ne laisse aucun minuteur après la fin normale d’un clip', async () => {
@@ -1009,7 +1238,9 @@ describe('Filet de sécurité', () => {
     void service.playClips(['un.mp3', 'deux.mp3']);
     await flush();
     const first = context.lastSource();
-    await vi.advanceTimersByTimeAsync(context.clipSeconds * 1000 + CLIP_END_MARGIN_MS);
+    await vi.advanceTimersByTimeAsync(
+      context.clipSeconds * 1000 + WAKE_LEAD_MS + CLIP_END_MARGIN_MS,
+    );
     expect(context.played()).toEqual(['/un.mp3', '/deux.mp3']);
 
     first.end();
@@ -1019,10 +1250,13 @@ describe('Filet de sécurité', () => {
   });
 });
 
+/** Le rebond : le grave et son octave (FEAT-22 §3.4). */
+const BOUNCE_NOTES = 2;
+
 describe('Effets sonores', () => {
   const EFFECT_NOTES: [SoundEffect, number][] = [
     ['success', 2],
-    ['bounce', 1],
+    ['bounce', BOUNCE_NOTES],
     ['stop', 2],
     ['victory', 4],
   ];
@@ -1082,6 +1316,60 @@ describe('Effets sonores', () => {
       expect(ramps[1]).toBe(start?.[0]);
     }
   });
+
+  /** Table de FEAT-22 §3.4, en millisecondes après le début de l'effet. */
+  const EFFECT_TABLE: Record<SoundEffect, readonly EffectNote[]> = {
+    success: [
+      { type: 'sine', hz: 659, atMs: 0, lengthMs: 120 },
+      { type: 'sine', hz: 880, atMs: 90, lengthMs: 200 },
+    ],
+    bounce: [
+      { type: 'sine', hz: 300, toHz: 170, atMs: 0, lengthMs: 240 },
+      { type: 'sine', hz: 600, toHz: 340, atMs: 0, lengthMs: 240 },
+    ],
+    stop: [
+      { type: 'triangle', hz: 523, atMs: 0, lengthMs: 180 },
+      { type: 'triangle', hz: 392, atMs: 200, lengthMs: 300 },
+    ],
+    victory: [
+      { type: 'sine', hz: 523, atMs: 0, lengthMs: 140 },
+      { type: 'sine', hz: 659, atMs: 120, lengthMs: 140 },
+      { type: 'sine', hz: 784, atMs: 240, lengthMs: 140 },
+      { type: 'sine', hz: 1047, atMs: 360, lengthMs: 320 },
+    ],
+  };
+
+  it.each(Object.entries(EFFECT_TABLE))(
+    'joue les notes annoncées pour l’effet « %s », à leur place dans le temps',
+    (effect, table) => {
+      const { context, service } = setup();
+      const now = context.currentTime;
+      const afterNow = (seconds: number | undefined) => Math.round(((seconds ?? 0) - now) * 1000);
+
+      service.playEffect(effect as SoundEffect);
+
+      const notes = context.oscillators.map(({ type, frequency, start, stop }) => {
+        const [hz, setAt] = frequency.setValueAtTime.mock.calls[0] ?? [];
+        const [toHz, glideEnd] = frequency.exponentialRampToValueAtTime.mock.calls[0] ?? [];
+        const atMs = afterNow(start.mock.calls[0]?.[0]);
+        const lengthMs = afterNow(stop.mock.calls[0]?.[0]) - atMs;
+        expect(afterNow(setAt)).toBe(atMs);
+        if (glideEnd !== undefined) expect(afterNow(glideEnd)).toBe(atMs + lengthMs);
+        return { type, hz, ...(toHz === undefined ? {} : { toHz }), atMs, lengthMs };
+      });
+      expect(notes).toEqual(table);
+
+      // Enveloppe de chaque note : attaque de 15 ms jusqu'à la crête, puis extinction jusqu'à sa fin.
+      context.gains.forEach(({ gain }, index) => {
+        const { atMs, lengthMs } = at(table, index);
+        const envelope = [
+          ...gain.setValueAtTime.mock.calls,
+          ...gain.exponentialRampToValueAtTime.mock.calls,
+        ].map(([, time]) => afterNow(time));
+        expect(envelope).toEqual([atMs, atMs + EFFECT_ATTACK_MS, atMs + lengthMs]);
+      });
+    },
+  );
 
   it('fait glisser le rebond vers le grave, seul effet en glissando', () => {
     const { context, service } = setup();
@@ -1146,12 +1434,178 @@ describe('Effets sonores', () => {
     await flush();
 
     service.playEffect('bounce');
-    expect(context.oscillators).toHaveLength(1);
+    expect(context.oscillators).toHaveLength(BOUNCE_NOTES);
 
     setPageHidden(false);
     await flush();
+    expect(context.notesStillToPlay()).toEqual([]);
+
     service.playEffect('bounce');
-    expect(context.oscillators).toHaveLength(2);
+    expect(context.oscillators).toHaveLength(BOUNCE_NOTES * 2);
+    expect(context.notesStillToPlay()).toHaveLength(BOUNCE_NOTES);
+  });
+
+  // Sans cet arrêt, `suspend()` fige les notes : leur fin part à la reprise, sur le premier mot de la
+  // voix suivante.
+  it.each(EFFECT_NOTES)(
+    'coupe les notes de l’effet « %s » quand la page se masque : rien ne repart au retour',
+    async (effect) => {
+      const { context, service } = setup();
+      service.playEffect(effect);
+      context.advance(0.03);
+
+      setPageHidden(true);
+      await flush();
+      context.advance(5);
+      setPageHidden(false);
+      await flush();
+
+      expect(context.state).toBe('running');
+      expect(context.notesStillToPlay()).toEqual([]);
+    },
+  );
+
+  it.each(EFFECT_NOTES)(
+    'coupe les notes de l’effet « %s » avec le son : rien ne repart à la voix suivante',
+    async (effect) => {
+      const { context, service } = setup();
+      service.playEffect(effect);
+      context.advance(0.03);
+
+      service.setEnabled(false);
+      await flush();
+      service.setEnabled(true);
+      void service.playClips(['un.mp3']);
+      await flush();
+
+      expect(context.state).toBe('running');
+      expect(context.notesStillToPlay()).toEqual([]);
+    },
+  );
+
+  it('arrête les notes avant de suspendre le contexte, qui ne traiterait plus rien', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+
+    service.setEnabled(false);
+
+    for (const note of context.oscillators) {
+      expect(note.stop.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        context.suspend.mock.invocationCallOrder[0] ?? 0,
+      );
+    }
+  });
+
+  it('n’arrête plus une note finie', () => {
+    const { context, service } = setup();
+    service.playEffect('bounce');
+    const [note] = context.oscillators;
+    note?.end();
+
+    service.setEnabled(false);
+
+    expect(note?.stop).toHaveBeenCalledOnce();
+  });
+
+  it('oublie les notes arrêtées, même quand leur fin n’est jamais signalée', () => {
+    const { context, service } = setup();
+    service.playEffect('bounce');
+    const [note] = context.oscillators;
+
+    service.setEnabled(false);
+    service.setEnabled(true);
+    service.setEnabled(false);
+
+    // Programmée, puis arrêtée une seule fois : certains WebView perdent `ended`.
+    expect(note?.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('tolère une note dont l’arrêt lève une erreur', () => {
+    const { context, service } = setup();
+    service.playEffect('bounce');
+    context.oscillators[0]?.stop.mockImplementation(() => {
+      throw new DOMException('Déjà terminé', 'InvalidStateError');
+    });
+
+    expect(() => {
+      service.setEnabled(false);
+    }).not.toThrow();
+    expect(context.suspend).toHaveBeenCalledOnce();
+  });
+
+  it('laisse finir un effet quand la voix change : seule une suspension le coupe', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    service.playEffect('victory');
+
+    void service.playClips(['deux.mp3']);
+    service.stopClips();
+    await flush();
+
+    expect(context.notesStillToPlay()).toHaveLength(4);
+  });
+
+  it('perd un effet demandé juste après suspend(), quand `state` dit encore `running`', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+    context.oscillators.length = 0;
+    // Firefox : `state` ne change qu'à la résolution de `suspend()`.
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+
+    service.setEnabled(false);
+    service.setEnabled(true);
+    service.playEffect('bounce');
+
+    expect(context.oscillators).toEqual([]);
+  });
+
+  it('perd un effet demandé juste après le masquage de la page, quand `state` dit encore `running`', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+    context.oscillators.length = 0;
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+
+    setPageHidden(true);
+    service.playEffect('bounce');
+
+    expect(context.oscillators).toEqual([]);
+  });
+
+  it('ne crée pas de contexte pour un effet demandé en arrière-plan', () => {
+    const { createContext, service } = setup();
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+
+    service.playEffect('bounce');
+
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
+  it('rejoue un effet après un geste qui réveille une suspension pas encore faite', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+    context.oscillators.length = 0;
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+
+    service.setEnabled(false);
+    service.setEnabled(true);
+    window.dispatchEvent(new Event('pointerdown'));
+    service.playEffect('bounce');
+
+    expect(context.oscillators).toHaveLength(BOUNCE_NOTES);
+  });
+
+  it('rejoue un effet après le retour au premier plan, même si la suspension n’avait pas eu lieu', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+    context.oscillators.length = 0;
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+
+    setPageHidden(true);
+    setPageHidden(false);
+    service.playEffect('bounce');
+
+    expect(context.oscillators).toHaveLength(BOUNCE_NOTES);
   });
 
   it('rejoue après le premier geste', async () => {

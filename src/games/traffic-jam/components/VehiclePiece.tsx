@@ -24,8 +24,12 @@ const EXIT_OVERSHOOT_CELLS = 0.5;
 /** Anneau D-Pad de l'état 1 (véhicule ciblé) : ambré, comme les cartes de Memory (FEAT-10). */
 const FOCUSED_CLASSES = 'z-10 ring-4 ring-amber-400 ring-offset-2 ring-offset-slate-950';
 
-/** Anneau de l'état 2 (véhicule démarré) : émeraude vif. */
-const LOCKED_CLASSES = 'z-10 ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950';
+/**
+ * Anneau de l'état 2 (véhicule démarré) : émeraude vif. Il a le focus DOM : sans sa variante
+ * `focus-visible:`, l'anneau ambré de `FOCUS_VISIBLE_CLASSES` passerait devant.
+ */
+const LOCKED_CLASSES =
+  'z-10 ring-4 ring-emerald-400 ring-offset-2 ring-offset-slate-950 focus-visible:ring-emerald-400';
 
 /** Même anneau ambré pour la navigation clavier native (Tab), l'anneau remplaçant l'`outline`. */
 const FOCUS_VISIBLE_CLASSES =
@@ -54,6 +58,7 @@ export interface VehiclePieceProps {
   onPointerMove?: VehiclePointerHandler;
   onPointerUp?: VehiclePointerHandler;
   onPointerCancel?: VehiclePointerHandler;
+  onLostPointerCapture?: VehiclePointerHandler;
   /** Le véhicule reçoit le focus DOM (Tab, clic) : activer la zone du plateau et le cibler */
   onFocus?: () => void;
 }
@@ -131,6 +136,7 @@ export function VehiclePiece({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  onLostPointerCapture,
   onFocus,
 }: VehiclePieceProps) {
   const horizontal = vehicle.axis === 'H';
@@ -173,6 +179,7 @@ export function VehiclePiece({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onLostPointerCapture}
       onFocus={onFocus}
     >
       <span

@@ -19,12 +19,16 @@ export interface StopOverlayProps {
   ref?: Ref<HTMLButtonElement>;
   /** Le panneau, déjà actif, est touché */
   onContinue: () => void;
+  /** Le panneau reçoit le focus DOM (Tab, clic) */
+  onFocus: () => void;
 }
 
 /**
  * Panneau STOP : voile sur tout le plateau, grand panneau et image de la prochaine règle. Le bouton
  * reste focalisable pendant l'attente (`aria-disabled`, jamais `disabled`) : il garde le focus D-Pad
- * et le lecteur d'écran le trouve, mais rien ne se passe avant la fin de l'attente.
+ * et le lecteur d'écran le trouve, mais rien ne se passe avant la fin de l'attente. Sans flou sur
+ * téléviseur : recalculé à chaque image sous un plateau qui s'anime, il ferait décrocher un boîtier
+ * modeste, et le voile assombrit déjà tout.
  */
 export function StopOverlay({
   upcomingRule,
@@ -33,11 +37,12 @@ export function StopOverlay({
   isFocused,
   ref,
   onContinue,
+  onFocus,
 }: StopOverlayProps) {
   return (
     <motion.div
       data-stop-overlay="true"
-      className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 rounded-2xl bg-slate-950/80 p-2 backdrop-blur-sm landscape:flex-row landscape:gap-10"
+      className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 rounded-2xl bg-slate-950/80 p-2 backdrop-blur-sm landscape:flex-row landscape:gap-10 tv:backdrop-blur-none"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.25 }}
@@ -56,6 +61,7 @@ export function StopOverlay({
           isFocused && FOCUSED_CLASSES,
         )}
         onClick={isActive ? onContinue : undefined}
+        onFocus={onFocus}
       >
         <StopSign isPulsing={isActive} className="size-full" />
       </button>

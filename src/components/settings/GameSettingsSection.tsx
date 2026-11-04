@@ -62,9 +62,10 @@ export function GameSettingsSection({
 
   return (
     <SettingsSection title="Jeux" icon={<Gamepad2 className="size-7" />}>
-      {/* Avatar décoratif : le prénom affiché à côté suffit (comme le bouton du profil du Hub). */}
+      {/* Avatar décoratif : le prénom affiché à côté suffit (comme le bouton du profil du Hub). Un long
+          prénom sans espace passe à la ligne plutôt que de déborder de la carte. */}
       <div className="flex flex-col gap-1">
-        <p className="flex items-center gap-2 text-fluid-lg font-semibold">
+        <p className="flex items-center gap-2 text-fluid-lg font-semibold wrap-anywhere">
           <AvatarBadge avatarId={profile.avatarId} size="sm" />
           {describeProfileSettings(profile.name)}
         </p>
@@ -158,6 +159,7 @@ function TimeFactorGroup({
           {note}
         </p>
       </div>
+      {/* Deux rangées de deux, puis une rangée dès `sm` : la zone D-Pad suit (SettingsScreen). */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:gap-3">
         {TIME_FACTOR_OPTIONS.map((option, index) => {
           const isChosen = option.value === value;

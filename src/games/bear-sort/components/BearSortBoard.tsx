@@ -13,7 +13,7 @@ import {
 } from '@/core/navigation';
 import type { EnrichedLevelItem } from '@/core/progression';
 import { cn } from '@/lib/cn';
-import { MotionConfig, motion } from 'framer-motion';
+import { MotionConfig, motion, useAnimationControls, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, ArrowUp, SkipForward, type LucideIcon } from 'lucide-react';
 import {
   useEffect,
@@ -58,7 +58,7 @@ import { NoBadge } from './NoBadge';
 import { OwlMascot, type MascotMood } from './OwlMascot';
 import { RulePicture } from './RulePicture';
 import { StopOverlay } from './StopOverlay';
-import { TAP_SLOP_PX, useBearDrag, type HeldBear } from './useBearDrag';
+import { TAP_SLOP_PX, useBearDrag } from './useBearDrag';
 import { MIN_MIME_MS, useMascotSpeech, type SpeakingMood } from './useMascotSpeech';
 import { useTransient } from './useTransient';
 
@@ -72,6 +72,9 @@ export const STOP_MIN_WAIT_MS = 5000;
 
 /** Panneau actif et pas touché : la voix le rappelle à cet intervalle. */
 export const STOP_NUDGE_MS = 6000;
+
+/** Fin de l'attente du panneau, pour le lecteur d'écran. */
+const STOP_READY_ANNOUNCEMENT = 'À toi ! Appuie sur le panneau.';
 
 /** Rappels d'affilée sans aucun geste : un écran laissé allumé finit par se taire. */
 export const MAX_NUDGES = 3;
@@ -121,6 +124,26 @@ const EXCEPT_GRID_CLASSES =
 const SORT_GUIDE_CLASSES =
   'col-span-2 landscape:col-span-1 landscape:col-start-2 landscape:row-start-1';
 
+/**
+ * Paysage très bas (téléphone, barres du navigateur) : le guide passe en ligne, et c'est la mascotte
+ * qui rétrécit. En colonne, elle ne laisserait que quelques pixels à l'image de la règle, qui porte
+ * seule la consigne son coupé. Marges verticales réduites : à partir de 768 px de large, elles
+ * prendraient 48 px à un plateau qui n'en a pas 200.
+ */
+const SHORT_SHELL_CLASSES = 'landscape:[@media(max-height:24rem)]:[--safe-area-y:0.25rem]';
+const SHORT_GUIDE_CLASSES =
+  'landscape:[@media(max-height:24rem)]:w-[clamp(11rem,38vw,20rem)] landscape:[@media(max-height:24rem)]:flex-row';
+const SHORT_MASCOT_CLASSES =
+  'landscape:[@media(max-height:24rem)]:h-full landscape:[@media(max-height:24rem)]:max-h-[24vmin] landscape:[@media(max-height:24rem)]:w-auto';
+
+/**
+ * Case d'un ours, 13vmin borné, et réserve à hauteur fixe : dix ours tiennent sur une rangée en
+ * paysage et deux en portrait, même sur un petit écran, et le dernier ours rangé la laisse à sa
+ * place. Les boîtes ne bougent ainsi jamais pendant une étoile.
+ */
+const RESERVE_CLASSES =
+  'min-h-(--bear-slot) [--bear-slot:min(clamp(3.25rem,13vmin,6.5rem),calc((100cqw_-_2rem)/5))] portrait:min-h-[calc(2*var(--bear-slot)+0.5rem)] landscape:[--bear-slot:min(clamp(3.25rem,13vmin,6.5rem),calc((100cqw_-_4.5rem)/10))]';
+
 /** Anneau de l'ours choisi d'un tap : ambré, distinct de l'anneau bleu du D-Pad. */
 const SELECTED_CLASSES = 'z-10 ring-4 ring-amber-300 ring-offset-2 ring-offset-slate-950';
 
@@ -146,6 +169,9 @@ interface StopGate {
   isWaitOver: boolean;
   isVoiceOver: boolean;
 }
+
+/** Panneau qui vient d'apparaître : ni l'attente ni la voix ne sont finies. */
+const CLOSED_STOP_GATE: StopGate = { isWaitOver: false, isVoiceOver: false };
 
 /** Trajet de la main du geste, dans le repère de l'écran. */
 interface GesturePath {
@@ -223,12 +249,16 @@ function getGlowHint(state: BearSortState, relevantUid: string | null): GlowHint
 }
 
 /**
- * Entrée ou Espace sur un bouton atteint au Tab : clic natif, comme au doigt. L'évènement ne remonte
- * pas au moteur D-Pad, qui y verrait un OK (rejouer la règle) et ramènerait le focus sur l'ours avant
- * que le navigateur n'émette le clic.
+ * Entrée ou Espace sur un ours atteint au Tab (hors D-Pad) : clic natif, comme au doigt. L'ours fait
+ * partie de la zone du plateau : l'évènement ne remonte pas au moteur D-Pad, qui y verrait un OK
+ * (rejouer la règle) et ramènerait le focus sur l'ours avant que le navigateur n'émette le clic.
+ * Maintenue, la touche ne clique qu'une fois. La mascotte et les boîtes, hors de la zone, restent
+ * natives par le moteur lui-même (FEAT-04 §5).
  */
 function keepNativeActivation(event: ReactKeyboardEvent) {
-  if (isSelectKey(event.key)) event.stopPropagation();
+  if (!isSelectKey(event.key)) return;
+  event.stopPropagation();
+  if (event.repeat) event.preventDefault();
 }
 
 export interface BearSortBoardProps {
@@ -259,26 +289,25 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   // Le bouton Retour a le focus DOM (Tab, clic) : sa zone reçoit les touches, OK le déclenche.
   const [isBackZone, setIsBackZone] = useState(false);
-  const [stopGate, setStopGate] = useState<StopGate | null>(null);
-  const [hasEarnedCrown, setHasEarnedCrown] = useState(false);
+  const [stopGate, setStopGate] = useState(CLOSED_STOP_GATE);
   const [isEndOpen, setIsEndOpen] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   // Change à chaque geste : relance le compte à rebours de l'inaction.
   const [idleEpoch, setIdleEpoch] = useState(0);
   const [gesturePath, setGesturePath] = useState<GesturePath | null>(null);
   const [isHappy, showHappy] = useTransient<true>(HAPPY_MS);
-  const [isRulePulsing, pulseRule] = useTransient<true>(RULE_PULSE_MS);
+  const [isRulePulsing, pulseRule, stopRulePulse] = useTransient<true>(RULE_PULSE_MS);
   const [pulsingZoneId, pulseZone] = useTransient<BearSortZoneId>(BOX_PULSE_MS);
   const [wigglingUid, wiggleBear, stopWiggle] = useTransient<string>(WIGGLE_MS);
-  const { speakingMood, speak, stopSpeaking } = useMascotSpeech(audio);
+  const { speakingMood, speak } = useMascotSpeech(audio);
   const [bearElements] = useState(() => createElementMap<string>());
   const [zoneElements] = useState(() => createElementMap<BearSortZoneId>());
   const stopButtonRef = useRef<HTMLButtonElement>(null);
   const reserveRef = useRef<HTMLDivElement>(null);
   const startedAtRef = useRef<number | null>(null);
   const nudgeCountRef = useRef(0);
-  // Dernière touche : une flèche maintenue se répète, et l'on ne range qu'un ours par appui.
-  const isKeyRepeatRef = useRef(false);
+  // Dernière touche Tab : elle pose le focus là où l'enfant le veut, et le curseur ne le lui reprend pas.
+  const isTabKeyRef = useRef(false);
 
   const isPlaying = game.status === 'playing';
   const isStopped = game.status === 'stop';
@@ -286,7 +315,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     game.reserve.find((bear) => bear.uid === cursorUid) ?? game.reserve[0] ?? null;
   const currentUid = currentBear?.uid ?? null;
   const upcomingRule = getUpcomingRule(game);
-  const isStopActive = isStopped && stopGate?.isWaitOver === true && stopGate.isVoiceOver;
+  const isStopActive = isStopped && stopGate.isWaitOver && stopGate.isVoiceOver;
   const nextLevel = controls.summary.allLevels[level.globalIndex + 1] ?? null;
 
   const announce = (text: string) => {
@@ -308,6 +337,24 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     nudgeCountRef.current = 0;
     setIdleEpoch((epoch) => epoch + 1);
     stopWiggle();
+  };
+
+  /**
+   * Geste sans effet (boîte sans ours choisi, flèche qui ne range rien) : l'enfant est là, la voix ne
+   * se tait pas pour de bon. Le compte à rebours continue : ces gestes répétés le tiendraient à zéro.
+   */
+  const noteVainGesture = () => {
+    nudgeCountRef.current = 0;
+  };
+
+  /**
+   * Prend une relance, s'il en reste. Page masquée : personne ne l'entendrait, elle n'est pas dépensée
+   * (l'enfant qui revient n'a pas à trouver un jeu muet).
+   */
+  const takeNudge = () => {
+    if (document.hidden || nudgeCountRef.current >= MAX_NUDGES) return false;
+    nudgeCountRef.current += 1;
+    return true;
   };
 
   /**
@@ -335,7 +382,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
       void announceRule(bounced.rule, ['hint-look'], 'talking');
     } else {
       void speak(['hint-here']);
-      const hint = getGlowHint(bounced, allowedBear?.uid ?? selectedUid ?? bounce.bearUid);
+      const hint = getGlowHint(bounced, allowedBear?.uid ?? bounce.bearUid);
       const zone = bounced.zones.find((candidate) => candidate.id === hint?.zoneId);
       const bearHint = allowedBear ? `, avec ${getBearLabel(allowedBear).toLowerCase()}` : '';
       if (zone) announce(`Essaie ici : ${getBoxLabel(zone.traits)}${bearHint}`);
@@ -349,11 +396,11 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   const enterStop = (stopped: BearSortState) => {
     const upcoming = getUpcomingRule(stopped);
     if (!upcoming) return;
-    setStopGate({ isWaitOver: false, isVoiceOver: false });
+    setStopGate(CLOSED_STOP_GATE);
     audio.playEffect('stop');
     announce(`Stop ! ${getRuleLabel(upcoming)}`);
     void speak(['stop-warning']).then(() => {
-      setStopGate((gate) => gate && { ...gate, isVoiceOver: true });
+      setStopGate((gate) => ({ ...gate, isVoiceOver: true }));
     });
   };
 
@@ -362,7 +409,6 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     const isPerfect = isPerfectWin(won);
     const startedAt = startedAtRef.current;
     const timeSeconds = startedAt === null ? 0 : Math.round((readClock() - startedAt) / 1000);
-    setHasEarnedCrown(isPerfect);
     audio.playEffect('victory');
     void speak(isPerfect ? ['star-won', 'crown-won'] : ['star-won']);
     void controls.recordVictory({ moves: won.moves, timeSeconds, isPerfect });
@@ -396,7 +442,6 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     if (!isStopActive) return;
     const next = continueAfterStop(game);
     setGame(next);
-    setStopGate(null);
     setCursorUid(next.reserve[0]?.uid ?? null);
     noteAction();
     void announceRule(next.rule);
@@ -411,14 +456,13 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
 
   /** Une nouvelle partie : nouvel ordre des ours, règle annoncée de nouveau (effet sur `round`). */
   const restart = () => {
-    stopSpeaking();
     startedAtRef.current = readClock();
     setGame(createBearSortGame(config));
     setRound((value) => value + 1);
     setCursorUid(null);
     setSelectedUid(null);
-    setStopGate(null);
     setIsEndOpen(false);
+    stopRulePulse();
     noteAction();
   };
 
@@ -446,15 +490,26 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     onRelease: releaseBear,
   });
 
+  /**
+   * La flèche range l'ours du curseur. Un autre ours choisi plus tôt ne l'est plus : l'échelle
+   * d'indices le viserait à sa place, et la flèche vers la boîte éclairée ne rangerait jamais rien.
+   */
+  const placeCursorBear = (uid: string, zoneId: BearSortZoneId) => {
+    if (selectedUid !== uid) setSelectedUid(null);
+    placeBear(uid, zoneId);
+  };
+
   /** Une flèche par ours. Tri : gauche et droite rangent. Négation : haut range, le reste laisse. */
-  const pressDirection = (direction: Direction) => {
-    if (isKeyRepeatRef.current || !isPlaying || drag.held || currentUid === null) return;
+  const pressDirection = (direction: Direction, isRepeat: boolean) => {
+    // Une flèche maintenue se répète : on ne range qu'un ours par appui.
+    if (isRepeat || !isPlaying || drag.heldUid !== null || currentUid === null) return;
     if (game.rule.kind === 'sort') {
-      if (direction === 'left' || direction === 'right') placeBear(currentUid, direction);
+      if (direction === 'left' || direction === 'right') placeCursorBear(currentUid, direction);
+      else noteVainGesture();
       return;
     }
     if (direction === 'up') {
-      placeBear(currentUid, 'open');
+      placeCursorBear(currentUid, 'open');
       return;
     }
     setCursorUid(getNextBearUid(game, currentUid));
@@ -506,10 +561,15 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   const tapZone = (zoneId: BearSortZoneId) => {
     if (!isPlaying) return;
     const uid = selectedUid ?? (isFocusVisible ? currentUid : null);
-    if (uid === null) announce('Choisis d’abord un ours');
-    else placeBear(uid, zoneId);
+    if (uid === null) {
+      noteVainGesture();
+      announce('Choisis d’abord un ours');
+    } else {
+      placeBear(uid, zoneId);
+    }
   };
 
+  /** Focus DOM (Tab, clic) sur un contrôle du plateau, panneau STOP compris : sa zone s'active. */
   const focusBoard = () => {
     setIsBackZone(false);
   };
@@ -522,8 +582,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
 
   /** Inaction : la règle est rappelée, et un ours montre où commencer. */
   const nudge = useEffectEvent(() => {
-    if (nudgeCountRef.current >= MAX_NUDGES) return;
-    nudgeCountRef.current += 1;
+    if (!takeNudge()) return;
     pulseRule(true);
     const shown = (isFocusVisible ? currentBear : null) ?? game.reserve[0] ?? null;
     if (game.rule.kind === 'sort') {
@@ -536,7 +595,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     if (allowed) wiggleBear(allowed.uid);
   });
 
-  const isIdleWatched = isPlaying && drag.held === null;
+  const isIdleWatched = isPlaying && drag.heldUid === null;
 
   useEffect(() => {
     if (!isIdleWatched) return;
@@ -549,7 +608,10 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   // Annonce de la partie : un minuteur plutôt qu'un appel direct, l'effet rejoué sous StrictMode ne
   // parle qu'une fois, et après le son coupé par le faux démontage de `useGameAudio`.
   const announceStart = useEffectEvent(() => {
-    void audio.preloadClips(getStarClipIds(config).map(getVoiceClipPath));
+    // La règle d'abord : sur un réseau lent, la première phrase n'attend pas tous les autres clips.
+    void audio
+      .preloadClips([getVoiceClipPath(getRuleClipId(game.rule))])
+      .then(() => audio.preloadClips(getStarClipIds(config).map(getVoiceClipPath)));
     void announceRule(game.rule);
   });
 
@@ -564,10 +626,10 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     startedAtRef.current ??= readClock();
   }, []);
 
-  // Une flèche maintenue se répète : écouteur en capture, avant le moteur D-Pad sur `window`.
+  // Écouteur en capture, avant le moteur D-Pad sur `window` et avant le focus que déplace Tab.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      isKeyRepeatRef.current = event.repeat;
+      isTabKeyRef.current = event.key === 'Tab';
     };
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => {
@@ -583,14 +645,14 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   });
 
   useEffect(() => {
-    if (isFocusVisible) focusCursor();
+    if (isFocusVisible && !isTabKeyRef.current) focusCursor();
   }, [isFocusVisible, isStopped, currentUid, round]);
 
   // Attente imposée du panneau STOP.
   useEffect(() => {
     if (!isStopped) return;
     const timer = setTimeout(() => {
-      setStopGate((gate) => gate && { ...gate, isWaitOver: true });
+      setStopGate((gate) => ({ ...gate, isWaitOver: true }));
     }, STOP_MIN_WAIT_MS);
     return () => {
       clearTimeout(timer);
@@ -599,9 +661,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
 
   // Panneau actif et pas touché : la voix le rappelle. Le dernier dépôt a remis le compte à zéro.
   const remindStop = useEffectEvent(() => {
-    if (nudgeCountRef.current >= MAX_NUDGES) return;
-    nudgeCountRef.current += 1;
-    void speak(['stop-go']);
+    if (takeNudge()) void speak(['stop-go']);
   });
 
   useEffect(() => {
@@ -631,7 +691,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     game.phaseIndex === 0 && game.zones.every(({ bears }) => bears.length === 0);
   const gestureBear = getAllowedBear(game, null);
   const gestureZoneId =
-    config.showGestureHint && isFirstBearWaiting && drag.held === null && selectedUid === null
+    config.showGestureHint && isFirstBearWaiting && drag.heldUid === null && selectedUid === null
       ? gestureBear && getTargetZoneId(game, gestureBear)
       : null;
   const gestureBearUid = gestureZoneId ? (gestureBear?.uid ?? null) : null;
@@ -670,7 +730,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
   const fadedFeature = getFadedFeature(game);
   const glowHint = getGlowHint(
     game,
-    drag.held?.uid ?? selectedUid ?? game.lastBounce?.bearUid ?? null,
+    drag.heldUid ?? selectedUid ?? game.lastBounce?.bearUid ?? null,
   );
   const mood: MascotMood = isHappy ? 'happy' : (speakingMood ?? 'idle');
   const isExcept = game.rule.kind === 'except';
@@ -679,6 +739,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     <AppShell
       title={`Étoile #${String(level.starNumber)}`}
       isTextless
+      className={SHORT_SHELL_CLASSES}
       onBack={controls.exitToMap}
       isBackFocused={back.isItemFocused(0)}
       backButtonRef={back.getItemRef(0)}
@@ -688,10 +749,13 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
     >
       <MotionConfig reducedMotion="user">
         {/* Rogné : un ours glissé jusqu'au bord de l'écran ne fait pas défiler le contenu. Marge
-            interne : l'anneau de focus des ours du bord reste visible. En paysage, 8vw : les dix ours
-            d'une longue série tiennent sur une rangée, et les boîtes ne bougent pas en cours de série. */}
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden [--bear-slot:clamp(3.25rem,13vmin,6.5rem)] landscape:[--bear-slot:clamp(3.25rem,min(13vmin,8vw),6.5rem)]">
-          <div inert={isStopped} className="flex min-h-0 flex-1 flex-col gap-2 p-2 md:gap-3">
+            interne : l'anneau de focus des ours du bord reste visible. */}
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* Conteneur de taille : la réserve y calcule la case d'un ours (`RESERVE_CLASSES`). */}
+          <div
+            inert={isStopped}
+            className="@container-size flex min-h-0 flex-1 flex-col gap-2 p-2 md:gap-3"
+          >
             <div
               className={cn(
                 'grid min-h-0 flex-1 gap-2 md:gap-3',
@@ -701,6 +765,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
               <div
                 className={cn(
                   'flex min-h-0 min-w-0 items-center justify-center gap-3 landscape:w-[clamp(7rem,30vmin,15rem)] landscape:flex-col',
+                  SHORT_GUIDE_CLASSES,
                   !isExcept && SORT_GUIDE_CLASSES,
                 )}
               >
@@ -710,11 +775,11 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
                   data-mood={mood}
                   className={cn(
                     'aspect-square w-[clamp(4.5rem,24vmin,10rem)] shrink-0 cursor-pointer rounded-full',
+                    SHORT_MASCOT_CLASSES,
                     FOCUS_VISIBLE_CLASSES,
                   )}
                   onClick={replayRule}
                   onFocus={focusBoard}
-                  onKeyDown={keepNativeActivation}
                 >
                   <OwlMascot mood={mood} className="size-full" />
                 </button>
@@ -757,39 +822,40 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
               ref={reserveRef}
               role="group"
               aria-label="Réserve d'ours"
-              className="relative flex shrink-0 flex-wrap content-center items-center justify-center gap-2 portrait:min-h-[calc(2*var(--bear-slot)+0.5rem)]"
+              className={cn(
+                'relative flex shrink-0 flex-wrap content-center items-center justify-center gap-2',
+                RESERVE_CLASSES,
+              )}
             >
-              {game.reserve.map((bear) => {
-                const isHeld = drag.held?.uid === bear.uid;
-                return (
-                  <ReserveBear
-                    key={bear.uid}
-                    ref={bearElements.getRef(bear.uid)}
-                    bear={bear}
-                    held={isHeld ? drag.held : null}
-                    isFocused={isFocusVisible && !isStopped && bear.uid === currentUid}
-                    isSelected={bear.uid === selectedUid}
-                    isWiggling={bear.uid === wigglingUid || bear.uid === glowHint?.bearUid}
-                    hasNoBadge={hintLevel >= 2 && isBearForbidden(game.rule, bear)}
-                    fadedFeature={fadedFeature}
-                    canDrag={isPlaying}
-                    onPointerDown={(event) => {
-                      drag.startGesture(bear.uid, event);
-                    }}
-                    onPointerMove={drag.moveGesture}
-                    onPointerUp={drag.endGesture}
-                    onPointerCancel={drag.cancelGesture}
-                    onClick={(event) => {
-                      tapBear(bear.uid, event);
-                    }}
-                    onFocus={() => {
-                      focusBear(bear.uid);
-                    }}
-                    // Au D-Pad, OK va au moteur et rejoue la règle ; sinon il choisit l'ours.
-                    onKeyDown={isFocusVisible ? undefined : keepNativeActivation}
-                  />
-                );
-              })}
+              {game.reserve.map((bear) => (
+                <ReserveBear
+                  key={bear.uid}
+                  ref={bearElements.getRef(bear.uid)}
+                  bear={bear}
+                  isHeld={drag.heldUid === bear.uid}
+                  isFocused={isFocusVisible && !isStopped && bear.uid === currentUid}
+                  isSelected={bear.uid === selectedUid}
+                  isWiggling={bear.uid === wigglingUid || bear.uid === glowHint?.bearUid}
+                  hasNoBadge={hintLevel >= 2 && isBearForbidden(game.rule, bear)}
+                  fadedFeature={fadedFeature}
+                  canDrag={isPlaying}
+                  onPointerDown={(event) => {
+                    drag.startGesture(bear.uid, event);
+                  }}
+                  onPointerMove={drag.moveGesture}
+                  onPointerUp={drag.endGesture}
+                  onPointerCancel={drag.cancelGesture}
+                  onLostPointerCapture={drag.loseGesture}
+                  onClick={(event) => {
+                    tapBear(bear.uid, event);
+                  }}
+                  onFocus={() => {
+                    focusBear(bear.uid);
+                  }}
+                  // Au D-Pad, OK va au moteur et rejoue la règle ; sinon il choisit l'ours.
+                  onKeyDown={isFocusVisible ? undefined : keepNativeActivation}
+                />
+              ))}
               {isDpad && isExcept ? (
                 <span
                   aria-hidden="true"
@@ -810,6 +876,7 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
               isActive={isStopActive}
               isFocused={isFocusVisible}
               onContinue={continueGame}
+              onFocus={focusBoard}
             />
           ) : null}
 
@@ -817,15 +884,20 @@ export function BearSortBoard({ level, controls }: BearSortBoardProps) {
         </div>
       </MotionConfig>
 
-      {/* Région toujours présente : chaque annonce de la règle est aussi vocalisée. */}
+      {/* Région toujours présente : chaque annonce de la règle est aussi vocalisée. Le panneau qui
+          se met à pulser ne se voit pas au lecteur d'écran : la fin de l'attente s'y dit aussi. */}
       <p role="status" className="sr-only">
-        {announcement ? <span key={announcement.id}>{announcement.text}</span> : null}
+        {isStopActive ? (
+          <span>{STOP_READY_ANNOUNCEMENT}</span>
+        ) : announcement ? (
+          <span key={announcement.id}>{announcement.text}</span>
+        ) : null}
       </p>
 
       <BearSortEndScreen
         isOpen={isEndOpen}
         starNumber={level.starNumber}
-        hasCrown={hasEarnedCrown || level.isPerfect}
+        hasCrown={isPerfectWin(game) || level.isPerfect}
         hasNextStar={nextLevel !== null}
         onNext={() => {
           if (nextLevel) controls.playLevel(nextLevel.definition.id);
@@ -855,6 +927,7 @@ interface ZoneBoxProps {
 /**
  * Boîte : un bouton qui occupe toute sa case (cible large), le dessin dans le plus grand carré qui y
  * tient, et les ours déjà rangés en miniature. Conteneur de taille : tout est proportionnel au carré.
+ * Son anneau de focus ne zoome pas : la case va jusqu'au bord rogné du plateau, il y serait coupé.
  */
 function ZoneBox({
   zone,
@@ -868,6 +941,18 @@ function ZoneBox({
   onClick,
   onFocus,
 }: ZoneBoxProps) {
+  const placedCount = zone.bears.length;
+  const pulse = useAnimationControls();
+
+  // Chaque ours rangé relance la pulsation, même si la précédente n'est pas finie.
+  useEffect(() => {
+    if (placedCount === 0) return;
+    void pulse.start({
+      scale: [null, 1.06, 1],
+      transition: { duration: BOX_PULSE_MS / 1000 },
+    });
+  }, [placedCount, pulse]);
+
   return (
     <button
       ref={ref}
@@ -880,19 +965,22 @@ function ZoneBox({
       className={cn(
         '@container-size relative flex min-h-0 min-w-0 cursor-pointer items-end justify-center rounded-2xl',
         FOCUS_VISIBLE_CLASSES,
+        'focus-visible:scale-100',
         className,
       )}
       onClick={onClick}
       onFocus={onFocus}
-      onKeyDown={keepNativeActivation}
     >
-      <motion.span
-        className="relative block size-[min(100cqw,100cqh)]"
-        animate={{ scale: isPulsing ? [1, 1.06, 1] : 1 }}
-        transition={{ duration: BOX_PULSE_MS / 1000 }}
-      >
+      <motion.span className="relative block size-[min(100cqw,100cqh)]" animate={pulse}>
         <BearBox traits={zone.traits} fadedFeature={fadedFeature} isGlowing={isGlowing} />
-        <span className="absolute inset-x-[10%] bottom-[5%] flex flex-wrap content-end items-end justify-center">
+        {/* Sur la face de la caisse : à un cinquième du carré chacun, quatre ours de front tiennent
+            sur la grande, trois sur la petite. */}
+        <span
+          className={cn(
+            'absolute bottom-[5%] flex flex-wrap content-end items-end justify-center',
+            zone.traits?.size === 'small' ? 'inset-x-[19%]' : 'inset-x-[10%]',
+          )}
+        >
           {zone.bears.map((bear) => (
             <motion.span
               key={bear.uid}
@@ -932,8 +1020,8 @@ type BearPointerHandler = (event: ReactPointerEvent<HTMLButtonElement>) => void;
 
 interface ReserveBearProps {
   bear: Bear;
-  /** Décalage du glissement en cours, `null` au repos */
-  held: HeldBear | null;
+  /** Ours tenu : `useBearDrag` écrit sa position sur le bouton, hors du rendu */
+  isHeld: boolean;
   isFocused: boolean;
   isSelected: boolean;
   isWiggling: boolean;
@@ -947,6 +1035,7 @@ interface ReserveBearProps {
   onPointerMove: BearPointerHandler;
   onPointerUp: BearPointerHandler;
   onPointerCancel: BearPointerHandler;
+  onLostPointerCapture: BearPointerHandler;
   onClick: (event: ReactMouseEvent) => void;
   onFocus: () => void;
   onKeyDown?: (event: ReactKeyboardEvent) => void;
@@ -959,7 +1048,7 @@ interface ReserveBearProps {
  */
 function ReserveBear({
   bear,
-  held,
+  isHeld,
   isFocused,
   isSelected,
   isWiggling,
@@ -971,11 +1060,11 @@ function ReserveBear({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  onLostPointerCapture,
   onClick,
   onFocus,
   onKeyDown,
 }: ReserveBearProps) {
-  const isHeld = held !== null;
   let animation: typeof IDLE_ANIMATION | typeof WIGGLE_ANIMATION = IDLE_ANIMATION;
   if (isHeld) animation = HELD_ANIMATION;
   else if (isWiggling) animation = WIGGLE_ANIMATION;
@@ -999,16 +1088,11 @@ function ReserveBear({
         data-dragging={isHeld || undefined}
         data-wiggling={isWiggling || undefined}
         data-faded={fadedFeature ?? undefined}
-        style={
-          held ? { transform: `translate(${String(held.dx)}px, ${String(held.dy)}px)` } : undefined
-        }
         className={cn(
           'relative block size-full touch-none rounded-2xl select-none',
           canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
-          // Glissement : l'ours suit le doigt sans délai. Relâché, il revient avec un petit ressort.
-          isHeld
-            ? 'transition-none'
-            : 'motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)]',
+          // Relâché, l'ours revient avec un petit ressort (glissement : voir `useBearDrag`).
+          'motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.34,1.56,0.64,1)]',
           FOCUS_VISIBLE_CLASSES,
           isSelected && SELECTED_CLASSES,
           // Réduction des animations : le liseré désigne l'ours qui ne peut plus remuer.
@@ -1019,6 +1103,7 @@ function ReserveBear({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onLostPointerCapture={onLostPointerCapture}
         onClick={onClick}
         onFocus={onFocus}
         onKeyDown={onKeyDown}
@@ -1043,9 +1128,13 @@ function ReserveBear({
 /**
  * Main du geste : elle va en boucle de l'ours à sa boîte, et ne capte aucun doigt. Le point animé est
  * le bout de son index (en haut, à 42 % de sa largeur). Position fixe : sous le dernier rang d'ours,
- * sa paume dépasse du plateau sans y être rognée ni le faire défiler.
+ * sa paume dépasse du plateau sans y être rognée ni le faire défiler. Si le système réduit les
+ * animations, elle reste sur l'ours à prendre : sans déplacement, elle sauterait à sa fin de course,
+ * sur la boîte, où toucher ne fait rien. Seule son opacité varie.
  */
-function GestureHint({ path: { from, to } }: { path: GesturePath }) {
+function GestureHint({ path: { from, to: end } }: { path: GesturePath }) {
+  const to = useReducedMotion() === true ? from : end;
+
   return (
     <motion.div
       aria-hidden="true"

@@ -132,12 +132,19 @@ def synthesize_sentence(voice: PiperVoice, sentence: str) -> tuple[np.ndarray, i
     return audio, sample_rate
 
 
+def split_sentences(text: str) -> list[str]:
+    """Découpe `text` en phrases, sans perdre ce qui suit le dernier point : le manifeste garde le texte
+    entier, et aucun test ne verrait un clip amputé de ses derniers mots."""
+    sentences = (sentence.strip() for sentence in re.findall(r"[^.!?]+(?:[.!?]|$)", text))
+    return [sentence for sentence in sentences if re.search(r"\w", sentence)]
+
+
 def synthesize(voice: PiperVoice, text: str) -> tuple[bytes, int]:
     """Renvoie le PCM 16 bits mono du clip et sa fréquence d'échantillonnage."""
     parts: list[np.ndarray] = []
     sample_rate = 0
-    for sentence in re.findall(r"[^.!?]+[.!?]", text):
-        audio, sample_rate = synthesize_sentence(voice, sentence.strip())
+    for sentence in split_sentences(text):
+        audio, sample_rate = synthesize_sentence(voice, sentence)
         parts += [audio, np.zeros(int(SENTENCE_PAUSE_SECONDS * sample_rate), dtype=audio.dtype)]
     clip = np.concatenate(parts)
     return (clip / np.abs(clip).max() * 32767).astype(np.int16).tobytes(), sample_rate

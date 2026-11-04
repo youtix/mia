@@ -40,7 +40,7 @@ Builds:
       - cd ../..
       - NEXT_TELEMETRY_DISABLED=1 npm run build
       - npx cap sync android
-      - rm -rf node_modules/.bin/cap node_modules/.bin/capacitor node_modules/.bin/esbuild node_modules/@capacitor/cli node_modules/@esbuild node_modules/esbuild node_modules/@img node_modules/@pnpm
+      - rm -rf node_modules/.bin/cap node_modules/.bin/capacitor node_modules/.bin/esbuild node_modules/@capacitor/cli node_modules/@esbuild node_modules/esbuild node_modules/@img node_modules/@pnpm node_modules/next/dist/compiled/source-map08/mappings.wasm node_modules/next/dist/compiled/@vercel/og/yoga.wasm node_modules/next/dist/compiled/@vercel/og/resvg.wasm node_modules/next/dist/compiled/@mswjs/interceptors/ClientRequest/llhttp/llhttp.wasm
 
 MaintainerNotes: |-
   Capacitor 8 app (requires JDK 21): the web bundle is a Next.js static export built with Node 22
@@ -48,11 +48,12 @@ MaintainerNotes: |-
   the Gradle project in android/ then only compiles the WebView shell and two Capacitor plugins
   (@capacitor/app, @capacitor/preferences). Gradle needs node_modules/@capacitor/{android,app,preferences}.
   - The release build type falls back to the debug signing key when no MIA_KEYSTORE_* environment
-    variable is set (installable GitHub Releases APK): the sed in prebuild removes that line so
-    Gradle produces an unsigned APK for F-Droid to sign.
+    variable is set (local builds; the release workflow never publishes such an APK): the sed in
+    prebuild removes that line so Gradle produces an unsigned APK for F-Droid to sign.
   - The rm in prebuild removes the development tooling the scanner would flag once the web
     bundle is built: esbuild binaries, sharp/libvips shared libraries (@img), the Capacitor CLI
-    template archives (.tar.gz) and @pnpm test tarballs.
+    template archives (.tar.gz), @pnpm test tarballs and the four .wasm files bundled with Next.js
+    (absent from the static export, and Gradle does not read them).
   - No proprietary dependency: google-services / Play Services were removed from the Capacitor
     template (checked by tests/android-manifest.test.ts on every pull request).
   - versionCode = major * 10000 + minor * 100 + patch (scripts/sync-android-version.mjs), strictly

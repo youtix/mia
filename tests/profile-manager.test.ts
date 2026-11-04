@@ -180,6 +180,58 @@ describe('Prénoms', () => {
   });
 });
 
+describe('Prénoms et caractères invisibles', () => {
+  /** « 👩‍🚀 » : deux emoji composés par un joncteur (U+200D). */
+  const ASTRONAUT = '\u{1F469}\u200D\u{1F680}';
+
+  it.each([
+    ['une espace sans chasse (U+200B)', '\u200B'],
+    ['des espaces sans chasse entourant une espace', '\u200B \u200B'],
+    ['un antijoncteur (U+200C)', '\u200C'],
+    ['un joncteur (U+200D)', '\u200D'],
+    ['un gluon (U+2060)', '\u2060'],
+    ['un trait d’union conditionnel (U+00AD)', '\u00AD'],
+    ['un remplissage coréen (U+3164)', '\u3164'],
+    ['un sélecteur de variante (U+FE0F)', '\uFE0F'],
+    ['un accent seul (U+0301)', '\u0301'],
+  ])('refuse comme vide un prénom réduit à %s', (_label, name) => {
+    expect(checkProfileName([], name)).toEqual({
+      ok: false,
+      reason: 'empty',
+      message: PROFILE_NAME_ERROR_MESSAGES.empty,
+    });
+  });
+
+  it.each([
+    ['au milieu', 'M\u200Bia'],
+    ['au début', '\u200DMia'],
+    ['à la fin', 'Mia\u2060'],
+    ['en trait d’union conditionnel', 'Mi\u00ADa'],
+  ])('reconnaît un doublon malgré un caractère invisible %s', (_label, name) => {
+    expect(checkProfileName([profile('p1', { name: 'Mia' })], name)).toMatchObject({
+      reason: 'duplicate',
+    });
+    expect(checkProfileName([profile('p1', { name })], 'Mia')).toMatchObject({
+      reason: 'duplicate',
+    });
+  });
+
+  it('ne propose plus un prénom rapide déjà pris avec un caractère invisible', () => {
+    expect(getAvailableQuickNames([profile('p1', { name: 'M\u200Bia' })])).not.toContain('Mia');
+  });
+
+  it('garde tel quel un emoji composé : le joncteur en fait partie', () => {
+    expect(checkProfileName([], ASTRONAUT)).toEqual({ ok: true, name: ASTRONAUT });
+  });
+
+  it('addProfile n’écrit rien pour un prénom invisible', () => {
+    const state = saveWith([profile('p1', { name: 'Mia' })]);
+
+    expect(addProfile(state, '\u200B', 'fox')).toBe(state);
+    expect(addProfile(state, 'M\u200Bia', 'fox')).toBe(state);
+  });
+});
+
 describe('ensureDefaultProfile', () => {
   it('crée « Joueur 1 » (renard), actif, quand l’appareil n’a aucun profil', () => {
     const state = deepFreeze(createDefaultSaveState());
@@ -410,6 +462,18 @@ describe('Aides du sélecteur de profil', () => {
 
     expect(countProfileStars(player)).toBe(3);
     expect(countProfileStars(profile('p2'))).toBe(0);
+  });
+
+  it('compte aussi les étoiles d’un jeu que cette version ne connaît pas', () => {
+    const player = profile('p1', {
+      gamesProgress: {
+        memory: progress(level('mem-001')),
+        chess: { ...progress(level('che-001')), gameId: 'chess' },
+      },
+    });
+
+    expect(countProfileStars(player)).toBe(2);
+    expect(parseSaveStateReport(JSON.stringify(saveWith([player]))).issues).toEqual([]);
   });
 
   it('demande de choisir le joueur quand des profils existent sans profil actif', () => {

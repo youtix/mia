@@ -1,14 +1,20 @@
 import PatternsPage, { metadata as patternsMetadata } from '@/app/patterns/page';
-import { NavigationProvider } from '@/core/navigation';
+import {
+  END_SCREEN_GUARD_MS,
+  installActivationGuard,
+  NavigationProvider,
+  VIEW_CHANGE_GUARD_MS,
+} from '@/core/navigation';
 import {
   GAME_REGISTRY,
   getGameProgressSummary,
+  recordLevelVictory,
   type BaseLevelDefinition,
 } from '@/core/progression';
 import type * as MiaStorage from '@/core/storage';
+import { createDefaultSaveState } from '@/core/storage';
 import {
   BEAT_MS,
-  END_INPUT_GUARD_MS,
   INTRO_MS,
   LISTEN_TAIL_MS,
   PATTERN_ITEMS,
@@ -23,9 +29,10 @@ import {
   getChoiceLabel,
   getCrownSentence,
 } from '@/games/patterns/components/labels';
-import type { UserProfile } from '@/types/mia';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import type { MiaSaveState, UserProfile } from '@/types/mia';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MotionGlobalConfig } from 'framer-motion';
+import { useState } from 'react';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { storage, synth } = vi.hoisted(() => ({
@@ -40,7 +47,10 @@ const { storage, synth } = vi.hoisted(() => ({
 vi.mock('@/core/storage', async (importOriginal) => {
   const actual = await importOriginal<typeof MiaStorage>();
   const useMiaStorage = () => ({
-    state: { profiles: [{ id: 'p1' }], settings: { soundEnabled: storage.soundEnabled } },
+    state: {
+      profiles: [storage.activeProfile ?? { id: 'p1' }],
+      settings: { soundEnabled: storage.soundEnabled },
+    },
     isLoaded: true,
     activeProfile: storage.activeProfile,
     updateState: vi.fn(() => Promise.resolve()),
@@ -159,6 +169,51 @@ function renderBoard({
   };
   render(<PatternsBoard level={level} controls={controls} />, { wrapper: NavigationProvider });
   return controls;
+}
+
+/**
+ * Comme `GameScreen` avec la vraie sauvegarde : la victoire enregistrée recalcule aussitôt le résumé et
+ * le niveau passés au plateau, sans le remonter. Léo n'a encore aucune couronne.
+ */
+function renderLiveBoard(config: Partial<PatternLevelConfig>) {
+  const catalog = [
+    definition('pat-001', 10, { ...VISUAL_CONFIG, ...config }),
+    definition('pat-002', 20, VISUAL_CONFIG),
+  ];
+  const player: UserProfile = { ...crownedPlayer(), gamesProgress: {} };
+  const initialState: MiaSaveState = {
+    ...createDefaultSaveState(),
+    profiles: [player],
+    activeProfileId: 'p1',
+  };
+  const recordVictory = vi.fn();
+
+  function LiveBoard() {
+    const [save, setSave] = useState(initialState);
+    const summary = getGameProgressSummary('patterns', catalog, save.profiles[0] ?? null);
+    const level = summary.allLevels[0];
+    if (!level) throw new Error('Niveau absent du catalogue de test');
+    return (
+      <PatternsBoard
+        level={level}
+        controls={{
+          summary,
+          playLevel: vi.fn(),
+          exitToMap: vi.fn(),
+          recordVictory: (result) => {
+            recordVictory(result);
+            setSave((prev) =>
+              recordLevelVictory(prev, { ...result, gameId: 'patterns', levelId: 'pat-001' }),
+            );
+            return Promise.resolve();
+          },
+        }}
+      />
+    );
+  }
+
+  render(<LiveBoard />, { wrapper: NavigationProvider });
+  return { recordVictory };
 }
 
 /** Mode TV forcé avant le montage : le moteur D-Pad démarre en mode `dpad`. */
@@ -685,6 +740,167 @@ describe('STOP', () => {
   });
 });
 
+describe('Une tape se juge à son appui', () => {
+  function pressChoice(index: number): void {
+    fireEvent.pointerDown(getChoice(index), { pointerType: 'touch' });
+  }
+
+  it('n’est pas impulsive si le doigt s’est posé avant le STOP et se lève pendant', async () => {
+    const { recordVictory } = renderBoard({ config: { rounds: 1, stopRounds: 1 } });
+
+    pressChoice(0);
+    await advance(INTRO_MS);
+    expect(getOverlay()).not.toBeNull();
+    tap(0);
+
+    expect(getMascot()).toHaveAttribute('data-wobble-tick', '0');
+    expect(getStatus()).toHaveTextContent('Stop ! Attends sans toucher.');
+    await advance(2000);
+    await solveVisualRound();
+    expect(recordVictory).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ moves: 1, isPerfect: true }),
+    );
+  });
+
+  it('est impulsive, et pas une réponse, si le doigt se pose pendant le STOP et se lève après', async () => {
+    const { recordVictory } = renderBoard({ config: { rounds: 1, stopRounds: 1 } });
+    await advance(INTRO_MS);
+
+    await advance(1500);
+    pressChoice(0);
+    await advance(500);
+    expect(getOverlay()).toBeNull();
+    tap(0);
+
+    expect(getTarget()).toHaveAttribute('data-target', 'empty');
+    expect(getStatus()).toHaveTextContent('Pas encore, attends.');
+    expect(recordVictory).not.toHaveBeenCalled();
+
+    await solveVisualRound();
+    expect(recordVictory).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ moves: 1, isPerfect: false }),
+    );
+  });
+
+  it('ne répond pas si le doigt s’est posé pendant l’apparition, propositions inertes', async () => {
+    renderBoard({ config: { rounds: 1 } });
+
+    pressChoice(1);
+    await advance(INTRO_MS);
+    tap(1);
+
+    // Ni mauvaise réponse, ni STOP d'erreur trop rapide.
+    expect(getChoice(1)).toHaveAttribute('data-bounce-tick', '0');
+    expect(getOverlay()).toBeNull();
+
+    tap(0);
+    expect(getTarget()).toHaveAttribute('data-target', 'filled');
+  });
+
+  it('répond normalement si le doigt se pose et se lève une fois déverrouillé', async () => {
+    const { recordVictory } = renderBoard({ config: { rounds: 1 } });
+    await advance(INTRO_MS);
+
+    pressChoice(0);
+    await advance(100);
+    tap(0);
+
+    expect(getTarget()).toHaveAttribute('data-target', 'filled');
+    expect(recordVictory).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ moves: 1, isPerfect: true }),
+    );
+  });
+
+  it('ne valide pas un son si le doigt s’est posé pendant son écoute', async () => {
+    renderBoard({ config: { ...SOUND_CONFIG, rounds: 1 } });
+    await advance(INTRO_MS);
+    tap(0);
+
+    await advance(LISTEN_MS - 100);
+    pressChoice(0);
+    await advance(100);
+    expect(getChoice(0)).toHaveAttribute('data-state', 'armed');
+    tap(0);
+
+    expect(getChoice(0)).toHaveAttribute('data-state', 'armed');
+    expect(getTarget()).toHaveAttribute('data-target', 'empty');
+  });
+
+  it('oublie un appui resté sans clic : OK juge alors la phase en cours', async () => {
+    const { recordVictory } = renderBoard({ config: { rounds: 1, stopRounds: 1 } });
+    await advance(INTRO_MS);
+
+    // Le doigt part en glissant : aucun clic. Bien plus tard, le clic vient d'ailleurs (OK, Entrée).
+    pressChoice(0);
+    await advance(2000);
+    tap(0);
+
+    expect(getTarget()).toHaveAttribute('data-target', 'filled');
+    expect(recordVictory).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ moves: 1, isPerfect: true }),
+    );
+  });
+
+  describe('sans clic du navigateur (second doigt, appui long)', () => {
+    let removeGuard: () => void;
+
+    beforeEach(() => {
+      removeGuard = installActivationGuard();
+      // jsdom ne fait aucune mise en page : le doigt est toujours sur la proposition touchée.
+      vi.spyOn(document, 'elementFromPoint').mockImplementation(() => getChoice(0));
+    });
+
+    afterEach(() => {
+      removeGuard();
+    });
+
+    /** Doigt levé : la garde clique le bouton elle-même si le navigateur n'a pas cliqué. */
+    async function liftFinger(index: number): Promise<void> {
+      fireEvent.pointerUp(getChoice(index), { pointerType: 'touch', pointerId: 2 });
+      // Assez pour que la garde renonce au clic du navigateur.
+      await advance(300);
+    }
+
+    function pressWithSecondFinger(index: number): void {
+      fireEvent.pointerDown(getChoice(index), { pointerType: 'touch', pointerId: 2 });
+    }
+
+    it('juge aussi le clic de la garde sur l’appui, pendant un STOP', async () => {
+      const { recordVictory } = renderBoard({ config: { rounds: 1, stopRounds: 1 } });
+      await advance(INTRO_MS);
+      await advance(1500);
+
+      pressWithSecondFinger(0);
+      await advance(600);
+      await liftFinger(0);
+
+      // Le STOP de 2 s est fini, le doigt s'était posé pendant : pas une réponse.
+      expect(getOverlay()).toBeNull();
+      expect(getTarget()).toHaveAttribute('data-target', 'empty');
+      // Au-delà de ce délai, un clic sur le même bouton n'est plus le clic en retard du navigateur.
+      await advance(500);
+      await solveVisualRound();
+      expect(recordVictory).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ moves: 1, isPerfect: false }),
+      );
+    });
+
+    it('et une réponse donnée d’un second doigt reste une réponse', async () => {
+      const { recordVictory } = renderBoard({ config: { rounds: 1 } });
+      await advance(INTRO_MS);
+      await advance(VIEW_CHANGE_GUARD_MS);
+
+      pressWithSecondFinger(0);
+      await liftFinger(0);
+
+      expect(getTarget()).toHaveAttribute('data-target', 'filled');
+      expect(recordVictory).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ moves: 1, isPerfect: true }),
+      );
+    });
+  });
+});
+
 describe('Réponses en sons', () => {
   it('écoute au premier appui, ignore les tapes pendant la lecture, valide au second', async () => {
     renderBoard({ config: SOUND_CONFIG });
@@ -966,26 +1182,30 @@ describe('Guide', () => {
 });
 
 describe('Victoire', () => {
-  it('enregistre une seule fois une victoire parfaite, avec son temps de jeu', async () => {
+  it('enregistre une seule fois une victoire parfaite dès la dernière réponse, avec son temps de jeu', async () => {
     const controls = renderBoard();
     await advance(INTRO_MS);
 
     // Le temps part du premier `choosing`, pas de l'apparition.
     await advance(3000);
     await solveVisualRound();
+    expect(controls.recordVictory).not.toHaveBeenCalled();
     await advance(INTRO_MS);
     await advance(2000);
     tap(0);
-    await advance(SUCCESS_MS - 1);
-    expect(controls.recordVictory).not.toHaveBeenCalled();
-    await advance(1);
 
-    // 3 s + 1,3 s + 0,45 s + 2 s + 1,3 s = 8,05 s
+    // Enregistrée au geste, jusqu'à la fin de la célébration : 3 s + 1,3 s + 0,45 s + 2 s + 1,3 s = 8,05 s
     expect(controls.recordVictory).toHaveBeenCalledExactlyOnceWith({
       moves: 2,
       timeSeconds: 8,
       isPerfect: true,
     });
+
+    // Célébration inchangée : l'écran de fin et le jingle attendent sa fin.
+    await advance(SUCCESS_MS - 1);
+    expect(synth.playSoundJingle).not.toHaveBeenCalledWith('star');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await advance(1);
     expect(synth.playSoundJingle).toHaveBeenLastCalledWith('star');
     expect(getDots()).toEqual(['done', 'done']);
     expect(screen.getByRole('dialog', { name: 'Étoile #1 gagnée' })).toBeInTheDocument();
@@ -993,6 +1213,82 @@ describe('Victoire', () => {
     // Rien n'est rejoué une fois la partie gagnée.
     await advance(10_000);
     expect(controls.recordVictory).toHaveBeenCalledOnce();
+  });
+
+  it('garde l’étoile si l’enfant quitte pendant la célébration', async () => {
+    const controls = renderBoard({ config: { rounds: 1 } });
+    await advance(INTRO_MS);
+    tap(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retour' }));
+    expect(controls.exitToMap).toHaveBeenCalledOnce();
+    expect(controls.recordVictory).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ moves: 1, isPerfect: true }),
+    );
+
+    // Plateau démonté par la navigation : plus rien ne part, ni seconde victoire ni jingle.
+    cleanup();
+    await advance(10_000);
+    expect(controls.recordVictory).toHaveBeenCalledOnce();
+    expect(synth.playSoundJingle).not.toHaveBeenCalledWith('star');
+  });
+
+  it('garde l’étoile d’un son si l’enfant quitte pendant la révélation', async () => {
+    const { recordVictory } = renderBoard({ config: { ...SOUND_CONFIG, rounds: 1 } });
+    await advance(INTRO_MS);
+    await advance(1000);
+    await listenAndValidate(0);
+
+    // Écoute comprise, révélation et célébration à venir :
+    // 1 s + 2,45 s + 4 × 0,55 s + 1,3 s = 6,95 s
+    expect(recordVictory).toHaveBeenCalledExactlyOnceWith({
+      moves: 1,
+      timeSeconds: 7,
+      isPerfect: true,
+    });
+
+    cleanup();
+    await advance(10_000);
+    expect(recordVictory).toHaveBeenCalledOnce();
+  });
+
+  it('ne dérange rien en enregistrant : même bouton, révélation et célébration entières', async () => {
+    const { recordVictory } = renderLiveBoard({ ...SOUND_CONFIG, rounds: 1 });
+    await advance(INTRO_MS);
+    await listenAndValidate(0);
+    expect(recordVictory).toHaveBeenCalledOnce();
+    const choice = getChoice(0);
+
+    // La sauvegarde a déjà remplacé le niveau et le résumé : les minuteurs n'en repartent pas.
+    await advance(BEAT_MS);
+    expect(getActiveCells()).toEqual([1]);
+    await advance(3 * BEAT_MS);
+    await advance(SUCCESS_MS - 1);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(getChoice(0)).toBe(choice);
+    await advance(1);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(recordVictory).toHaveBeenCalledOnce();
+  });
+
+  it('fige la couronne au moment d’enregistrer : l’écran de fin la dit gagnée, puis déjà acquise', async () => {
+    const { recordVictory } = renderLiveBoard({ rounds: 1 });
+    await advance(INTRO_MS);
+    await solveVisualRound();
+
+    expect(recordVictory).toHaveBeenCalledOnce();
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription('Parfait ! Couronne gagnée.');
+
+    // Rejouer : la couronne est acquise, et cette victoire s'enregistre normalement.
+    fireEvent.click(screen.getByRole('button', { name: 'Rejouer' }));
+    await advance(INTRO_MS);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await solveVisualRound();
+
+    expect(recordVictory).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('dialog')).toHaveAccessibleDescription(
+      'Parfait ! Tu avais déjà la couronne.',
+    );
   });
 
   it('compte chaque réponse validée et perd la couronne après une erreur', async () => {
@@ -1090,17 +1386,10 @@ describe('Bonne réponse ailleurs qu’à la première place', () => {
 });
 
 describe('Écran de fin', () => {
-  /** Écran de fin à peine ouvert : ses boutons n'agissent pas encore. */
-  async function reachEnd(options: BoardOptions = {}) {
+  async function win(options: BoardOptions = {}) {
     const controls = renderBoard({ ...options, config: { rounds: 1, ...options.config } });
     await advance(INTRO_MS);
     await solveVisualRound();
-    return controls;
-  }
-
-  async function win(options: BoardOptions = {}) {
-    const controls = await reachEnd(options);
-    await advance(END_INPUT_GUARD_MS);
     return controls;
   }
 
@@ -1132,23 +1421,80 @@ describe('Écran de fin', () => {
     expect(controls.exitToMap).toHaveBeenCalledOnce();
   });
 
-  it('ignore les tapes le temps que la récompense se pose', async () => {
-    const controls = await reachEnd();
-    const next = screen.getByRole('button', { name: 'Étoile suivante' });
+  describe('le temps que la récompense se pose', () => {
+    let removeGuard: () => void;
 
-    // Le doigt qui vient de répondre tape encore, au même endroit.
-    fireEvent.click(next);
-    await advance(END_INPUT_GUARD_MS - 1);
-    fireEvent.click(next);
-    fireEvent.click(screen.getByRole('button', { name: 'Rejouer' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Carte des Étoiles' }));
-    expect(controls.playLevel).not.toHaveBeenCalled();
-    expect(controls.exitToMap).not.toHaveBeenCalled();
-    expect(getDialog()).toBeInTheDocument();
+    beforeEach(() => {
+      removeGuard = installActivationGuard();
+    });
 
-    await advance(1);
-    fireEvent.click(next);
-    expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('pat-002');
+    afterEach(() => {
+      removeGuard();
+    });
+
+    /** Écran de fin à peine ouvert ; avant : assez d'attente pour la garde d'arrivée sur le plateau. */
+    async function reachEnd() {
+      const controls = renderBoard({ config: { rounds: 1 } });
+      await unlockCalmly();
+      await solveVisualRound();
+      expect(getDialog()).toBeInTheDocument();
+      return controls;
+    }
+
+    it('ignore les tapes', async () => {
+      const controls = await reachEnd();
+      const next = screen.getByRole('button', { name: 'Étoile suivante' });
+
+      // Le doigt qui vient de répondre tape encore, au même endroit.
+      fireEvent.click(next);
+      await advance(END_SCREEN_GUARD_MS - 1);
+      fireEvent.click(next);
+      fireEvent.click(screen.getByRole('button', { name: 'Rejouer' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Carte des Étoiles' }));
+      expect(controls.playLevel).not.toHaveBeenCalled();
+      expect(controls.exitToMap).not.toHaveBeenCalled();
+      expect(getDialog()).toBeInTheDocument();
+
+      await advance(1);
+      fireEvent.click(next);
+      expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('pat-002');
+    });
+
+    it('ignore OK à la télécommande', async () => {
+      forceTvMode();
+      const controls = renderBoard({ config: { rounds: 1 } });
+      await unlockCalmly();
+      press('ArrowLeft');
+      press('Enter');
+      await advance(SUCCESS_MS);
+      const next = screen.getByRole('button', { name: 'Étoile suivante' });
+      expect(next).toHaveFocus();
+
+      // OK répété après la réponse.
+      press('Enter');
+      await advance(END_SCREEN_GUARD_MS - 1);
+      press('Enter');
+      expect(controls.playLevel).not.toHaveBeenCalled();
+      expect(getDialog()).toBeInTheDocument();
+
+      await advance(1);
+      press('Enter');
+      expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('pat-002');
+    });
+
+    it('laisse les flèches et Retour répondre tout de suite', async () => {
+      forceTvMode();
+      const controls = renderBoard({ config: { rounds: 1 } });
+      await unlockCalmly();
+      press('ArrowLeft');
+      press('Enter');
+      await advance(SUCCESS_MS);
+
+      press('ArrowRight');
+      expect(screen.getByRole('button', { name: 'Rejouer' })).toHaveFocus();
+      press('Backspace');
+      expect(controls.exitToMap).toHaveBeenCalledOnce();
+    });
   });
 
   it('retire l’étoile suivante après la dernière étoile du catalogue', async () => {
@@ -1279,13 +1625,9 @@ describe('Télécommande', () => {
     expect(next).toHaveAttribute('data-focused', 'true');
     expect(controls.recordVictory).toHaveBeenCalledOnce();
 
-    // Les flèches répondent tout de suite ; OK, une fois la récompense posée.
     press('ArrowRight');
     expect(within(dialog).getByRole('button', { name: 'Rejouer' })).toHaveFocus();
     press('ArrowLeft');
-    expect(press('Enter')).toBe(true);
-    expect(controls.playLevel).not.toHaveBeenCalled();
-    await advance(END_INPUT_GUARD_MS);
     expect(press('Enter')).toBe(true);
     expect(controls.playLevel).toHaveBeenCalledExactlyOnceWith('pat-002');
   });
@@ -1390,7 +1732,6 @@ describe('Télécommande', () => {
     press('ArrowLeft');
     press('Enter');
     await advance(SUCCESS_MS);
-    await advance(END_INPUT_GUARD_MS);
 
     press('ArrowRight');
     press('Enter');
@@ -1411,7 +1752,6 @@ describe('Télécommande', () => {
     press('ArrowUp');
     expect(getBack()).toHaveFocus();
     await advance(SUCCESS_MS);
-    await advance(END_INPUT_GUARD_MS);
 
     press('ArrowRight');
     press('Enter');

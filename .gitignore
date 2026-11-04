@@ -27,6 +27,10 @@ dist-apk/
 .DS_Store
 *.pem
 
+# clé de release (FEAT-16) : le keytool du README écrit dans le dossier courant, jamais versionnée
+*.jks
+*.keystore
+
 # debug
 npm-debug.log*
 yarn-debug.log*
