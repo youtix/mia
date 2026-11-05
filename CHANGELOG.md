@@ -1,3 +1,9 @@
+## [0.16.0](https://github.com/youtix/mia/compare/v0.15.1...v0.16.0) (2026-11-05)
+
+### Features
+
+* **memory:** make the card preview mandatory on every star ([#21](https://github.com/youtix/mia/issues/21)) ([f73aa01](https://github.com/youtix/mia/commit/f73aa0196827bce6f8cbdb808aaf169811dd22db))
+
 ## [0.15.1](https://github.com/youtix/mia/compare/v0.15.0...v0.15.1) (2026-11-04)
 
 ### Bug Fixes
