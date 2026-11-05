@@ -17,7 +17,10 @@ const PREVIEW_CONFIG: MemoryLevelConfig = {
   perfectMaxMistakes: 0,
 };
 
-/** Étoile « Sans aperçu » : même grille, `previewSeconds` à 0. */
+/**
+ * Même grille sans aperçu (`previewSeconds` à 0) : refusée au catalogue (FEAT-26), toujours
+ * acceptée par le moteur.
+ */
 const NO_PREVIEW_CONFIG: MemoryLevelConfig = { ...PREVIEW_CONFIG, previewSeconds: 0 };
 
 function settings(overrides: Partial<MemoryGameSettings> = {}): MemoryGameSettings {
@@ -35,7 +38,7 @@ describe('applyMemorySettings', () => {
   });
 
   it.each(TIME_FACTORS)(
-    'ne donne jamais d’aperçu à une étoile qui n’en a pas (× %s : 0 reste 0)',
+    'ne donne jamais d’aperçu à une configuration qui n’en a pas (× %s : 0 reste 0)',
     (previewFactor) => {
       expect(applyMemorySettings(NO_PREVIEW_CONFIG, settings({ previewFactor }))).toBe(
         NO_PREVIEW_CONFIG,

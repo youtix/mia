@@ -102,7 +102,13 @@ type LevelRow = [
   perfectMaxMistakes: number,
 ];
 
-/** Configurations du catalogue initial des 20 étoiles (FEAT-11 §3.1). */
+/**
+ * Jeux d'essai du moteur : les 20 configurations de FEAT-11 §3.1 dans leur première version (aperçu
+ * de 2 ou 3 s, ou aucun). Gardées telles quelles : le moteur accepte toujours un aperçu nul, que
+ * seul le catalogue refuse (FEAT-26), et `mem-019` / `mem-020` s'y jouent dès leur création. Le
+ * catalogue publié (5 s d'aperçu sur chaque étoile depuis FEAT-26) est vérifié par
+ * `memory-catalog.test.ts`.
+ */
 const INITIAL_LEVEL_ROWS: LevelRow[] = [
   ['mem-001', 2, 2, 2, 'distinct_color_shape', 3, null, null, 0],
   ['mem-002', 3, 2, 2, 'distinct_color_shape', 3, null, null, 1],
@@ -144,7 +150,7 @@ const INITIAL_LEVELS: [string, MemoryLevelConfig][] = INITIAL_LEVEL_ROWS.map(
 
 function initialLevel(id: string): MemoryLevelConfig {
   const entry = INITIAL_LEVELS.find(([levelId]) => levelId === id);
-  if (!entry) throw new Error(`niveau « ${id} » absent du catalogue initial`);
+  if (!entry) throw new Error(`niveau « ${id} » absent des configurations d’origine`);
   return entry[1];
 }
 
@@ -597,11 +603,12 @@ describe('createMemoryGame', () => {
     ]);
   });
 
-  it('ouvre l’aperçu avec toutes les cartes visibles, et donc vues', () => {
+  it('ouvre l’aperçu avec toutes les cartes visibles, mais aucune encore vue (FEAT-26)', () => {
     const game = createMemoryGame(config({ previewSeconds: 3 }), FIRST);
 
+    // L'aperçu montre tout le plateau : seuls les retournements du joueur rendent une carte vue.
     expect(game.phase).toBe('preview');
-    expect(game.cards.every((card) => card.state === 'flipped' && card.seen)).toBe(true);
+    expect(game.cards.every((card) => card.state === 'flipped' && !card.seen)).toBe(true);
   });
 
   it('donne à chaque carte un uid unique et l’apparence de son groupe', () => {
@@ -669,7 +676,7 @@ describe('createMemoryGame', () => {
     expect(createMemoryGame(level, FIRST).config).toBe(level);
   });
 
-  it.each(INITIAL_LEVELS)('instancie %s du catalogue initial (FEAT-11)', (_, level) => {
+  it.each(INITIAL_LEVELS)('instancie %s dans sa configuration d’origine (FEAT-11)', (_, level) => {
     const game = createMemoryGame(level, seeded(7));
 
     expect(getMemoryConfigErrors(level)).toEqual([]);
@@ -680,11 +687,11 @@ describe('createMemoryGame', () => {
 });
 
 describe('endPreviewPhase', () => {
-  it('cache toutes les cartes et lance la partie, cartes toujours vues', () => {
+  it('cache toutes les cartes et lance la partie, aucune encore vue (FEAT-26)', () => {
     const game = endPreviewPhase(createMemoryGame(config({ previewSeconds: 3 }), FIRST));
 
     expect(game.phase).toBe('playing');
-    expect(game.cards.every((card) => card.state === 'hidden' && card.seen)).toBe(true);
+    expect(game.cards.every((card) => card.state === 'hidden' && !card.seen)).toBe(true);
   });
 
   it('ignore l’appel hors de l’aperçu (état reçu renvoyé tel quel)', () => {
@@ -915,6 +922,31 @@ describe('resolveEvaluation', () => {
         'moon@0#2',
       ]);
       expect(cardAt(next, 0).seen && cardAt(next, 2).seen).toBe(true);
+    }
+  });
+
+  it('vise les cartes retournées par le joueur, pas celles de l’aperçu (FEAT-26)', () => {
+    const level = config({ cols: 4, rows: 2, swapEveryNMistakes: 1, previewSeconds: 5 });
+
+    for (const rng of [FIRST, seeded(1), seeded(2), () => 0.999]) {
+      // L'aperçu a montré les 8 cartes ; seules les 2 de l'erreur ont été retournées par le joueur.
+      const next = play(endPreviewPhase(createMemoryGame(level, FIRST)), [0, 2], rng);
+
+      expect(next.lastSwappedPair).toEqual([0, 2]);
+      expect(uidsOf(next)).toEqual([
+        'cat@0#1',
+        'sun@0#2',
+        'sun@0#1',
+        'cat@0#2',
+        'heart@0#1',
+        'heart@0#2',
+        'moon@0#1',
+        'moon@0#2',
+      ]);
+      expect(next.cards.filter((card) => card.seen).map((card) => card.uid)).toEqual([
+        'cat@0#1',
+        'sun@0#1',
+      ]);
     }
   });
 

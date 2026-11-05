@@ -1,7 +1,6 @@
 'use client';
 
 import { DifficultyPill, useHasOverflow } from '@/components/ui';
-import type { InputMode } from '@/core/navigation';
 import { cn } from '@/lib/cn';
 import type { DifficultyTier } from '@/types/mia';
 import { Copy, Crown, Eye, Layers, TriangleAlert, Zap } from 'lucide-react';
@@ -169,24 +168,20 @@ interface PreviewBannerProps {
   seconds: number;
   isRunning: boolean;
   round: number;
-  inputMode: InputMode;
 }
 
 /**
- * « Mémorise les cartes ! » et compte à rebours de la durée jouée (réglages du profil compris) ; un
- * tap ou OK termine l'aperçu plus tôt.
+ * « Mémorise les cartes ! » et compte à rebours de la durée jouée (réglages du profil compris).
+ * Ni tap ni OK n'abrègent l'aperçu (FEAT-26) : l'aide, la même au doigt et à la télécommande,
+ * annonce seulement que les cartes vont se cacher.
  */
-function PreviewBanner({ seconds, isRunning, round, inputMode }: PreviewBannerProps) {
+function PreviewBanner({ seconds, isRunning, round }: PreviewBannerProps) {
   return (
     <p className="flex items-center gap-3 rounded-2xl border-2 border-sky-400 bg-sky-950/60 px-3 py-2 text-slate-50">
       <Eye aria-hidden="true" className="size-6 shrink-0 text-sky-300" />
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-fluid-base font-bold">Mémorise les cartes !</span>
-        <span className="text-fluid-xs text-slate-300">
-          {inputMode === 'dpad'
-            ? 'Appuie sur OK pour commencer'
-            : 'Touche une carte pour commencer'}
-        </span>
+        <span className="text-fluid-xs text-slate-300">Les cartes vont se cacher</span>
       </span>
       <span className="text-fluid-2xl leading-none font-bold text-sky-200 tabular-nums">
         {isRunning ? (
@@ -210,8 +205,6 @@ export interface MemoryHudProps {
   isPreviewPaused: boolean;
   /** Numéro de la partie : le compte à rebours repart à chaque nouvelle partie */
   round: number;
-  /** Aide de l'aperçu : « Touche une carte » au doigt, « Appuie sur OK » à la télécommande */
-  inputMode: InputMode;
   className?: string;
 }
 
@@ -231,7 +224,6 @@ export function MemoryHud({
   isSwapping,
   isPreviewPaused,
   round,
-  inputMode,
   className,
 }: MemoryHudProps) {
   const { config, phase, mistakes } = game;
@@ -273,7 +265,6 @@ export function MemoryHud({
               seconds={config.previewSeconds}
               isRunning={isPreview && !isPreviewPaused}
               round={round}
-              inputMode={inputMode}
             />
           </div>
         ) : null}

@@ -1100,8 +1100,12 @@ describe('Pages', () => {
 
     expect(pushState).toHaveBeenLastCalledWith(null, '', '/memory/?level=mem-005');
     expect(await screen.findByRole('heading', { level: 1, name: 'Étoile #5' })).toBeInTheDocument();
-    // Plateau de Memory (4 × 2 cartes cachées, sans aperçu) : le niveau est jouable.
-    expect(screen.getAllByRole('button', { name: /^Carte cachée/ })).toHaveLength(8);
+    // Plateau de Memory (4 × 2 cartes) ouvert sur son aperçu de 5 s (FEAT-26) : le niveau est
+    // jouable, et ses 8 cartes sont d'abord toutes montrées.
+    const board = screen.getByRole('group', { name: 'Plateau de 8 cartes' });
+    expect(within(board).getAllByRole('button')).toHaveLength(8);
+    expect(within(board).queryByRole('button', { name: /^Carte cachée/ })).not.toBeInTheDocument();
+    expect(screen.getByText('Mémorise les cartes !')).toBeInTheDocument();
   });
 
   it('joue le catalogue réel de Traffic Jam : 20 étoiles sur la carte, puis le parking', async () => {

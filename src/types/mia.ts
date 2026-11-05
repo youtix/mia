@@ -49,7 +49,7 @@ export type TimeFactor = (typeof TIME_FACTORS)[number];
 
 /** Réglages de Memory propres à un profil (FEAT-19), appliqués aux temps de chaque niveau. */
 export interface MemoryGameSettings {
-  /** Multiplie l'aperçu du niveau (`previewSeconds`) ; une étoile sans aperçu (0) n'en gagne pas */
+  /** Multiplie l'aperçu du niveau (`previewSeconds`, 5 s sur chaque étoile du catalogue) */
   previewFactor: TimeFactor;
   /** Multiplie le temps pendant lequel les cartes d'une erreur restent visibles (`MISMATCH_DELAY_MS`) */
   mismatchFactor: TimeFactor;

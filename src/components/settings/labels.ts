@@ -37,7 +37,7 @@ export const GAME_SETTINGS_TEXTS = {
   memoryTitle: 'Memory',
   previewLabel: 'Temps de mémorisation',
   previewNote:
-    'Multiplie l’aperçu des cartes au début d’une étoile : « Très long » le double. Les étoiles sans aperçu n’en gagnent pas.',
+    'Multiplie l’aperçu de 5 s qui montre les cartes au début de chaque étoile : « Court » le ramène à 2,5 s, « Très long » le double.',
   mismatchLabel: 'Temps d’affichage des erreurs',
   mismatchNote:
     'Multiplie le temps pendant lequel deux cartes différentes restent visibles avant de se cacher.',
