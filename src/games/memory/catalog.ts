@@ -15,10 +15,10 @@ import type { MemoryLevelConfig } from './types';
  * risque (numéros d'étoile recalculés, niveaux réussis toujours débloqués) ; un nouveau niveau
  * s'intercale avec un `order` libre (15, 25…) et se vérifie par `validateMemoryCatalog`.
  *
- * Aperçu (`previewSeconds`) : 0 ou 5, jamais une autre valeur. Les étoiles qui en ont un partagent
- * ce socle uniforme de 5 s, multiplié par le facteur du profil (FEAT-19, `applyMemorySettings`) ;
- * une étoile sans aperçu n'en gagne jamais. La difficulté se règle par la grille, le mode visuel et
- * les limites d'erreurs, jamais par la durée de l'aperçu.
+ * Aperçu (`previewSeconds`) : 5 s sur chaque étoile (FEAT-26), jamais 0 (`validateMemoryCatalog`) :
+ * les cartes sont toujours montrées au début, et seule la fin du compte à rebours les cache. Ce
+ * socle uniforme est multiplié par le facteur du profil (FEAT-19, `applyMemorySettings`). La
+ * difficulté se règle par la grille, le mode visuel et les limites d'erreurs, jamais par l'aperçu.
  */
 
 type MemoryLevel = BaseLevelDefinition<MemoryLevelConfig>;
@@ -26,7 +26,7 @@ type MemoryLevel = BaseLevelDefinition<MemoryLevelConfig>;
 /** Les 20 étoiles initiales (FEAT-11 §3.1), déclarées dans l'ordre de la Carte des Étoiles. */
 export const MEMORY_CATALOG: readonly MemoryLevel[] = [
   // Très Facile (Éveil) : apprendre la règle sur 4 à 8 cartes. Chaque paire a sa couleur et son
-  // icône, l'aperçu de 5 s montre les cartes (sauf « Sans aperçu ») ; erreurs non limitées.
+  // icône ; celles de « Premier thème » viennent d'un même thème. Erreurs non limitées.
   {
     id: 'mem-001',
     gameId: 'memory',
@@ -66,16 +66,16 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
     gameId: 'memory',
     tier: 'very_easy',
     order: 30,
-    title: 'Sans aperçu',
+    title: 'Premier thème',
     config: {
       cols: 3,
       rows: 2,
       matchSize: 2,
-      visualMode: 'distinct_color_shape',
-      previewSeconds: 0,
+      visualMode: 'thematic_palette',
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 2,
+      perfectMaxMistakes: 1,
     },
   },
   {
@@ -102,16 +102,16 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
     gameId: 'memory',
     tier: 'easy',
     order: 10,
-    title: 'Première palette',
+    title: 'Huit cartes à thème',
     config: {
       cols: 4,
       rows: 2,
       matchSize: 2,
       visualMode: 'thematic_palette',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 3,
+      perfectMaxMistakes: 2,
     },
   },
   {
@@ -142,10 +142,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 2,
       matchSize: 2,
       visualMode: 'thematic_palette',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 4,
+      perfectMaxMistakes: 3,
     },
   },
   {
@@ -159,10 +159,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 3,
       matchSize: 2,
       visualMode: 'thematic_palette',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: null,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 4,
+      perfectMaxMistakes: 3,
     },
   },
   // Moyen (Confirmé) : 12 à 20 cartes. Le monochrome ne laisse que la forme pour distinguer les
@@ -212,10 +212,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'monochrome',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 12,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 6,
+      perfectMaxMistakes: 5,
     },
   },
   {
@@ -229,10 +229,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'thematic_palette',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 14,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 7,
+      perfectMaxMistakes: 6,
     },
   },
   // Difficile (Expert) : 15 à 24 cartes, limites d'erreurs plus serrées, premiers triplets et
@@ -248,10 +248,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'monochrome',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 12,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 6,
+      perfectMaxMistakes: 5,
     },
   },
   {
@@ -265,10 +265,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'thematic_palette',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 15,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 8,
+      perfectMaxMistakes: 7,
     },
   },
   {
@@ -299,10 +299,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'abstract_orientation',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 14,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 8,
+      perfectMaxMistakes: 7,
     },
   },
   // Très Difficile (Maître) : 20 à 36 cartes, triplets à thème, puis des cartes qui permutent
@@ -318,10 +318,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 5,
       matchSize: 2,
       visualMode: 'monochrome',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 18,
       swapEveryNMistakes: null,
-      perfectMaxMistakes: 10,
+      perfectMaxMistakes: 9,
     },
   },
   {
@@ -352,10 +352,10 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 4,
       matchSize: 2,
       visualMode: 'monochrome',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 12,
       swapEveryNMistakes: 4,
-      perfectMaxMistakes: 6,
+      perfectMaxMistakes: 5,
     },
   },
   {
@@ -369,24 +369,31 @@ export const MEMORY_CATALOG: readonly MemoryLevel[] = [
       rows: 6,
       matchSize: 2,
       visualMode: 'abstract_orientation',
-      previewSeconds: 0,
+      previewSeconds: 5,
       maxMistakes: 20,
       swapEveryNMistakes: 5,
-      perfectMaxMistakes: 10,
+      perfectMaxMistakes: 9,
     },
   },
 ];
 
 /**
  * Anomalies propres à un niveau : celles de sa configuration (`getMemoryConfigErrors` : grille
- * divisible en au moins 2 groupes, capacité du mode visuel, règles entières et cohérentes), puis,
- * pour une configuration sans anomalie, son instanciation par `createMemoryGame` (tirage des
- * symboles compris) : défense en profondeur contre une règle du moteur que le validateur ignorerait.
- * Une configuration déjà en anomalie n'est pas instanciée, `createMemoryGame` en répéterait les
- * messages.
+ * divisible en au moins 2 groupes, capacité du mode visuel, règles entières et cohérentes) et un
+ * aperçu absent (`previewSeconds` 0, refusé au catalogue seulement), puis, pour une configuration
+ * sans anomalie, son instanciation par `createMemoryGame` (tirage des symboles compris) : défense
+ * en profondeur contre une règle du moteur que le validateur ignorerait. Une configuration déjà en
+ * anomalie n'est pas instanciée, `createMemoryGame` en répéterait les messages.
  */
 function getMemoryLevelErrors(config: MemoryLevelConfig): string[] {
   const errors = getMemoryConfigErrors(config);
+  // Règle du catalogue (FEAT-26), plus stricte que le moteur qui accepte 0 : chaque étoile montre
+  // ses cartes au début.
+  if (config.previewSeconds === 0) {
+    errors.push(
+      'previewSeconds 0 : chaque étoile commence par montrer ses cartes (aperçu > 0 attendu)',
+    );
+  }
   if (errors.length > 0) return errors;
   try {
     createMemoryGame(config);

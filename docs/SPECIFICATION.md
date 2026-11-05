@@ -11,7 +11,7 @@
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
 4. [Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques & Attrape-Piège)](#4-conception-détaillée-des-jeux-memory-traffic-jam-suites-logiques--attrape-piège)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-25`)](#6-découpage-en-features-atomiques-feat-01-à-feat-25)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-26`)](#6-découpage-en-features-atomiques-feat-01-à-feat-26)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -37,6 +37,7 @@
    - [FEAT-23.md](./FEAT-23.md) — Jeu n°4 (Attrape-Piège) — Moteur Logique Pur
    - [FEAT-24.md](./FEAT-24.md) — Jeu n°4 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices
    - [FEAT-25.md](./FEAT-25.md) — Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
+   - [FEAT-26.md](./FEAT-26.md) — Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -155,7 +156,7 @@ export type TimeFactor = (typeof TIME_FACTORS)[number];
 
 /** Réglages de Memory propres à un profil, appliqués aux temps de chaque niveau (FEAT-19) */
 export interface MemoryGameSettings {
-  /** Multiplie l'aperçu du niveau (`previewSeconds`) ; une étoile sans aperçu (0) n'en gagne pas */
+  /** Multiplie l'aperçu du niveau (`previewSeconds`, 5 s sur chaque étoile du catalogue) */
   previewFactor: TimeFactor;
   /** Multiplie le temps pendant lequel les cartes d'une erreur restent visibles (900 ms) */
   mismatchFactor: TimeFactor;
@@ -217,7 +218,7 @@ Chaque niveau de *Memory* est défini par une structure déclarative permettant 
    * `thematic_palette` : Icônes d'un même thème avec une palette réduite à 3 couleurs.
    * `monochrome` : Toutes les cartes ont exactement la même couleur ; seule la forme du symbole permet de les différencier.
    * `abstract_orientation` : Formes géométriques proches ou orientées différemment (ex: flèche vers le haut, vers la droite, vers le bas).
-4. **Temps d'aperçu initial (`previewSeconds`)** : Au début du niveau, les cartes sont dévoilées pendant $X$ secondes avant de se retourner (`0` = aucun aperçu). Depuis `FEAT-19`, cette durée est multipliée par le facteur de temps du joueur (`previewFactor` du profil, × 0,5 à × 2) ; `0` reste `0`.
+4. **Temps d'aperçu initial (`previewSeconds`)** : Au début du niveau, les cartes sont dévoilées pendant $X$ secondes avant de se retourner (`0` = aucun aperçu). Depuis `FEAT-19`, cette durée est multipliée par le facteur de temps du joueur (`previewFactor` du profil, × 0,5 à × 2) ; `0` reste `0`. Depuis `FEAT-26`, chaque étoile du catalogue commence par montrer ses cartes : 5 s sur les 20 étoiles (2,5 s à 10 s selon le profil), `validateMemoryCatalog` refuse `0`, que le moteur accepte toujours, et personne ne peut abréger l'aperçu (un tap ou `OK` pendant l'aperçu est ignoré) : seule la fin du compte à rebours cache les cartes. La difficulté du catalogue se règle par les cinq autres axes.
 5. **Nombre maximal d'erreurs autorisées (`maxMistakes`)** : `null` (illimité en *Très Facile* / *Facile*) ou limité (en *Difficile* / *Très Difficile*) pour encourager la mémorisation plutôt que le clic au hasard.
 6. **Mécanique spéciale (`swapEveryNMistakes`)** : Dans les niveaux *Très Difficile*, toutes les $N$ erreurs, deux cartes face cachée échangent visiblement leur position sur le plateau.
 
@@ -227,24 +228,26 @@ Chaque niveau de *Memory* est défini par une structure déclarative permettant 
 | :---: | :--- | :--- | :---: | :---: | :---: | :--- | :---: | :---: | :--- |
 | ⭐ 1 | `mem-001` | Très Facile | `2x2` | 4 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
 | ⭐ 2 | `mem-002` | Très Facile | `3x2` | 6 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
-| ⭐ 3 | `mem-003` | Très Facile | `3x2` | 6 | Paires (2) | Couleurs + Formes | 0s | Illimité | — |
+| ⭐ 3 | `mem-003` | Très Facile | `3x2` | 6 | Paires (2) | Thématique | 5s | Illimité | — |
 | ⭐ 4 | `mem-004` | Très Facile | `4x2` | 8 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
-| ⭐ 5 | `mem-005` | Facile | `4x2` | 8 | Paires (2) | Thématique | 0s | Illimité | — |
+| ⭐ 5 | `mem-005` | Facile | `4x2` | 8 | Paires (2) | Thématique | 5s | Illimité | — |
 | ⭐ 6 | `mem-006` | Facile | `5x2` | 10 | Paires (2) | Couleurs + Formes | 5s | Illimité | — |
-| ⭐ 7 | `mem-007` | Facile | `5x2` | 10 | Paires (2) | Thématique | 0s | Illimité | — |
-| ⭐ 8 | `mem-008` | Facile | `4x3` | 12 | Paires (2) | Thématique | 0s | Illimité | — |
+| ⭐ 7 | `mem-007` | Facile | `5x2` | 10 | Paires (2) | Thématique | 5s | Illimité | — |
+| ⭐ 8 | `mem-008` | Facile | `4x3` | 12 | Paires (2) | Thématique | 5s | Illimité | — |
 | ⭐ 9 | `mem-009` | Moyen | `4x3` | 12 | Paires (2) | Monochrome | 5s | 10 | — |
 | ⭐ 10 | `mem-010` | Moyen | `4x4` | 16 | Paires (2) | Thématique | 5s | 12 | — |
-| ⭐ 11 | `mem-011` | Moyen | `4x4` | 16 | Paires (2) | Monochrome | 0s | 12 | — |
-| ⭐ 12 | `mem-012` | Moyen | `5x4` | 20 | Paires (2) | Thématique | 0s | 14 | — |
-| ⭐ 13 | `mem-013` | Difficile | `5x4` | 20 | Paires (2) | Monochrome | 0s | 12 | — |
-| ⭐ 14 | `mem-014` | Difficile | `6x4` | 24 | Paires (2) | Thématique | 0s | 15 | — |
+| ⭐ 11 | `mem-011` | Moyen | `4x4` | 16 | Paires (2) | Monochrome | 5s | 12 | — |
+| ⭐ 12 | `mem-012` | Moyen | `5x4` | 20 | Paires (2) | Thématique | 5s | 14 | — |
+| ⭐ 13 | `mem-013` | Difficile | `5x4` | 20 | Paires (2) | Monochrome | 5s | 12 | — |
+| ⭐ 14 | `mem-014` | Difficile | `6x4` | 24 | Paires (2) | Thématique | 5s | 15 | — |
 | ⭐ 15 | `mem-015` | Difficile | `5x3` | 15 | **Triplets (3)** | Couleurs + Formes | 5s | 10 | — |
-| ⭐ 16 | `mem-016` | Difficile | `6x4` | 24 | Paires (2) | Abstrait | 0s | 14 | — |
-| ⭐ 17 | `mem-017` | Très Difficile | `6x5` | 30 | Paires (2) | Monochrome | 0s | 18 | — |
+| ⭐ 16 | `mem-016` | Difficile | `6x4` | 24 | Paires (2) | Abstrait | 5s | 14 | — |
+| ⭐ 17 | `mem-017` | Très Difficile | `6x5` | 30 | Paires (2) | Monochrome | 5s | 18 | — |
 | ⭐ 18 | `mem-018` | Très Difficile | `6x4` | 24 | **Triplets (3)** | Thématique | 5s | 14 | — |
-| ⭐ 19 | `mem-019` | Très Difficile | `5x4` | 20 | Paires (2) | Monochrome | 0s | 12 | Permutation (4 err.) |
-| ⭐ 20 | `mem-020` | Très Difficile | `6x6` | 36 | Paires (2) | Abstrait | 0s | 20 | Permutation (5 err.) |
+| ⭐ 19 | `mem-019` | Très Difficile | `5x4` | 20 | Paires (2) | Monochrome | 5s | 12 | Permutation (4 err.) |
+| ⭐ 20 | `mem-020` | Très Difficile | `6x6` | 36 | Paires (2) | Abstrait | 5s | 20 | Permutation (5 err.) |
+
+> **Non vérifié.** Trois paris de [FEAT-26](./FEAT-26.md), faits sans données de jeu : la couronne des douze étoiles qui ont gagné un aperçu demande une erreur de moins ; `mem-003` ne se distingue de `mem-002` que par ses icônes, d'un même thème ; une tape ignorée pendant l'aperçu n'est expliquée que par l'aide écrite du bandeau, et un enfant qui ne lit pas encore n'a que les chiffres du compte à rebours. À ajuster après avoir regardé jouer de vrais enfants ([FEAT-26 §6](./FEAT-26.md#6-décisions-dimplémentation-session-de-cadrage)).
 
 ---
 
@@ -492,13 +495,17 @@ flowchart TD
     F24 --> F25
     F08 --> F25
     F14 --> F25
+
+    F10 --> F26["FEAT-26 : Memory — Aperçu obligatoire & catalogue rééquilibré"]
+    F11 --> F26
+    F19 --> F26
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-25`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-26`)
 
-Chacune des 25 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 26 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -527,6 +534,7 @@ Chacune des 25 features possède sa spécification complète et autonome pour l'
 | **23** | [FEAT-23.md](./FEAT-23.md) | **Jeu n°4 (Attrape-Piège) — Moteur Logique Pur** | `FEAT-07`, `FEAT-09` |
 | **24** | [FEAT-24.md](./FEAT-24.md) | **Jeu n°4 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices** | `FEAT-03`, `FEAT-04`, `FEAT-08`, `FEAT-22`, `FEAT-23` |
 | **25** | [FEAT-25.md](./FEAT-25.md) | **Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur** | `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24` |
+| **26** | [FEAT-26.md](./FEAT-26.md) | **Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré** | `FEAT-10`, `FEAT-11`, `FEAT-19` |
 
 ---
 
@@ -745,6 +753,14 @@ Chacune des 25 features possède sa spécification complète et autonome pour l'
 * **Objectif** : Intégrer les 20 étoiles d'*Attrape-Piège* (`bs-001` à `bs-020`), de la couleur seule à « sauf un petit ours bleu », leur validateur dans `npm run validate:levels`, l'entrée du registre (« Flexibilité mentale & Inhibition », route `/bear-sort`) et l'icône du Hub.
 * **Dépendances** : `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24`.
 * **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-25.md](./FEAT-25.md).
+
+---
+
+### `FEAT-26` : Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré ([FEAT-26.md](./FEAT-26.md))
+
+* **Objectif** : Faire commencer chaque étoile de *Memory* par l'aperçu de ses cartes (5 s sur les 20 étoiles, multipliées par le facteur du profil : 2,5 s à 10 s ; `previewSeconds` 0 refusé par `validateMemoryCatalog`, que le moteur accepte toujours), sans que personne puisse l'abréger (tap et `OK` ignorés pendant l'aperçu, seule la fin du compte à rebours cache les cartes), et rééquilibrer le catalogue en conséquence (`mem-003` « Premier thème » en palette thématique, `mem-005` « Huit cartes à thème », couronne resserrée d'une erreur sur les douze étoiles qui gagnent un aperçu) sans toucher aux identifiants ni aux sauvegardes.
+* **Dépendances** : `FEAT-10`, `FEAT-11`, `FEAT-19`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-26.md](./FEAT-26.md).
 
 ---
 

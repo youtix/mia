@@ -247,6 +247,11 @@ function clickCards(...indices: number[]): void {
   for (const index of indices) fireEvent.click(getCard(index));
 }
 
+/** Toutes les cartes dans le même état : montrées pendant l'aperçu, cachées à sa fin. */
+function expectAllCards(state: 'flipped' | 'hidden', count = 4): void {
+  expect(getCards().map((card) => card.dataset.state)).toEqual(Array<string>(count).fill(state));
+}
+
 function getHud(): HTMLElement {
   return screen.getByRole('region', { name: 'État de la partie' });
 }
@@ -753,31 +758,35 @@ describe('Garde d’activation', () => {
     removeGuard();
   });
 
-  it('un double tap qui lance le niveau ne coupe pas son aperçu', () => {
-    renderBoard({ config: { previewSeconds: 5 } });
+  // Niveau sans aperçu (le moteur l'accepte hors catalogue) : la carte touchée se retournerait
+  // aussitôt, seule la garde l'en empêche. Avec un aperçu, le moteur ignorerait déjà le geste
+  // (FEAT-26) et le test ne prouverait rien.
+  it('un double tap qui lance le niveau ne retourne aucune carte', () => {
+    renderBoard();
 
     // Le second tap tombe sur une carte du plateau tout juste affiché.
     clickCards(0);
     advance(VIEW_CHANGE_GUARD_MS - 1);
     clickCards(0);
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+    expectAllCards('hidden');
 
-    // Passé ce délai, c'est un vrai geste : il termine l'aperçu.
+    // Passé ce délai, c'est un vrai geste : il retourne la carte.
     advance(1);
     clickCards(0);
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    expect(getCard(0)).toHaveAttribute('data-state', 'flipped');
   });
 
-  it('un OK répété qui lance le niveau ne coupe pas son aperçu', () => {
+  it('un OK répété qui lance le niveau ne retourne aucune carte', () => {
     forceTvMode();
-    renderBoard({ config: { previewSeconds: 5 } });
+    renderBoard();
 
     press('Enter');
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
+    expectAllCards('hidden');
 
+    // Passé la garde, OK retourne la carte focalisée.
     advance(VIEW_CHANGE_GUARD_MS);
     press('Enter');
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    expect(getCard(0)).toHaveAttribute('data-state', 'flipped');
   });
 
   /** Modale de victoire à peine ouverte ; avant : assez d'attente pour la garde d'arrivée sur le plateau. */
@@ -867,7 +876,9 @@ describe('Aperçu', () => {
     renderBoard({ config: { previewSeconds: 2 } });
 
     const banner = screen.getByText('Mémorise les cartes !').closest('p');
-    expect(banner).toHaveTextContent('Touche une carte pour commencer');
+    // Aucun geste ne l'abrège (FEAT-26) : l'aide annonce la fin, sans inviter à toucher une carte.
+    expect(banner).toHaveTextContent('Les cartes vont se cacher');
+    expect(screen.queryByText('Touche une carte pour commencer')).not.toBeInTheDocument();
     expect(banner).toHaveTextContent('2 secondes');
     expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('flipped'));
     expect(getCard(2)).toHaveAccessibleName('Chat, ligne 2, colonne 1');
@@ -881,26 +892,121 @@ describe('Aperçu', () => {
     expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
   });
 
-  it('se termine plus tôt au premier tap, sans retourner la carte touchée', () => {
-    renderBoard({ config: { previewSeconds: 3 } });
+  it('ignore les taps pendant l’aperçu : seule la fin du compte à rebours cache les cartes', () => {
+    const controls = renderBoard({ config: { previewSeconds: 5 } });
 
+    // À 2 s sur 5, la carte touchée ne se retourne pas et l'aperçu continue.
+    advance(2000);
     clickCards(2);
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    expectAllCards('flipped');
 
+    // Plusieurs taps de suite, sur une paire comme sur la même carte : rien ne change.
+    clickCards(0, 1, 2, 2, 3);
+    expectAllCards('flipped');
+
+    // Fin comptée depuis le début de l'aperçu, pas depuis un tap : cartes montrées à 4 999 ms,
+    // cachées à 5 s.
+    advance(2999);
+    expectAllCards('flipped');
+    expect(getHud()).toHaveTextContent('Paires : 0 / 2');
+    advance(1);
+    expectAllCards('hidden');
+
+    // La partie commence : le premier tap retourne la carte touchée.
     clickCards(2);
-    expect(getCard(2)).toHaveAttribute('data-state', 'flipped');
+    expect(getCards().map((card) => card.dataset.state)).toEqual([
+      'hidden',
+      'hidden',
+      'flipped',
+      'hidden',
+    ]);
+
+    // Victoire parfaite en 2 coups : les taps de l'aperçu n'ont compté ni coup ni erreur.
+    clickCards(3);
+    advance(MATCH_DELAY_MS);
+    clickCards(0, 1);
+    expect(controls.recordVictory).toHaveBeenCalledExactlyOnceWith({
+      moves: 2,
+      timeSeconds: 1,
+      isPerfect: true,
+    });
   });
 
-  it('se termine avec OK et garde Retour actif à la télécommande', () => {
+  it('ignore OK pendant l’aperçu et garde Retour actif à la télécommande', () => {
     forceTvMode();
-    const controls = renderBoard({ config: { previewSeconds: 3 } });
+    const controls = renderBoard({ config: { previewSeconds: 5 } });
 
-    expect(screen.getByText('Appuie sur OK pour commencer')).toBeInTheDocument();
+    // Même aide qu'au doigt : OK ne lance plus la partie.
+    const banner = screen.getByText('Mémorise les cartes !').closest('p');
+    expect(banner).toHaveTextContent('Les cartes vont se cacher');
+    expect(screen.queryByText('Appuie sur OK pour commencer')).not.toBeInTheDocument();
+    expect(screen.queryByText('Touche une carte pour commencer')).not.toBeInTheDocument();
+
+    // À 2 s sur 5, OK sur la carte focalisée, puis deux fois sur sa voisine : seul le focus bouge.
+    advance(2000);
+    expect(getCard(0)).toHaveFocus();
+    expect(press('Enter')).toBe(true);
+    press('ArrowRight');
+    expect(getCard(1)).toHaveFocus();
     press('Enter');
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array(4).fill('hidden'));
+    press('Enter');
+    expectAllCards('flipped');
 
-    press('Backspace');
+    // Retour reste actif pendant l'aperçu (commandes simulées : le plateau reste affiché).
+    expect(press('Backspace')).toBe(true);
     expect(controls.exitToMap).toHaveBeenCalledOnce();
+
+    // Fin comptée depuis le début de l'aperçu, pas depuis OK.
+    advance(2999);
+    expectAllCards('flipped');
+    advance(1);
+    expectAllCards('hidden');
+
+    // La partie commence : OK retourne la carte focalisée.
+    press('Enter');
+    expect(getCards().map((card) => card.dataset.state)).toEqual([
+      'hidden',
+      'flipped',
+      'hidden',
+      'hidden',
+    ]);
+  });
+
+  it('relance un aperçu entier avec « Recommencer » pendant l’aperçu', () => {
+    renderBoard({ config: { previewSeconds: 5 } });
+    const getBanner = () => screen.getByText('Mémorise les cartes !').closest('p');
+    advance(3000);
+    expect(getBanner()).toHaveTextContent('2 secondes');
+
+    fireEvent.click(getButton('Recommencer'));
+    expect(getBanner()).toHaveTextContent('5 secondes');
+    expectAllCards('flipped');
+
+    // L'échéance du premier aperçu (2 s plus tard) ne cache rien.
+    advance(2000);
+    expectAllCards('flipped');
+    // Les cartes se cachent 5 s après « Recommencer », pas avant.
+    advance(2999);
+    expectAllCards('flipped');
+    advance(1);
+    expectAllCards('hidden');
+  });
+
+  it('garde le nouvel aperçu quand l’ancien minuteur tombe dans la tâche de « Recommencer »', () => {
+    renderBoard({ config: { previewSeconds: 5 } });
+    advance(4999);
+
+    // Même `act` : l'échéance du premier aperçu passe avant que son effet ne soit nettoyé. Elle ne
+    // doit finir que la partie qui l'a armée.
+    act(() => {
+      fireEvent.click(getButton('Recommencer'));
+      vi.advanceTimersByTime(1);
+    });
+    expectAllCards('flipped');
+    advance(4999);
+    expectAllCards('flipped');
+    advance(1);
+    expectAllCards('hidden');
   });
 
   describe('page cachée', () => {
@@ -980,10 +1086,6 @@ describe('Réglages du profil (FEAT-19)', () => {
     return screen.getByText('Mémorise les cartes !').closest('p');
   }
 
-  function expectAllCards(state: 'flipped' | 'hidden', count = 4): void {
-    expect(getCards().map((card) => card.dataset.state)).toEqual(Array<string>(count).fill(state));
-  }
-
   it('réduit l’aperçu de moitié (5 s × 0,5) avec un compte à rebours calé sur sa fin', () => {
     renderBoard({
       config: { previewSeconds: 5 },
@@ -1049,7 +1151,8 @@ describe('Réglages du profil (FEAT-19)', () => {
     expectAllCards('hidden');
   });
 
-  it('ne donne jamais d’aperçu à une étoile qui n’en a pas, quel que soit le facteur', () => {
+  // Aperçu nul : refusé au catalogue (FEAT-26), toujours accepté par le moteur et le plateau.
+  it('ne donne jamais d’aperçu à un niveau qui n’en a pas, quel que soit le facteur', () => {
     renderBoard({
       config: { previewSeconds: 0 },
       profile: playerWithSettings({ previewFactor: 2 }),
@@ -1101,7 +1204,7 @@ describe('Réglages du profil (FEAT-19)', () => {
     expectAllCards('hidden', 6);
   });
 
-  it('termine un aperçu fractionnaire au premier tap, sans retourner la carte touchée', () => {
+  it('ignore un tap pendant un aperçu fractionnaire : cartes cachées à 2,5 s pile', () => {
     renderBoard({
       config: { previewSeconds: 5 },
       profile: playerWithSettings({ previewFactor: 0.5 }),
@@ -1109,9 +1212,15 @@ describe('Réglages du profil (FEAT-19)', () => {
     advance(700);
 
     clickCards(2);
+    expectAllCards('flipped');
+
+    // 2,5 s depuis le début de l'aperçu, pas depuis le tap.
+    advance(1799);
+    expectAllCards('flipped');
+    advance(1);
     expectAllCards('hidden');
 
-    // Le minuteur de l'aperçu est annulé : la partie suit son cours au-delà des 2,5 s.
+    // La partie suit son cours : la carte retournée ensuite reste visible, sans coup ni erreur.
     clickCards(2);
     expect(getCard(2)).toHaveAttribute('data-state', 'flipped');
     advance(1800);
@@ -1119,7 +1228,7 @@ describe('Réglages du profil (FEAT-19)', () => {
     expect(getHud()).toHaveTextContent('Paires : 0 / 2');
   });
 
-  it('termine un aperçu fractionnaire avec OK à la télécommande', () => {
+  it('ignore OK pendant un aperçu fractionnaire : cartes cachées à 7,5 s pile', () => {
     forceTvMode();
     renderBoard({
       config: { previewSeconds: 5 },
@@ -1130,6 +1239,13 @@ describe('Réglages du profil (FEAT-19)', () => {
     advance(500);
     expect(getBanner()).toHaveTextContent('7 secondes');
     press('Enter');
+    expectAllCards('flipped');
+
+    // 7,5 s depuis le début de l'aperçu, pas depuis OK : le compte à rebours finit avec lui.
+    advance(6999);
+    expectAllCards('flipped');
+    expect(getBanner()).toHaveTextContent('1 seconde');
+    advance(1);
     expectAllCards('hidden');
   });
 
@@ -1138,7 +1254,8 @@ describe('Réglages du profil (FEAT-19)', () => {
       config: { previewSeconds: 5 },
       profile: playerWithSettings({ previewFactor: 2 }),
     });
-    clickCards(0);
+    // Aperçu de 5 s × 2 joué jusqu'au bout : aucun tap ne l'abrège (FEAT-26).
+    advance(10_000);
     clickCards(0, 1);
     advance(MATCH_DELAY_MS);
     clickCards(2, 3);

@@ -4,7 +4,7 @@ import type { LevelControls } from '@/components/progression';
 // Module direct, pas le barrel : le JS de la page d'un jeu se limite à ce qu'elle affiche (FEAT-08).
 import { useLevelPlayer } from '@/components/progression/GameScreen';
 import { AppShell, DEFAULT_REMOTE_HINTS, FocusableButton } from '@/components/ui';
-import { useGridColumns, useGridNavigation, useNavigation } from '@/core/navigation';
+import { useGridColumns, useGridNavigation } from '@/core/navigation';
 import type { EnrichedLevelItem } from '@/core/progression';
 import { DEFAULT_MEMORY_GAME_SETTINGS } from '@/core/storage';
 import { cn } from '@/lib/cn';
@@ -95,12 +95,11 @@ export interface MemoryBoardProps {
  * plateau est en portrait. Orchestre le moteur (FEAT-09) : aperçu, évaluation, permutations, fin
  * de partie et enregistrement de la victoire. Remonté par `GameScreen` à chaque changement de niveau.
  * Joue le niveau aux réglages de Memory du profil actif (FEAT-19) : aperçu multiplié par
- * `previewFactor` (une étoile sans aperçu n'en gagne pas), erreur laissée visible
+ * `previewFactor` (5 s sur chaque étoile : 2,5 s à 10 s), erreur laissée visible
  * `MISMATCH_DELAY_MS` × `mismatchFactor` ; étoiles et couronnes n'en dépendent pas.
  */
 export function MemoryBoard({ level, controls }: MemoryBoardProps) {
   const { config: levelConfig, tier } = level.definition;
-  const { inputMode } = useNavigation();
   // Réglages du joueur qui a lancé le niveau (FEAT-19), même si un autre onglet change de joueur. Suivis
   // par leurs valeurs : le profil est un nouvel objet après chaque sauvegarde (`recordVictory`), et la
   // configuration jouée ne doit changer qu'avec le niveau ou un facteur, jamais pour une identité (la
@@ -163,8 +162,8 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
     },
   });
 
-  // Active pendant l'aperçu et l'évaluation (FEAT-04 §5) : Retour reste disponible, OK pendant
-  // l'aperçu le termine, et le moteur ignore les autres actions hors `playing`.
+  // Active pendant l'aperçu et l'évaluation (FEAT-04 §5) : Retour reste disponible et le focus se
+  // déplace, mais le moteur ignore OK hors `playing` (l'aperçu ne s'abrège pas, FEAT-26).
   const grid = useGridNavigation({
     scopeId: 'memory-grid',
     rows,
@@ -223,7 +222,8 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
   });
 
   // Aperçu : les cartes se cachent au bout du `previewSeconds` joué (déjà multiplié par
-  // `previewFactor`), ou plus tôt, par un tap ou OK. Lu dans `game.config`, comme le compte à
+  // `previewFactor`), jamais plus tôt (FEAT-26) : une tape ou OK ne change pas `game`, donc ne
+  // relance ni n'arrête ce minuteur. Lu dans `game.config`, comme le compte à
   // rebours du HUD : une partie joue jusqu'au bout la configuration de sa création, même si le
   // profil actif (donc le facteur) change pendant l'aperçu (autre onglet) ; le nouveau facteur vaut
   // pour la partie suivante (Recommencer, étoile suivante). Page cachée (appel, téléphone verrouillé) :
@@ -231,7 +231,9 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
   useEffect(() => {
     if (game.phase !== 'preview' || isPageHidden) return;
     const timer = setTimeout(() => {
-      setGame(endPreviewPhase);
+      // Seulement la partie qui a armé ce minuteur : une échéance traitée dans la même tâche que
+      // « Recommencer », avant le nettoyage de cet effet, ne doit pas couper le nouvel aperçu.
+      setGame((current) => (current === game ? endPreviewPhase(current) : current));
     }, game.config.previewSeconds * 1000);
     return () => {
       clearTimeout(timer);
@@ -267,12 +269,13 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
   }, [game.lastSwappedPair]);
 
   /**
-   * Tap, clic ou OK sur une carte : termine l'aperçu, sinon retourne la carte. Lit l'état du dernier
-   * rendu : après la fin de l'aperçu ou d'une évaluation, une tape tombée avant ce rendu ne réécrit
-   * rien de faux (fin d'aperçu identique, évaluation qui ignore les tapes).
+   * Tap, clic ou OK sur une carte : la retourne. Ignoré pendant l'aperçu (FEAT-26 : seul son minuteur
+   * cache les cartes) et l'évaluation, comme par le moteur hors `playing`. Lit l'état du dernier
+   * rendu : une tape tombée entre la fin de l'aperçu et ce rendu est ignorée comme pendant l'aperçu,
+   * et une tape après une évaluation ne réécrit rien de faux (l'évaluation ignore les tapes).
    */
   const selectAt = (index: number) => {
-    const next = game.phase === 'preview' ? endPreviewPhase(game) : selectCard(game, index);
+    const next = selectCard(game, index);
     if (next === game) return;
     setGame(next);
     // Un groupe trouvé se résout sans hasard : `settle` retrouvera ce résultat à la fin du délai.
@@ -334,7 +337,6 @@ export function MemoryBoard({ level, controls }: MemoryBoardProps) {
           isSwapping={swapPair !== null}
           isPreviewPaused={isPageHidden}
           round={round}
-          inputMode={inputMode}
           className="shrink-0 landscape:w-52 landscape:overflow-y-auto md:landscape:w-60"
         />
         {/* Conteneur de taille : les cartes se dimensionnent sur l'espace restant (memory-grid).

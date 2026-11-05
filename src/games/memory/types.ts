@@ -122,7 +122,10 @@ export interface MemoryCard {
   colorClass: string;
   rotationDeg: MemoryRotation;
   state: MemoryCardState;
-  /** Déjà montrée au joueur (aperçu ou retournement) : les permutations visent ces cartes en priorité */
+  /**
+   * Déjà retournée par le joueur : les permutations visent ces cartes en priorité. L'aperçu ne compte
+   * pas (FEAT-26) : il montre tout le plateau, et les permutations tomberaient sinon au hasard.
+   */
   seen: boolean;
 }
 

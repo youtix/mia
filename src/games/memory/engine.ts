@@ -103,8 +103,9 @@ export function getMemoryConfigErrors(config: MemoryLevelConfig): string[] {
 /**
  * Nouvelle partie : `(cols × rows) / matchSize` groupes de `matchSize` cartes identiques, mélangées
  * par Fisher-Yates. Avec un aperçu (`previewSeconds > 0`), la partie s'ouvre en phase `preview`,
- * cartes visibles (et donc vues) ; sinon en phase `playing`, cartes cachées. Lève une `Error`
- * listant les anomalies d'une configuration invalide (`getMemoryConfigErrors`).
+ * cartes visibles ; sinon en phase `playing`, cartes cachées. Aucune carte n'est encore vue : l'aperçu
+ * montre tout le plateau, seuls les retournements du joueur orientent les permutations (FEAT-26).
+ * Lève une `Error` listant les anomalies d'une configuration invalide (`getMemoryConfigErrors`).
  */
 export function createMemoryGame(
   config: MemoryLevelConfig,
@@ -120,7 +121,7 @@ export function createMemoryGame(
       uid: `${group.groupId}#${String(copy + 1)}`,
       ...group,
       state: isPreview ? 'flipped' : 'hidden',
-      seen: isPreview,
+      seen: false,
     })),
   );
 
@@ -188,9 +189,10 @@ export function isEvaluationMatch(state: MemoryGameState): boolean {
 }
 
 /**
- * Échange deux cartes cachées de groupes différents, déjà vues de préférence : après une erreur,
- * les cartes de cette erreur le sont toujours, donc la permutation touche des cartes que le joueur
- * a pu mémoriser. Sans paire possible (état incohérent), l'état est renvoyé tel quel.
+ * Échange deux cartes cachées de groupes différents, déjà retournées par le joueur de préférence :
+ * après une erreur, les cartes de cette erreur le sont toujours, donc la permutation touche des cartes
+ * qu'il a retournées lui-même, pas seulement aperçues (FEAT-26 : l'aperçu montre tout le plateau).
+ * Sans paire possible (état incohérent), l'état est renvoyé tel quel.
  */
 function swapHiddenCards(state: MemoryGameState, rng: Rng): MemoryGameState {
   const hidden = state.cards.flatMap((card, index) =>
