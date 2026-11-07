@@ -1,3 +1,9 @@
+## [0.18.0](https://github.com/youtix/mia/compare/v0.17.0...v0.18.0) (2026-11-07)
+
+### Features
+
+* **settings:** add per-game progress reset ([#23](https://github.com/youtix/mia/issues/23)) ([73dce9d](https://github.com/youtix/mia/commit/73dce9ddcb33aa48df9a53c839e2796394c05193))
+
 ## [0.17.0](https://github.com/youtix/mia/compare/v0.16.0...v0.17.0) (2026-11-07)
 
 ### Features
