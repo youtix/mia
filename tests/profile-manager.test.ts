@@ -1,3 +1,4 @@
+import { getGameProgressSummary, type BaseLevelDefinition } from '@/core/progression';
 import {
   addProfile,
   AVATARS,
@@ -22,13 +23,14 @@ import {
   PROFILE_LIMIT_MESSAGE,
   PROFILE_NAME_ERROR_MESSAGES,
   QUICK_PROFILE_NAMES,
+  resetGameProgress,
   setActiveProfile,
   suggestAvatarId,
   updateMemorySettings,
   type AvatarId,
   type NewProfileOptions,
 } from '@/core/storage';
-import type { LevelCompletion, MiaSaveState, UserProfile } from '@/types/mia';
+import type { GameProgress, LevelCompletion, MiaSaveState, UserProfile } from '@/types/mia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const NOW = new Date('2026-10-28T09:00:00.000Z');
@@ -497,5 +499,59 @@ describe('Aides du sélecteur de profil', () => {
     expect(suggestAvatarId([])).toBe('fox');
     expect(suggestAvatarId(withAvatars('fox', 'owl', 'dragon'))).toBe('robot');
     expect(suggestAvatarId(withAvatars(...AVATARS.map((avatar) => avatar.id)))).toBe('fox');
+  });
+});
+
+describe('resetGameProgress', () => {
+  const trafficJam: GameProgress = {
+    gameId: 'traffic-jam',
+    levels: { 'tj-001': level('tj-001') },
+    lastPlayedLevelId: 'tj-001',
+  };
+
+  it('efface la progression d’un jeu pour le profil, sans toucher aux autres jeux ni aux réglages', () => {
+    const leo = profile('p1', {
+      gamesProgress: {
+        memory: progress(level('mem-000'), level('mem-001')),
+        'traffic-jam': trafficJam,
+      },
+      gameSettings: { memory: { previewFactor: 2, mismatchFactor: 1.5 } },
+    });
+    const state = saveWith([leo, profile('p2')], 'p1');
+
+    const next = resetGameProgress(state, 'p1', 'memory');
+
+    expect(next.activeProfileId).toBe('p1');
+    expect(next.profiles).toEqual([
+      { ...leo, gamesProgress: { 'traffic-jam': trafficJam } },
+      profile('p2'),
+    ]);
+  });
+
+  it('est inchangé pour un profil inconnu ou sans progression sur ce jeu', () => {
+    const state = saveWith([profile('p1', { gamesProgress: { 'traffic-jam': trafficJam } })], 'p1');
+
+    expect(resetGameProgress(state, 'p1', 'memory')).toBe(state);
+    expect(resetGameProgress(state, 'inconnu', 'traffic-jam')).toBe(state);
+  });
+
+  it('après une remise à zéro, seule l’Étoile #1 reste débloquée', () => {
+    const catalog: BaseLevelDefinition[] = [
+      { id: 'mem-000', gameId: 'memory', tier: 'very_easy', order: 10, config: null },
+      { id: 'mem-001', gameId: 'memory', tier: 'very_easy', order: 20, config: null },
+      { id: 'mem-002', gameId: 'memory', tier: 'very_easy', order: 30, config: null },
+    ];
+    const leo = profile('p1', {
+      gamesProgress: { memory: progress(level('mem-000'), level('mem-001')) },
+    });
+    const before = getGameProgressSummary('memory', catalog, leo);
+    expect(before.earnedStars).toBe(2);
+    expect(before.allLevels.map((item) => item.isUnlocked)).toEqual([true, true, true]);
+
+    const [resetLeo] = resetGameProgress(saveWith([leo], 'p1'), 'p1', 'memory').profiles;
+    const after = getGameProgressSummary('memory', catalog, resetLeo ?? null);
+    expect(after.earnedStars).toBe(0);
+    expect(after.allLevels.map((item) => item.isUnlocked)).toEqual([true, false, false]);
+    expect(after.nextPlayableLevel?.definition.id).toBe('mem-000');
   });
 });
