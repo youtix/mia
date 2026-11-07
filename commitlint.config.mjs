@@ -37,6 +37,7 @@ const config = {
         'traffic-jam',
         'patterns',
         'bear-sort',
+        'logic-grid',
         'android',
         'pwa',
         'release',

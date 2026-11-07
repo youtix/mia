@@ -1,0 +1,103 @@
+export {
+  LOGIC_GRID_CATALOG,
+  VALIDATION_SEEDS,
+  validateLogicGridCatalog,
+  type LogicGridLevel,
+} from './catalog';
+export {
+  getClueKey,
+  getClueKind,
+  getCluePieces,
+  getSubjectPieces,
+  isClueContradicted,
+  isClueSatisfied,
+  isGroupClue,
+  isNegatedClue,
+  listTrueClues,
+  locatePieces,
+  subjectCovers,
+  type ClueOptions,
+} from './clues';
+// Composants d'interface ; ceux qui ont un état sont marqués 'use client'. Une page importe le module
+// de son écran, pas ce barrel (FEAT-08).
+export {
+  ClueCard,
+  GRID_CELL_COUNT,
+  LogicGridBoard,
+  LogicGridEndScreen,
+  PieceShapeIcon,
+  SUCCESS_MS,
+  type ClueCardProps,
+  type ClueCardState,
+  type LogicGridBoardProps,
+  type LogicGridEndScreenProps,
+  type PieceShapeIconProps,
+} from './components';
+export {
+  HELP_LOCK_CHECK,
+  MAX_FREE_PIECES,
+  MIN_FREE_PIECES,
+  advancePuzzle,
+  checkBoard,
+  createLogicGridGame,
+  getGuideStep,
+  getHelpStage,
+  getLogicGridConfigErrors,
+  getMovableCluePieces,
+  getReservePieces,
+  getSeriesLength,
+  isBoardFull,
+  isCellLocked,
+  isPerfectWin,
+  isPieceMovable,
+  movePiece,
+  returnPiece,
+} from './engine';
+export { MAX_ATTEMPTS, MAX_CLUES, createSeededRng, generatePuzzle } from './generator';
+export {
+  CELL_COUNT,
+  GRID_SIZE,
+  PIECE_COLORS,
+  PIECE_IDS,
+  PIECE_SHAPES,
+  colOf,
+  getPieceColor,
+  getPieceShape,
+  isPieceId,
+  rowOf,
+} from './grid';
+export {
+  ANNOUNCEMENTS,
+  formatBoardTitle,
+  formatMissAnnouncement,
+  formatPuzzleLabel,
+  getCellLabel,
+  getCellPlace,
+  getClueLabel,
+  getPieceLabel,
+} from './labels';
+export {
+  countSolutions,
+  getClueMask,
+  getReasoningRank,
+  solveLikeAChild,
+  type ChildSolveResult,
+} from './solver';
+export type {
+  Board,
+  Clue,
+  ClueKind,
+  ClueSubject,
+  ClueZone,
+  LogicGridFocus,
+  LogicGridGameState,
+  LogicGridLevelConfig,
+  LogicGridPhase,
+  LogicGridPuzzle,
+  PieceColor,
+  PieceId,
+  PieceShape,
+  Reasoning,
+  SolveMove,
+  SolveStep,
+} from './types';

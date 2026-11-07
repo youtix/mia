@@ -236,6 +236,7 @@ describe('Commitlint', () => {
     'feat(memory)!: drop legacy save format',
     'feat(patterns): add the patterns game',
     'feat(bear-sort): add the sorting game',
+    'feat(logic-grid): add the logic grid game',
   ])('accepte « %s »', SLOW, async (message) => {
     expect((await lintMessage(message)).valid).toBe(true);
   });
@@ -346,6 +347,14 @@ describe('Couverture Vitest', () => {
     expect(vitestConfig.test?.coverage).toMatchObject({
       thresholds: {
         'src/games/bear-sort/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
+
+  it('impose 90 % de couverture au moteur pur de Chacun sa Place (FEAT-27)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/logic-grid/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
       },
     });
   });
