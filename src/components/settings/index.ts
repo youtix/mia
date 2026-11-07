@@ -2,6 +2,10 @@ export { ApplicationSection, type ApplicationSectionProps } from './ApplicationS
 export { BackupPanel, EXPORT_URL_REVOKE_DELAY_MS, type BackupPanelProps } from './BackupPanel';
 export { ConfirmActions, type ConfirmActionsProps } from './ConfirmActions';
 export {
+  GameProgressResetSection,
+  type GameProgressResetSectionProps,
+} from './GameProgressResetSection';
+export {
   GameSettingsSection,
   type GameSettingsSectionProps,
   type SettingsOptionZone,
@@ -9,7 +13,9 @@ export {
 export {
   APPLICATION_TEXTS,
   BACKUP_MESSAGES,
+  GAME_RESET_ORDER,
   GAME_SETTINGS_TEXTS,
+  GAME_TITLES,
   SETTINGS_PATH,
   SETTINGS_TEXTS,
   TIME_FACTOR_OPTIONS,

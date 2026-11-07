@@ -1,4 +1,4 @@
-import type { MemoryGameSettings, MiaSaveState, UserProfile } from '@/types/mia';
+import type { GameId, MemoryGameSettings, MiaSaveState, UserProfile } from '@/types/mia';
 import {
   AVATARS,
   DEFAULT_AVATAR_ID,
@@ -237,6 +237,30 @@ export function updateMemorySettings(
     return state;
   }
   const updated: UserProfile = { ...profile, gameSettings: { ...profile.gameSettings, memory } };
+  return {
+    ...state,
+    profiles: state.profiles.map((candidate) => (candidate.id === profileId ? updated : candidate)),
+  };
+}
+
+/**
+ * Remet à zéro la progression d'un jeu pour un profil : étoiles, couronnes, meilleurs coups et temps,
+ * dernier niveau joué. Les réglages de jeu du profil, ses autres jeux et les autres profils ne
+ * changent pas. Inchangé si le profil est introuvable ou n'a jamais joué ce jeu.
+ */
+export function resetGameProgress(
+  state: MiaSaveState,
+  profileId: string,
+  gameId: GameId,
+): MiaSaveState {
+  const profile = state.profiles.find((candidate) => candidate.id === profileId);
+  if (!profile || !Object.prototype.hasOwnProperty.call(profile.gamesProgress, gameId)) {
+    return state;
+  }
+  const gamesProgress = Object.fromEntries(
+    Object.entries(profile.gamesProgress).filter(([id]) => id !== gameId),
+  );
+  const updated: UserProfile = { ...profile, gamesProgress };
   return {
     ...state,
     profiles: state.profiles.map((candidate) => (candidate.id === profileId ? updated : candidate)),

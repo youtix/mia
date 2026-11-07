@@ -20,8 +20,9 @@ import { Check, Contrast, Smartphone, Tv, Volume2, VolumeX } from 'lucide-react'
 import { useId, useRef, useState, type ReactNode, type Ref } from 'react';
 import { ApplicationSection } from './ApplicationSection';
 import { BackupPanel } from './BackupPanel';
+import { GameProgressResetSection } from './GameProgressResetSection';
 import { GameSettingsSection } from './GameSettingsSection';
-import { SETTINGS_TEXTS, TIME_FACTOR_OPTIONS, TV_MODE_OPTIONS } from './labels';
+import { GAME_RESET_ORDER, SETTINGS_TEXTS, TIME_FACTOR_OPTIONS, TV_MODE_OPTIONS } from './labels';
 import { SettingsSection } from './SettingsSection';
 
 /**
@@ -31,10 +32,13 @@ import { SettingsSection } from './SettingsSection';
  */
 const WIDE_OPTIONS_QUERY = '(min-width: 40rem)';
 const NARROW_TIME_FACTOR_COLS = 2;
+/** Boutons de remise à zéro par jeu, en étroit (une rangée de cinq sur TV). */
+const NARROW_GAME_RESET_COLS = 2;
 
 /**
  * Zones D-Pad de l'écran, de haut en bas : Retour, chaque réglage de l'appareil, les deux
- * sélecteurs de temps de Memory (section « Jeux », présente avec un profil actif), la sauvegarde,
+ * sélecteurs de temps de Memory (section « Jeux », présente avec un profil actif), la remise à zéro
+ * d’un jeu (section « Progression », même condition), la sauvegarde,
  * les boutons de la section « Application » (présents avec un service worker : sans lui, la chaîne
  * s'arrête à la sauvegarde).
  */
@@ -45,6 +49,7 @@ type SettingsZone =
   | 'contrast'
   | 'memoryPreview'
   | 'memoryMismatch'
+  | 'gameReset'
   | 'backup'
   | 'application';
 
@@ -87,7 +92,8 @@ function SettingsContent() {
   // d'une sauvegarde sans profil actif sans passer par le focus DOM, profil supprimé par un autre
   // onglet) : la section « Jeux » se démonte et la zone active retombe sur Contraste, la dernière
   // au-dessus de la sauvegarde. Dérivée au rendu plutôt que corrigée après coup par un effet.
-  const isGameZone = activeZone === 'memoryPreview' || activeZone === 'memoryMismatch';
+  const isGameZone =
+    activeZone === 'memoryPreview' || activeZone === 'memoryMismatch' || activeZone === 'gameReset';
   const zone: SettingsZone = !activeProfile && isGameZone ? 'contrast' : activeZone;
   const zones = useZoneRegistry<'backup' | 'application'>();
   const applicationRef = useRef<HTMLElement>(null);
@@ -168,6 +174,20 @@ function SettingsContent() {
     onBack: backToHub,
     onEdge: (direction) => {
       if (direction === 'up') enterMemoryPreview();
+      else if (direction === 'down') enterGameReset('first');
+    },
+  });
+  // Une rangée sur TV (Bas quitte le groupe d'un coup), deux colonnes en étroit : la grille suit
+  // l'affichage, comme les options de temps.
+  const gameResetCols = isWideOptions ? GAME_RESET_ORDER.length : NARROW_GAME_RESET_COLS;
+  const gameReset = useGridNavigation({
+    scopeId: 'settings-game-reset',
+    rows: Math.ceil(GAME_RESET_ORDER.length / gameResetCols),
+    cols: gameResetCols,
+    isActive: zone === 'gameReset',
+    onBack: backToHub,
+    onEdge: (direction) => {
+      if (direction === 'up') enterMemoryMismatch();
       else if (direction === 'down') enterBackup();
     },
   });
@@ -186,6 +206,15 @@ function SettingsContent() {
   const enterMemoryMismatch = () => {
     memoryMismatch.setFocusedIndex(chosenMismatchIndex);
     setActiveZone('memoryMismatch');
+  };
+
+  /**
+   * Arrivée dans la remise à zéro : par le haut (depuis les temps de Memory), sur le premier jeu ; par
+   * le bas (depuis la sauvegarde), sur le dernier.
+   */
+  const enterGameReset = (edge: 'first' | 'last') => {
+    gameReset.setFocusedIndex(edge === 'first' ? 0 : GAME_RESET_ORDER.length - 1);
+    setActiveZone('gameReset');
   };
 
   /** Arrivée dans la sauvegarde, par le haut : sur son premier bouton (curseur posé par le panneau). */
@@ -314,10 +343,24 @@ function SettingsContent() {
           />
         ) : null}
 
+        {activeProfile ? (
+          <GameProgressResetSection
+            profile={activeProfile}
+            zone={gameReset}
+            onFocus={focusZone('gameReset')}
+          />
+        ) : null}
+
         <BackupPanel
           isActive={zone === 'backup'}
           register={zones.register}
-          onExitUp={activeProfile ? enterMemoryMismatch : focusZone('contrast')}
+          onExitUp={
+            activeProfile
+              ? () => {
+                  enterGameReset('last');
+                }
+              : focusZone('contrast')
+          }
           onExitDown={appUpdateStatus === 'unsupported' ? revealApplication : enterApplication}
           onFocusZone={focusZone('backup')}
           onBack={backToHub}

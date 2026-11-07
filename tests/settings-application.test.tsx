@@ -74,9 +74,10 @@ const CHECK_ERROR = 'Recherche impossible : vérifie ta connexion.';
 const DOWNLOAD_ERROR = 'Le téléchargement a échoué. Réessaie plus tard.';
 /**
  * Appuis sur Bas pour atteindre « Tout effacer » depuis le mode TV avec un profil actif : Son,
- * Contraste, les deux sélecteurs de temps de Memory, puis les boutons de la sauvegarde.
+ * Contraste, les deux sélecteurs de temps de Memory, la rangée de remise à zéro, puis les boutons
+ * de la sauvegarde.
  */
-const PRESSES_TO_RESET = 9;
+const PRESSES_TO_RESET = 10;
 /** Idem sans profil actif : la section « Jeux » et ses deux sélecteurs sont absents. */
 const PRESSES_TO_RESET_WITHOUT_PROFILE = 7;
 
@@ -189,10 +190,9 @@ function getSection(): HTMLElement {
 }
 
 /** Option en vigueur du dernier sélecteur de temps de Memory, juste au-dessus de la sauvegarde. */
+/** Élément au-dessus de la sauvegarde, atteint par le haut : le dernier jeu de la remise à zéro. */
 function getLastSettingAboveBackup(): HTMLElement {
-  return within(
-    screen.getByRole('radiogroup', { name: 'Temps d’affichage des erreurs' }),
-  ).getByRole('radio', { name: 'Normal × 1' });
+  return getButton('Remettre Chacun sa Place à zéro');
 }
 
 /** Région persistante du groupe : confirmations et actions en cours. */
@@ -264,7 +264,7 @@ describe('Section « Application »', () => {
         screen
           .getAllByRole('region')
           .map((region) => within(region).getByRole('heading', { level: 2 }).textContent),
-      ).toEqual(['Appareil', 'Jeux', 'Sauvegarde', 'Application']);
+      ).toEqual(['Appareil', 'Jeux', 'Progression', 'Sauvegarde', 'Application']);
       expect(within(getSection()).getByText('Version 1.2.3')).toBeInTheDocument();
     },
   );

@@ -49,6 +49,7 @@ export {
   getProfileNameKey,
   needsProfileChoice,
   normalizeProfileName,
+  resetGameProgress,
   setActiveProfile,
   suggestAvatarId,
   updateMemorySettings,

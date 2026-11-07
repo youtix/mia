@@ -1,6 +1,6 @@
 import type { AppUpdateCheckResult, AppUpdateStatus } from '@/core/pwa';
 import { DEFAULT_PROFILE_NAME } from '@/core/storage';
-import { TIME_FACTORS, type TimeFactor, type TvModeOverride } from '@/types/mia';
+import { TIME_FACTORS, type GameId, type TimeFactor, type TvModeOverride } from '@/types/mia';
 import type { SettingsFeedbackMessage } from './SettingsGroup';
 
 /** Route de l'écran (`src/app/settings/page.tsx`), poussée par le bouton « Réglages » du Hub. */
@@ -177,4 +177,90 @@ export function describeAppUpdate(
     case null:
       return null;
   }
+}
+
+/**
+ * Nom affiché de chaque jeu, identique à `GAME_REGISTRY[id].title` (un test le vérifie). Le registre
+ * n'est pas importé ici, pour la même raison que `GAME_SETTINGS_TEXTS.memoryTitle` : table exhaustive
+ * sur `GameId`, le compilateur signale un jeu ajouté sans nom.
+ */
+export const GAME_TITLES: Readonly<Record<GameId, string>> = {
+  memory: 'Memory',
+  'traffic-jam': 'Traffic Jam',
+  patterns: 'Suites Logiques',
+  'bear-sort': 'Attrape-Piège',
+  'logic-grid': 'Chacun sa Place',
+};
+
+/** Jeux de la section « Progression », dans l'ordre du Hub (celui de `GAME_REGISTRY`, testé). */
+export const GAME_RESET_ORDER: readonly GameId[] = [
+  'memory',
+  'traffic-jam',
+  'patterns',
+  'bear-sort',
+  'logic-grid',
+];
+
+/** Textes fixes de la section « Progression » : remise à zéro d'un jeu pour le profil actif. */
+export const GAME_RESET_TEXTS = {
+  title: 'Progression',
+  groupTitle: 'Remettre un jeu à zéro',
+  continueAction: 'Continuer',
+  finalAction: 'Effacer définitivement',
+} as const;
+
+/** « 1 étoile », « 12 étoiles », « 0 couronne » : le singulier vaut pour 0 et 1 en français. */
+function countLabel(count: number, singular: string, plural: string): string {
+  return `${String(count)} ${frenchPlural.select(count) === 'one' ? singular : plural}`;
+}
+
+/** Ce qu'un jeu compte pour le profil : « Aucune étoile », « 12 étoiles · 3 couronnes ». */
+export function describeGameStars(stars: number, crowns: number): string {
+  if (stars === 0) return 'Aucune étoile';
+  return `${countLabel(stars, 'étoile', 'étoiles')} · ${countLabel(crowns, 'couronne', 'couronnes')}`;
+}
+
+/** Explication de la section : le profil concerné, et ce qui ne bouge pas. */
+export function describeGameResetNote(profileName: string): string {
+  return `Choisis un jeu : ses étoiles et couronnes sont effacées pour ${profileName}. Les autres jeux, les réglages et les autres profils ne changent pas.`;
+}
+
+/** Nom accessible d'un bouton de jeu : « Remettre Memory à zéro ». */
+export function describeGameResetAction(title: string): string {
+  return `Remettre ${title} à zéro`;
+}
+
+/** Première confirmation : « Remettre Memory à zéro ? ». */
+export function describeGameResetTitle(title: string): string {
+  return `Remettre ${title} à zéro ?`;
+}
+
+/** Contenu de la première confirmation : ce qui sera effacé, et pour qui. */
+export function describeGameResetSubtitle(
+  title: string,
+  stars: number,
+  crowns: number,
+  profileName: string,
+): string {
+  return `${countLabel(stars, 'étoile', 'étoiles')} et ${countLabel(crowns, 'couronne', 'couronnes')} de ${title} seront effacées pour ${profileName}, ainsi que ses meilleurs coups et temps. Les autres jeux et les réglages restent. Exporte d’abord ta progression si tu veux la garder.`;
+}
+
+/** Seconde confirmation, en rouge : « Remettre Memory à zéro définitivement ? ». */
+export function describeGameResetFinalTitle(title: string): string {
+  return `Remettre ${title} à zéro définitivement ?`;
+}
+
+/** Avertissement de la seconde confirmation : la remise à zéro ne se défait pas. */
+export function describeGameResetWarning(title: string, profileName: string): string {
+  return `Cette action est irréversible : les étoiles et couronnes de ${title} seront perdues pour ${profileName}.`;
+}
+
+/** Retour après une remise à zéro réussie. */
+export function describeGameResetDone(title: string, profileName: string): string {
+  return `${title} est remis à zéro pour ${profileName}.`;
+}
+
+/** Jeu sans étoile : rien à effacer, aucune confirmation proposée. */
+export function describeGameResetNothing(title: string): string {
+  return `${title} n’a encore aucune étoile : rien à remettre à zéro.`;
 }

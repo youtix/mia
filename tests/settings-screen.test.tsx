@@ -5,7 +5,9 @@ import {
   describeProfileSettings,
   EXPORT_URL_REVOKE_DELAY_MS,
   formatTimeFactor,
+  GAME_RESET_ORDER,
   GAME_SETTINGS_TEXTS,
+  GAME_TITLES,
   getBackupFileName,
   SETTINGS_TEXTS,
   SettingsScreen,
@@ -13,7 +15,7 @@ import {
   TIME_FACTOR_OPTIONS,
 } from '@/components/settings';
 import { CONFIRM_GUARD_MS, installActivationGuard, NavigationProvider } from '@/core/navigation';
-import { GAME_REGISTRY } from '@/core/progression';
+import { GAME_REGISTRY, GAMES } from '@/core/progression';
 import {
   createDefaultSaveState,
   DEFAULT_DEVICE_SETTINGS,
@@ -74,9 +76,9 @@ const MISMATCH_GROUP = 'Temps d’affichage des erreurs';
 const DEFAULT_MEMORY: MemoryGameSettings = { previewFactor: 1, mismatchFactor: 1 };
 /**
  * Appuis sur Bas pour atteindre la sauvegarde depuis le mode TV avec un profil actif : Son,
- * Contraste, les deux sélecteurs de temps de Memory, puis la sauvegarde.
+ * Contraste, les deux sélecteurs de temps de Memory, la rangée de remise à zéro, puis la sauvegarde.
  */
-const PRESSES_TO_BACKUP = 5;
+const PRESSES_TO_BACKUP = 6;
 
 function won(levelId: string): LevelCompletion {
   return {
@@ -155,6 +157,42 @@ function storeSave(save: MiaSaveState): void {
 
 function readSave(): MiaSaveState {
   return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as MiaSaveState;
+}
+
+/** Profil enregistré, par identifiant. */
+function savedProfile(id: string): UserProfile | undefined {
+  return readSave().profiles.find((profile) => profile.id === id);
+}
+
+/**
+ * Léo (actif) : deux étoiles en Memory dont une couronne, une étoile en Traffic Jam, des réglages de
+ * Memory ; Mia : une étoile en Memory.
+ */
+function progressSave(): MiaSaveState {
+  const leo: UserProfile = {
+    ...player('p1', 'Léo', 'cat'),
+    gamesProgress: {
+      memory: {
+        gameId: 'memory',
+        levels: {
+          'mem-000': { ...won('mem-000'), isPerfect: true },
+          'mem-001': won('mem-001'),
+        },
+        lastPlayedLevelId: 'mem-001',
+      },
+      'traffic-jam': {
+        gameId: 'traffic-jam',
+        levels: { 'tj-001': won('tj-001') },
+        lastPlayedLevelId: 'tj-001',
+      },
+    },
+    gameSettings: { memory: { previewFactor: 2, mismatchFactor: 1.5 } },
+  };
+  return {
+    ...createDefaultSaveState(),
+    activeProfileId: 'p1',
+    profiles: [leo, player('p2', 'Mia', 'fox', 1)],
+  };
 }
 
 /** Mode TV forcé avant le montage : le moteur D-Pad démarre en mode `dpad`. */
@@ -577,7 +615,7 @@ describe('Réglages de jeu', () => {
       screen
         .getAllByRole('region')
         .map((region) => within(region).getByRole('heading', { level: 2 }).textContent),
-    ).toEqual(['Appareil', 'Jeux', 'Sauvegarde', 'Application']);
+    ).toEqual(['Appareil', 'Jeux', 'Progression', 'Sauvegarde', 'Application']);
     const section = screen.getByRole('region', { name: 'Jeux' });
     expect(within(section).getByText('Réglages de Léo')).toBeInTheDocument();
     expect(section.querySelector('[data-avatar="cat"]')).toHaveAttribute('aria-hidden', 'true');
@@ -690,7 +728,11 @@ describe('Réglages de jeu', () => {
     press('ArrowDown');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     press('ArrowDown');
+    expect(getButton('Remettre Memory à zéro')).toHaveFocus();
+    press('ArrowDown');
     expect(getButton('Télécharger le fichier')).toHaveFocus();
+    press('ArrowUp');
+    expect(getButton('Remettre Chacun sa Place à zéro')).toHaveFocus();
     press('ArrowUp');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     // En remontant : sur l'option choisie (« Long »), pas sur la dernière visitée (« Court »).
@@ -754,6 +796,8 @@ describe('Réglages de jeu', () => {
 
     focusElement(getFactorRadio(MISMATCH_GROUP, 'Court'));
     press('ArrowDown');
+    expect(getButton('Remettre Memory à zéro')).toHaveFocus();
+    press('ArrowDown');
     expect(getButton('Télécharger le fichier')).toHaveFocus();
 
     focusElement(getFactorRadio(PREVIEW_GROUP, 'Très long'));
@@ -779,6 +823,161 @@ describe('Réglages de jeu', () => {
     expect(press('Escape')).toBe(true);
     expect(router.back).toHaveBeenCalledTimes(2);
     expect(router.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('Progression', () => {
+  it('affiche le décompte de chaque jeu sur son bouton', async () => {
+    await renderSettings(progressSave());
+
+    expect(
+      within(getButton('Remettre Memory à zéro')).getByText('2 étoiles · 1 couronne'),
+    ).toBeInTheDocument();
+    expect(
+      within(getButton('Remettre Traffic Jam à zéro')).getByText('1 étoile · 0 couronne'),
+    ).toBeInTheDocument();
+    expect(
+      within(getButton('Remettre Suites Logiques à zéro')).getByText('Aucune étoile'),
+    ).toBeInTheDocument();
+  });
+
+  it('suit l’ordre et les noms du registre', () => {
+    expect(GAME_RESET_ORDER).toEqual(GAMES.map((game) => game.id));
+    for (const game of GAMES) {
+      expect(GAME_TITLES[game.id]).toBe(game.title);
+    }
+  });
+
+  it('n’apparaît qu’avec un profil actif', async () => {
+    await renderSettings(familySave({ activeProfileId: null }));
+
+    expect(screen.queryByRole('group', { name: 'Remettre un jeu à zéro' })).not.toBeInTheDocument();
+  });
+
+  it('remet un jeu à zéro après deux confirmations, pour le profil actif seulement', async () => {
+    const before = progressSave();
+    const [leoBefore, miaBefore] = before.profiles;
+    await renderSettings(before);
+    fireEvent.click(getButton('Remettre Memory à zéro'));
+
+    const first = await findDialog('Remettre Memory à zéro ?');
+    expect(
+      within(first).getByText(/2 étoiles et 1 couronne de Memory seront effacées pour Léo/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(first).getByRole('button', { name: 'Continuer' }));
+
+    const second = await findDialog('Remettre Memory à zéro définitivement ?');
+    expect(second).toHaveClass('border-rose-400');
+    expect(within(second).getByText(/irréversible/)).toBeInTheDocument();
+    fireEvent.click(within(second).getByRole('button', { name: 'Effacer définitivement' }));
+
+    await waitFor(() => {
+      expect(savedProfile('p1')?.gamesProgress).not.toHaveProperty('memory');
+    });
+    // Léo garde son autre jeu et ses réglages de Memory ; Mia n'est pas touchée.
+    expect(Object.keys(savedProfile('p1')?.gamesProgress ?? {})).toEqual(['traffic-jam']);
+    expect(savedProfile('p1')?.gameSettings).toEqual(leoBefore?.gameSettings);
+    expect(savedProfile('p2')).toEqual(miaBefore);
+    expect(screen.getByText('Memory est remis à zéro pour Léo.')).toBeInTheDocument();
+    expect(
+      within(getButton('Remettre Memory à zéro')).getByText('Aucune étoile'),
+    ).toBeInTheDocument();
+  });
+
+  it('n’ouvre aucune confirmation pour un jeu sans étoile, et le dit', async () => {
+    await renderSettings(progressSave());
+
+    fireEvent.click(getButton('Remettre Suites Logiques à zéro'));
+
+    expect(
+      await screen.findByText('Suites Logiques n’a encore aucune étoile : rien à remettre à zéro.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(readSave()).toEqual(progressSave());
+  });
+
+  it('abandonne à chaque étape sans rien modifier', async () => {
+    await renderSettings(progressSave());
+
+    fireEvent.click(getButton('Remettre Memory à zéro'));
+    const first = await findDialog('Remettre Memory à zéro ?');
+    fireEvent.click(within(first).getByRole('button', { name: 'Annuler' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(getButton('Remettre Memory à zéro'));
+    fireEvent.click(
+      within(await findDialog('Remettre Memory à zéro ?')).getByRole('button', {
+        name: 'Continuer',
+      }),
+    );
+    const second = await findDialog('Remettre Memory à zéro définitivement ?');
+    fireEvent.click(within(second).getByRole('button', { name: 'Annuler' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(readSave()).toEqual(progressSave());
+  });
+
+  it('garde chaque étape sans effet 1 s : un double tap lent n’efface rien', async () => {
+    const tick = installGuardWithClock();
+    await renderSettings(progressSave());
+    tick(CONFIRM_GUARD_MS);
+
+    fireEvent.click(getButton('Remettre Memory à zéro'));
+    const first = await findDialog('Remettre Memory à zéro ?');
+    const proceed = within(first).getByRole('button', { name: 'Continuer' });
+
+    tick(CONFIRM_GUARD_MS - 1);
+    fireEvent.click(proceed);
+    await settle();
+    expect(
+      screen.queryByRole('dialog', { name: 'Remettre Memory à zéro définitivement ?' }),
+    ).not.toBeInTheDocument();
+
+    tick(1);
+    fireEvent.click(proceed);
+    const final = await findDialog('Remettre Memory à zéro définitivement ?');
+    const erase = within(final).getByRole('button', { name: 'Effacer définitivement' });
+
+    tick(CONFIRM_GUARD_MS - 1);
+    fireEvent.click(erase);
+    await settle();
+    expect(readSave()).toEqual(progressSave());
+
+    tick(1);
+    fireEvent.click(erase);
+    await waitFor(() => {
+      expect(savedProfile('p1')?.gamesProgress).not.toHaveProperty('memory');
+    });
+  });
+
+  it('se pilote à la télécommande : Memory sur la rangée, Annuler par défaut, confirmation au clavier', async () => {
+    await renderSettingsOnTv(progressSave());
+
+    pressTimes('ArrowDown', 5);
+    expect(getButton('Remettre Memory à zéro')).toHaveFocus();
+    expect(press('Enter')).toBe(true);
+    const first = await findDialog('Remettre Memory à zéro ?');
+    await waitFor(() => {
+      expect(within(first).getByRole('button', { name: 'Annuler' })).toHaveFocus();
+    });
+    press('ArrowRight');
+    expect(within(first).getByRole('button', { name: 'Continuer' })).toHaveFocus();
+    expect(press('Enter')).toBe(true);
+
+    const second = await findDialog('Remettre Memory à zéro définitivement ?');
+    await waitFor(() => {
+      expect(within(second).getByRole('button', { name: 'Annuler' })).toHaveFocus();
+    });
+    press('ArrowRight');
+    expect(within(second).getByRole('button', { name: 'Effacer définitivement' })).toHaveFocus();
+    expect(press('Enter')).toBe(true);
+
+    await waitFor(() => {
+      expect(savedProfile('p1')?.gamesProgress).not.toHaveProperty('memory');
+    });
   });
 });
 
@@ -1358,9 +1557,14 @@ describe('Sauvegarde', () => {
     expect(getButton('Choisir un fichier')).toHaveFocus();
     press('ArrowUp');
     expect(getButton('Copier')).toHaveFocus();
-    // Au-dessus de la sauvegarde : le dernier sélecteur de temps de Memory, sur l'option choisie.
+    // Au-dessus de la sauvegarde : la remise à zéro, sur le dernier jeu ; plus haut, le dernier
+    // sélecteur de temps de Memory, sur l'option choisie.
+    press('ArrowUp');
+    expect(getButton('Remettre Chacun sa Place à zéro')).toHaveFocus();
     press('ArrowUp');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
+    press('ArrowDown');
+    expect(getButton('Remettre Memory à zéro')).toHaveFocus();
     press('ArrowDown');
     expect(getButton('Télécharger le fichier')).toHaveFocus();
 
