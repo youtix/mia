@@ -60,6 +60,13 @@ export default defineConfig({
           branches: 90,
           statements: 90,
         },
+        // Moteur pur de Chacun sa Place (FEAT-27) : 90 % exigés, hors composants d'interface.
+        'src/games/logic-grid/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },

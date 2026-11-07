@@ -712,12 +712,13 @@ describe('validateLevelCatalog', () => {
 });
 
 describe('Registre des jeux', () => {
-  it('déclare Memory, Traffic Jam, Suites Logiques puis Attrape-Piège, chacun sous son identifiant', () => {
+  it('déclare Memory, Traffic Jam, Suites Logiques, Attrape-Piège puis Chacun sa Place, chacun sous son identifiant', () => {
     expect(GAMES.map((game) => [game.id, game.title, game.skill, game.path])).toEqual([
       ['memory', 'Memory', 'Mémoire visuelle & spatiale', '/memory'],
       ['traffic-jam', 'Traffic Jam', 'Planification & Logique séquentielle', '/traffic-jam'],
       ['patterns', 'Suites Logiques', 'Raisonnement & Logique sérielle · dès 4 ans', '/patterns'],
       ['bear-sort', 'Attrape-Piège', 'Flexibilité mentale & Inhibition', '/bear-sort'],
+      ['logic-grid', 'Chacun sa Place', 'Déduction & Élimination · dès 5 ans', '/logic-grid'],
     ]);
     for (const [key, game] of Object.entries(GAME_REGISTRY)) expect(game.id).toBe(key);
   });
@@ -793,6 +794,7 @@ describe('Registre des jeux', () => {
       'traffic-jam',
       'patterns',
       'bear-sort',
+      'logic-grid',
     ]);
     expect(summary).toMatchObject({
       earnedStars: 0,

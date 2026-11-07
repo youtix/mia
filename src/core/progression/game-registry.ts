@@ -1,4 +1,5 @@
 import { BEAR_SORT_CATALOG } from '@/games/bear-sort/catalog';
+import { LOGIC_GRID_CATALOG } from '@/games/logic-grid/catalog';
 import { MEMORY_CATALOG } from '@/games/memory/catalog';
 import { PATTERNS_CATALOG } from '@/games/patterns/catalog';
 import { TRAFFIC_JAM_CATALOG } from '@/games/traffic-jam/catalog';
@@ -11,8 +12,9 @@ export type GameRegistry = { readonly [K in GameId]: GameManifest & { readonly i
 
 /**
  * Registre central des jeux, dans l'ordre d'affichage du Hub. Données seules : les icônes sont
- * associées dans `components/`. FEAT-11 (Memory), FEAT-14 (Traffic Jam), FEAT-21 (Suites Logiques) et
- * FEAT-25 (Attrape-Piège) y branchent leur catalogue ; un niveau publié n'en est jamais retiré (`countProfileStars` divergerait).
+ * associées dans `components/`. FEAT-11 (Memory), FEAT-14 (Traffic Jam), FEAT-21 (Suites Logiques),
+ * FEAT-25 (Attrape-Piège) et FEAT-27 (Chacun sa Place) y branchent leur catalogue ; un niveau publié
+ * n'en est jamais retiré (`countProfileStars` divergerait).
  */
 export const GAME_REGISTRY: GameRegistry = {
   memory: {
@@ -42,6 +44,13 @@ export const GAME_REGISTRY: GameRegistry = {
     skill: 'Flexibilité mentale & Inhibition',
     path: '/bear-sort',
     catalog: BEAR_SORT_CATALOG,
+  },
+  'logic-grid': {
+    id: 'logic-grid',
+    title: 'Chacun sa Place',
+    skill: 'Déduction & Élimination · dès 5 ans',
+    path: '/logic-grid',
+    catalog: LOGIC_GRID_CATALOG,
   },
 };
 

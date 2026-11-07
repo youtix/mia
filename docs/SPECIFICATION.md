@@ -1,6 +1,6 @@
 # Spécification Technique & Fonctionnelle — Projet **Mia**
 
-> **Vision** : **Mia** est une application gratuite et open-source d'entraînement et de développement des capacités cérébrales (mémoire de travail, repérage visuo-spatial, planification logique, raisonnement inductif, flexibilité mentale, inhibition cognitive). Elle est conçue pour fonctionner de manière fluide aussi bien sur **Smartphone et Tablette (tactile)** que sur **Android TV (télécommande D-Pad)** et **Navigateur Web (PWA)**, avec un système de progression par étoiles **extensible à l'infini**.
+> **Vision** : **Mia** est une application gratuite et open-source d'entraînement et de développement des capacités cérébrales (mémoire de travail, repérage visuo-spatial, planification logique, raisonnement inductif et déductif, flexibilité mentale, inhibition cognitive). Elle est conçue pour fonctionner de manière fluide aussi bien sur **Smartphone et Tablette (tactile)** que sur **Android TV (télécommande D-Pad)** et **Navigateur Web (PWA)**, avec un système de progression par étoiles **extensible à l'infini**.
 
 ---
 
@@ -9,9 +9,9 @@
 1. [Principes Directeurs & Contraintes](#1-principes-directeurs--contraintes)
 2. [Architecture Technique Globale](#2-architecture-technique-globale)
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
-4. [Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques & Attrape-Piège)](#4-conception-détaillée-des-jeux-memory-traffic-jam-suites-logiques--attrape-piège)
+4. [Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques, Attrape-Piège & Chacun sa Place)](#4-conception-détaillée-des-jeux-memory-traffic-jam-suites-logiques-attrape-piège--chacun-sa-place)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-26`)](#6-découpage-en-features-atomiques-feat-01-à-feat-26)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-27`)](#6-découpage-en-features-atomiques-feat-01-à-feat-27)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -38,6 +38,7 @@
    - [FEAT-24.md](./FEAT-24.md) — Jeu n°4 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices
    - [FEAT-25.md](./FEAT-25.md) — Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
    - [FEAT-26.md](./FEAT-26.md) — Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré
+   - [FEAT-27.md](./FEAT-27.md) — Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -205,7 +206,7 @@ Tous les jeux de **Mia** partagent la même échelle de difficulté à 5 paliers
 
 ---
 
-## 4. Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques & Attrape-Piège)
+## 4. Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques, Attrape-Piège & Chacun sa Place)
 
 ### 4.1. Jeu n°1 : Memory (Mémoire visuo-spatiale & Mémoire de travail)
 
@@ -420,6 +421,53 @@ Chaque flèche est un panneau STOP. **À ranger** varie quand l'étoile finit pa
 >
 > **À relire par le propriétaire.** Arbitrages de Claude pendant l'implémentation : le nom, la faculté et la route ([FEAT-25 §6](./FEAT-25.md#6-décisions-dimplémentation-session-de-cadrage)), la chouette violette, la tolérance de dépôt avec le parcours toucher-puis-toucher, l'image de la règle dans le sens des boîtes et la limite de trois relances d'affilée ([FEAT-24 §6](./FEAT-24.md#6-décisions-dimplémentation-session-de-cadrage)), le texte de la voix ([FEAT-22 §6](./FEAT-22.md#6-décisions-dimplémentation-session-de-cadrage)), et le STOP qui interrompt une série pendant que des ours attendent ([FEAT-23 §6](./FEAT-23.md#6-décisions-dimplémentation-session-de-cadrage)).
 
+### 4.5. Jeu n°5 : Chacun sa Place (Raisonnement déductif & Élimination)
+
+> **But** : exercer la **déduction** et l'**élimination systématique des impossibilités**, le mécanisme que les tests psychométriques rangent sous le raisonnement fluide : croiser plusieurs contraintes, positives et négatives, pour trouver la seule disposition possible. **Mia exerce, elle ne soigne pas** : aucun effet clinique ou thérapeutique n'est revendiqué, et rien n'est mesuré au-delà de la progression habituelle.
+
+#### Règles & Ergonomie Comparative (Tactile vs Télécommande Android TV)
+* **Public** : enfants de **5 à 8 ans**, **aucun texte visible** du début d'une étoile à son écran de fin (le Hub et la Carte des Étoiles restent écrits).
+* **Plateau** : une grille de morpion (3 × 3) et neuf pièces toutes différentes, trois formes (rond, carré, triangle) en trois couleurs (rouge, jaune, bleu). Une partie des pièces est posée d'avance (punaise) ; les autres attendent dans la réserve.
+* **Cartes** : des images littérales, au plus six, toutes visibles : une case ou une zone éclairée sur une mini-grille, deux pièces collées, une pièce qui en touche une autre, une croix pour « pas », et, plus loin, toute une famille (les trois carrés, les trois pièces rouges). Chaque carte a une phrase pour les lecteurs d'écran.
+* **Vérification** : l'enfant pose, déplace et échange ses pièces sans être jugé, puis sonne la **cloche**, qui ne vérifie qu'une grille pleine. Une vérification ratée fait luire la première carte non respectée ; à la deuxième, ses pièces remuent ; à la troisième, une pièce rejoint sa case et s'y fige. Ni rouge, ni croix sur la grille : personne ne peut perdre.
+* **Récompense** : une étoile en finissant la série de puzzles (3, 2 ou 1 selon le plateau), une couronne si chaque puzzle est réussi à la première vérification.
+* **Au doigt** : glisser-déposer permissif ou toucher la pièce puis la case ; une pièce posée sur une autre échange sa place avec elle.
+* **À la télécommande** : curseur spatial (flèches) entre la réserve, les cases et la cloche ; `OK` choisit une pièce, puis la pose sur la case du curseur, où elle se devine en transparence. Le curseur passe ensuite à la pièce suivante, puis à la cloche.
+* **Son** : la cloche et les jingles synthétisés de Suites Logiques ; rien ne dépend du son.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Placing : Étoile lancée (puzzles tirés, une seule solution chacun)
+
+    state "Poser les pièces" as Placing
+    state "Carte non respectée (échelle d'aide)" as Miss
+    state "Puzzle réussi" as Success
+    state "Étoile gagnée (couronne sans vérification ratée)" as Won
+
+    Placing --> Placing : Poser, déplacer, échanger
+    Placing --> Miss : Cloche, une carte n'est pas respectée
+    Miss --> Placing : La carte luit, puis ses pièces remuent,\npuis une pièce rejoint sa case
+    Placing --> Success : Cloche, toutes les cartes respectées
+    Success --> Placing : Puzzle suivant
+    Success --> Won : Dernier puzzle
+```
+
+#### Progression Initiale des 20 Étoiles de Chacun sa Place (MVP)
+
+En dents de scie : chaque palier apporte une sorte de carte sur un petit plateau, qui grandit au fil de ses quatre étoiles. Le détail de chaque étoile est dans [FEAT-27 §3.3](./FEAT-27.md#33-catalogue-srcgameslogic-gridcatalogts).
+
+| Étoiles | Palier | Pièces à placer | Cartes nouvelles | Ce que l'enfant apprend |
+| :---: | :--- | :---: | :--- | :--- |
+| ⭐ 1 à 4 | Très Facile | 3 → 5 | Une case ; deux pièces qui se touchent | Lire une carte, la dernière pièce dans la dernière case. Étoile 1 guidée. |
+| ⭐ 5 à 8 | Facile | 3 → 5 | Lignes et colonnes ; deux pièces collées | Croiser deux cartes pour trouver une case. Étoile 5 guidée. |
+| ⭐ 9 à 12 | Moyen | 3 → 6 | Cartes barrées (« pas ici », « ne se touchent pas ») | Éliminer : intégrer le négatif et le positif. Étoile 9 guidée. |
+| ⭐ 13 à 16 | Difficile | 4 → 7 | Familles (toutes les pièces d'une forme ou d'une couleur) | Une carte pour trois pièces. Étoile 13 guidée. |
+| ⭐ 17 à 20 | Très Difficile | 6 → 8 | Tout à la fois | La seule pièce qui peut aller dans une case ; huit pièces à placer. |
+
+> **Non vérifié.** Aucun enfant n'a encore joué : la lecture des cartes sans texte (les cartes « se touchent » barrées, les familles) et les couleurs pour un enfant daltonien demandent un essai avec la tranche d'âge. Aucune partie n'a été jouée sur un vrai Android TV ni dans l'APK, et le temps de tirage des dernières étoiles reste à mesurer sur un boîtier TV modeste ([FEAT-27 §4](./FEAT-27.md#4-points-dattention)).
+>
+> **À relire par le propriétaire.** Arbitrages de Claude pendant l'implémentation, après deux cycles de cadrage : huit pièces à placer au plus (et non neuf), la main fantôme comme seul apprentissage des cartes nouvelles, le dessin des familles, les gestes et la télécommande, les sons, le nom et la route ([FEAT-27 §6](./FEAT-27.md#6-décisions-dimplémentation-session-de-cadrage)).
+
 ---
 
 ## 5. Graphe de Dépendances des Features Atomiques
@@ -499,13 +547,20 @@ flowchart TD
     F10 --> F26["FEAT-26 : Memory — Aperçu obligatoire & catalogue rééquilibré"]
     F11 --> F26
     F19 --> F26
+
+    F07 --> F27["FEAT-27 : Chacun sa Place — Grille 3 × 3, Cartes sans texte, Solveur & Catalogue 20 Étoiles"]
+    F03 --> F27
+    F04 --> F27
+    F08 --> F27
+    F21 --> F27
+    F24 --> F27
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-26`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-27`)
 
-Chacune des 26 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 27 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -535,6 +590,7 @@ Chacune des 26 features possède sa spécification complète et autonome pour l'
 | **24** | [FEAT-24.md](./FEAT-24.md) | **Jeu n°4 (Attrape-Piège) — Interface, Glisser-Déposer Permissif, Télécommande, Mécanisme STOP & Échelle d'Indices** | `FEAT-03`, `FEAT-04`, `FEAT-08`, `FEAT-22`, `FEAT-23` |
 | **25** | [FEAT-25.md](./FEAT-25.md) | **Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur** | `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24` |
 | **26** | [FEAT-26.md](./FEAT-26.md) | **Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré** | `FEAT-10`, `FEAT-11`, `FEAT-19` |
+| **27** | [FEAT-27.md](./FEAT-27.md) | **Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-24` |
 
 ---
 
@@ -764,6 +820,14 @@ Chacune des 26 features possède sa spécification complète et autonome pour l'
 
 ---
 
+### `FEAT-27` : Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles ([FEAT-27.md](./FEAT-27.md))
+
+* **Objectif** : Ajouter un jeu de logique pure pour les 5 à 8 ans, sans aucun texte : placer neuf pièces (trois formes, trois couleurs) sur une grille 3 × 3 d'après des cartes en images (case, ligne, pièces collées ou qui se touchent, croix de négation, familles), vérifier tout d'un coup à la cloche, avec une échelle d'aide qui désigne une carte, fait remuer ses pièces puis en fige une ; un solveur « enfant » et un générateur qui tirent à chaque partie des puzzles d'une seule solution en six cartes au plus ; 20 étoiles en dents de scie (`lg-001` à `lg-020`), leur validateur dans `npm run validate:levels`, l'entrée du registre (« Déduction & Élimination · dès 5 ans », route `/logic-grid`) et l'icône du Hub.
+* **Dépendances** : `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-24`.
+* **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-27.md](./FEAT-27.md).
+
+---
+
 ## 7. Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu
 
 L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi instantané. Seule limite : les tests figent le catalogue publié (`SPEC_ROWS`, nombre d'étoiles, `order` par palier, et `tests/star-map.test.tsx` pour Memory et Traffic Jam). Un niveau ajouté passe `validate:levels` mais les fait échouer : ils se mettent à jour dans le même commit ([README](../README.md), « Ajouter des niveaux »).
@@ -778,7 +842,7 @@ L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi ins
 2. Déclarer le nouveau plateau (soit via la liste des véhicules, soit via une grille ASCII `6x6` lisible).
 3. Lancer `npm run validate:levels` : le solveur BFS vérifie automatiquement que votre niveau est soluble et vous indique son nombre exact de coups optimaux (`optimalMoves`).
 
-### 7.3. Ajouter un 5e, 6e ou 7e jeu cérébral dans le futur
+### 7.3. Ajouter un 6e, 7e ou 8e jeu cérébral dans le futur
 Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.
@@ -797,3 +861,8 @@ Grâce au découpage modulaire :
 2. Ajouter un objet avec un `id` unique (ex: `"bs-021"`), son palier, son `order` et sa configuration : les deux boîtes (`zones`, opposées par la couleur et par la taille), les phases (`rule`, `addBears`, `placements`) et `showGestureHint`.
 3. Lancer `npm run validate:levels` : `getBearSortConfigErrors` vérifie les boîtes, le contenu de chaque phase, le conflit après un changement et que chaque STOP interrompt bien des ours qui attendent.
 4. Les 2 règles de tri et les 8 règles « sauf » ont déjà leur phrase. Pour changer ou ajouter une phrase de la mascotte, modifier `src/games/bear-sort/voice-script.json` puis relancer `scripts/generate-voice-clips.py` ([FEAT-22](./FEAT-22.md)) : un test signale un clip dont le texte est périmé.
+
+### 7.6. Ajouter 1 ou 50 nouveaux niveaux à *Chacun sa Place*
+1. Ouvrir `src/games/logic-grid/catalog.ts`.
+2. Ajouter un objet avec un `id` unique (ex: `"lg-021"`), son palier, son `order` et sa configuration (`freePieces`, `clueKinds`, `allowsNegation`, `allowsGroups`, `reasoning`, `focus`, `hasGuide`). Aucun puzzle n'est à écrire : le générateur les tire à chaque partie.
+3. Lancer `npm run validate:levels` : `validateLogicGridCatalog` vérifie la configuration, tire une partie par graine de validation et recompte chaque puzzle par recherche exhaustive (une seule solution, six cartes au plus). Les règles de chaque champ sont détaillées dans le [README](../README.md) (« Chacun sa Place : un objet dans `LOGIC_GRID_CATALOG` »).
