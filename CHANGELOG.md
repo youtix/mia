@@ -1,3 +1,9 @@
+## [0.17.0](https://github.com/youtix/mia/compare/v0.16.0...v0.17.0) (2026-11-07)
+
+### Features
+
+* **logic-grid:** add the logic grid game ([#22](https://github.com/youtix/mia/issues/22)) ([998611d](https://github.com/youtix/mia/commit/998611d9880d388667b51ecf61fc0c9e72fed793))
+
 ## [0.16.0](https://github.com/youtix/mia/compare/v0.15.1...v0.16.0) (2026-11-05)
 
 ### Features
