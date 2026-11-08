@@ -9,9 +9,9 @@
 1. [Principes Directeurs & Contraintes](#1-principes-directeurs--contraintes)
 2. [Architecture Technique Globale](#2-architecture-technique-globale)
 3. [Modèle de Données & Extensibilité Infinie des Niveaux](#3-modèle-de-données--extensibilité-infinie-des-niveaux)
-4. [Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques, Attrape-Piège & Chacun sa Place)](#4-conception-détaillée-des-jeux-memory-traffic-jam-suites-logiques-attrape-piège--chacun-sa-place)
+4. [Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques, Attrape-Piège, Chacun sa Place & Pas si vite !)](#4-conception-détaillée-des-jeux-memory-traffic-jam-suites-logiques-attrape-piège-chacun-sa-place--pas-si-vite-)
 5. [Graphe de Dépendances des Features Atomiques](#5-graphe-de-dépendances-des-features-atomiques)
-6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-27`)](#6-découpage-en-features-atomiques-feat-01-à-feat-27)
+6. [Découpage en Features Atomiques (`FEAT-01` à `FEAT-28`)](#6-découpage-en-features-atomiques-feat-01-à-feat-28)
    - [FEAT-01.md](./FEAT-01.md) — Socle Next.js Statique (PWA) & Structure du Projet
    - [FEAT-02.md](./FEAT-02.md) — Environnement Projet, Bonnes Pratiques Qualité (ESLint Strict, Prettier, Commitlint, Husky, Coverage 80%), CI & Release Automatique (`semantic-release`)
    - [FEAT-03.md](./FEAT-03.md) — Design System Adaptatif (Mobile, Tablette & "10-Foot UI" TV)
@@ -39,6 +39,7 @@
    - [FEAT-25.md](./FEAT-25.md) — Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
    - [FEAT-26.md](./FEAT-26.md) — Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré
    - [FEAT-27.md](./FEAT-27.md) — Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles
+   - [FEAT-28.md](./FEAT-28.md) — Jeu n°6 (Pas si vite !) — Spécification Fonctionnelle : Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -206,7 +207,7 @@ Tous les jeux de **Mia** partagent la même échelle de difficulté à 5 paliers
 
 ---
 
-## 4. Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques, Attrape-Piège & Chacun sa Place)
+## 4. Conception Détaillée des Jeux (Memory, Traffic Jam, Suites Logiques, Attrape-Piège, Chacun sa Place & Pas si vite !)
 
 ### 4.1. Jeu n°1 : Memory (Mémoire visuo-spatiale & Mémoire de travail)
 
@@ -468,6 +469,42 @@ En dents de scie : chaque palier apporte une sorte de carte sur un petit plateau
 >
 > **À relire par le propriétaire.** Arbitrages de Claude pendant l'implémentation, après deux cycles de cadrage : huit pièces à placer au plus (et non neuf), la main fantôme comme seul apprentissage des cartes nouvelles, le dessin des familles, les gestes et la télécommande, les sons, le nom et la route ([FEAT-27 §6](./FEAT-27.md#6-décisions-dimplémentation-session-de-cadrage)).
 
+### 4.6. Jeu n°6 : Pas si vite ! (Inhibition motrice & Attention)
+
+> **Statut** : **cadrage fonctionnel seulement** ([FEAT-28](./FEAT-28.md), session du 2026-11-08) ; rien n'est encore implémenté. Le titre est un titre de travail.
+>
+> **But** : entraîner l'**inhibition motrice**, c'est-à-dire retenir en une fraction de seconde un geste que l'habitude rend automatique, sur le modèle de « Jacques a dit » et de « Pigeon vole » (paradigmes *Go / No-Go*, puis *Stop-Signal*). **Mia exerce, elle ne soigne pas** : aucun effet clinique ou thérapeutique n'est revendiqué.
+
+#### Règles & Ergonomie Comparative (Tactile vs Télécommande Android TV)
+* **Public** : enfants de **3 à 6 ans**, **aucun texte visible** du début d'une étoile à son écran de fin (le Hub et la Carte des Étoiles restent écrits).
+* **Boucle** : des images défilent à un rythme régulier, et l'enfant n'a qu'un **grand buzzer** (jamais rouge : le rouge reste au panneau STOP). Sur une **cible**, elle appuie pendant la fenêtre ; sur un **piège**, elle s'abstient. Environ 75 % des images sont des cibles, pour installer l'habitude.
+* **Règles** :
+  * **« La chouette a dit »** (paliers 1 et 2) : taper pour la chouette, jamais pour un imposteur bien visible (le renard, puis le chat) qui fait le même signal.
+  * **« Ça vole ? »** (paliers 3 et 4) : taper seulement si l'image vole, avec des images évidentes uniquement (ni nuage, ni poule). Au palier 4, la chouette dit « … vole ! » à chaque image pour tendre le piège.
+  * **STOP tardif** (palier 5) : le panneau STOP surgit juste après une cible, et il faut annuler un geste déjà lancé.
+* **Erreur** : un piège touché interrompt le rythme pour un « oups » calme (« Oh, ton cerveau a voulu te piéger. »), tandis qu'une cible ratée s'en va sans pause. Les deux **repassent plus tard** : l'étoile finit quand toute la file est réussie, et personne ne peut perdre. Une échelle d'aide à trois échelons finit toujours par une réussite.
+* **Gag** : uniquement sur un piège laissé passer (la vache tente de voler et retombe). Le spectacle récompense le STOP, jamais l'erreur.
+* **Cadence adaptative** : la fenêtre d'appui raccourcit après 3 réussites d'affilée et s'allonge après une erreur, entre la vitesse maximale de l'étoile et 3 s. La vitesse n'est pas un niveau, c'est un réglage invisible.
+* **Récompense** : une étoile en finissant, une couronne sans aucun piège touché. L'adulte lit la **vitesse tenue** sur la Carte des Étoiles, sans nouvelle donnée dans la sauvegarde.
+* **Au doigt** : un nouvel appui n'importe où dans l'aire de jeu ; un doigt resté posé ne compte pas. **À la télécommande** : `OK` seul, les flèches ne font rien.
+* **Son** : la voix de la chouette d'Attrape-Piège et des effets synthétisés ; chaque signal sonore a son équivalent visuel.
+
+#### Progression Prévue des 20 Étoiles de Pas si vite !
+
+Le détail de chaque étoile (nombre d'apparitions et de pièges, fenêtres, délais du STOP) est dans [FEAT-28 §7](./FEAT-28.md#7-progression-des-20-étoiles).
+
+| Étoiles | Palier | Règle | Fenêtre (départ → vitesse max.) | Ce que l'enfant apprend |
+| :---: | :--- | :--- | :---: | :--- |
+| ⭐ 1 à 4 | Très Facile | La chouette a dit | 2,5 → 1,5 s | Retenir son geste devant l'imposteur. Étoile 1 avec démo et essais guidés. |
+| ⭐ 5 à 8 | Facile | La chouette a dit | 2,0 → 1,1 s | Trois cachettes, un second imposteur, des séries plus longues. |
+| ⭐ 9 à 12 | Moyen | Ça vole ? | 2,4 → 1,3 s | Juger l'image d'un coup d'œil. Étoile 9 avec démo. |
+| ⭐ 13 à 16 | Difficile | Ça vole ? + leurre | 2,0 → 1,1 s | Ne pas imiter la chouette, qui dit toujours « vole ! ». |
+| ⭐ 17 à 20 | Très Difficile | STOP tardif | 1,8 → 1,1 s | Annuler un geste lancé, seul puis mêlé à « Ça vole ? ». Étoile 17 avec démo. |
+
+> **Non vérifié.** Rien n'a été essayé : les fenêtres, les délais du STOP et l'effet du gag sont des valeurs de départ, à régler avec une vraie enfant avant de figer le catalogue ([FEAT-28 §10](./FEAT-28.md#10-points-dattention--non-vérifié)).
+>
+> **À relire par le propriétaire.** Choix faits par Claude pendant la rédaction : le nom et l'identifiant proposé (`go-no-go`), le leurre du palier 4, les 75 % de cibles, toute l'aire de jeu comme buzzer, la couronne et le stockage de la vitesse tenue ([FEAT-28 §11.2](./FEAT-28.md#112-prises-par-défaut-pendant-la-rédaction-à-relire-par-le-propriétaire)).
+
 ---
 
 ## 5. Graphe de Dépendances des Features Atomiques
@@ -554,13 +591,21 @@ flowchart TD
     F08 --> F27
     F21 --> F27
     F24 --> F27
+
+    F07 --> F28["FEAT-28 : Pas si vite ! — Spécification fonctionnelle (Go / No-Go, buzzer, cadence adaptative)"]
+    F03 --> F28
+    F04 --> F28
+    F08 --> F28
+    F21 --> F28
+    F22 --> F28
+    F24 --> F28
 ```
 
 ---
 
-## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-27`)
+## 6. Découpage en Features Atomiques (`FEAT-01` à `FEAT-28`)
 
-Chacune des 27 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
+Chacune des 28 features possède sa spécification complète et autonome pour l'IA dans son fichier dédié :
 
 | Ordre | Fichier | Titre de la Feature | Dépendances |
 | :---: | :--- | :--- | :--- |
@@ -591,6 +636,7 @@ Chacune des 27 features possède sa spécification complète et autonome pour l'
 | **25** | [FEAT-25.md](./FEAT-25.md) | **Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur** | `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24` |
 | **26** | [FEAT-26.md](./FEAT-26.md) | **Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré** | `FEAT-10`, `FEAT-11`, `FEAT-19` |
 | **27** | [FEAT-27.md](./FEAT-27.md) | **Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-24` |
+| **28** | [FEAT-28.md](./FEAT-28.md) | **Jeu n°6 (Pas si vite !) — Spécification Fonctionnelle : Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-22`, `FEAT-24` |
 
 ---
 
@@ -825,6 +871,14 @@ Chacune des 27 features possède sa spécification complète et autonome pour l'
 * **Objectif** : Ajouter un jeu de logique pure pour les 5 à 8 ans, sans aucun texte : placer neuf pièces (trois formes, trois couleurs) sur une grille 3 × 3 d'après des cartes en images (case, ligne, pièces collées ou qui se touchent, croix de négation, familles), vérifier tout d'un coup à la cloche, avec une échelle d'aide qui désigne une carte, fait remuer ses pièces puis en fige une ; un solveur « enfant » et un générateur qui tirent à chaque partie des puzzles d'une seule solution en six cartes au plus ; 20 étoiles en dents de scie (`lg-001` à `lg-020`), leur validateur dans `npm run validate:levels`, l'entrée du registre (« Déduction & Élimination · dès 5 ans », route `/logic-grid`) et l'icône du Hub.
 * **Dépendances** : `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-24`.
 * **Statut** : cadrée et implémentée ; décisions consignées au §6 de [FEAT-27.md](./FEAT-27.md).
+
+---
+
+### `FEAT-28` : Jeu n°6 (Pas si vite !) — Spécification Fonctionnelle : Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles ([FEAT-28.md](./FEAT-28.md))
+
+* **Objectif** : Décrire, sans encore rien implémenter, un jeu d'action rapide pour les 3 à 6 ans qui entraîne l'inhibition motrice (*Go / No-Go*, puis *Stop-Signal*). Il comprend un seul grand buzzer, environ 75 % de cibles, des pièges touchés et des cibles ratées qui repassent plus tard, un gag réservé au piège laissé passer, une cadence adaptative bornée par étoile, une échelle d'aide à trois échelons, une introduction où la chouette se fait piéger, et 20 étoiles en trois règles (« La chouette a dit », « Ça vole ? », STOP tardif).
+* **Dépendances** : `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-22`, `FEAT-24`.
+* **Statut** : cadrage fonctionnel seulement (session du 2026-11-08) ; la découpe technique (moteur, interface, catalogue et validateur) reste à écrire. Décisions consignées au §11 de [FEAT-28.md](./FEAT-28.md).
 
 ---
 
