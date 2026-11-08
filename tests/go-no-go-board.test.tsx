@@ -8,6 +8,7 @@ import { GoNoGoBoard } from '@/games/go-no-go/components';
 import { END_SCREEN_GUARD_MS } from '@/games/go-no-go/components/GoNoGoEndScreen';
 import { BREATH_MS, END_SCREEN_DELAY_MS, IDLE_MS, START_DELAY_MS } from '@/games/go-no-go/run';
 import type { GoNoGoLevelConfig } from '@/games/go-no-go/types';
+import type * as VoiceScript from '@/games/go-no-go/voice-script';
 import { getVoiceClipPath, SHARED_CLIPS } from '@/games/go-no-go/voice-script';
 import type { UserProfile } from '@/types/mia';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -23,6 +24,13 @@ const audio = vi.hoisted(() => ({
 }));
 
 vi.mock('@/core/audio', () => ({ useGameAudio: () => audio }));
+
+// Ici, toutes les phrases existent : ce que le plateau demande à la voix. Quelles phrases existent
+// vraiment, c'est tests/go-no-go-voice.test.ts.
+vi.mock('@/games/go-no-go/voice-script', async (importOriginal) => ({
+  ...(await importOriginal<typeof VoiceScript>()),
+  isClipAvailable: () => true,
+}));
 
 /** Règle 1, une cachette : 6 apparitions dont 1 piège (le renard, en fin de file avec `Math.random` à 0). */
 const OWL: GoNoGoLevelConfig = {
@@ -744,5 +752,59 @@ describe('la démo de la première étoile', () => {
     expect(getPlayArea()).toHaveAttribute('data-phase', 'trial');
     expect(document.querySelector('[data-hand="tap"]')).not.toBeNull();
     expect(getBuzzer()).toHaveAttribute('data-pulsing');
+  });
+});
+
+describe('le bouton Retour et la zone du plateau (D-Pad)', () => {
+  it('atteint au Tab, le bouton Retour reçoit OK ; il mène à la Carte des Étoiles', async () => {
+    forceTvMode();
+    const controls = renderBoard();
+    await toFirstAppearance();
+    act(() => {
+      screen.getByRole('button', { name: 'Retour' }).focus();
+    });
+    expect(press('Enter')).toBe(true);
+    expect(controls.exitToMap).toHaveBeenCalledOnce();
+    // Le plateau n'a rien compté : OK était celui du bouton.
+    expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+  });
+
+  it('une flèche rend la main au plateau : OK est de nouveau le buzzer', async () => {
+    forceTvMode();
+    renderBoard();
+    await toFirstAppearance();
+    act(() => {
+      screen.getByRole('button', { name: 'Retour' }).focus();
+    });
+    press('ArrowRight');
+    expect(getBuzzer()).toHaveFocus();
+    press('Enter');
+    expect(getFigure()).toHaveAttribute('data-moment', 'caught');
+  });
+
+  it('le focus donné au buzzer (Tab, clic) rend aussi la main au plateau', async () => {
+    forceTvMode();
+    renderBoard();
+    await toFirstAppearance();
+    act(() => {
+      screen.getByRole('button', { name: 'Retour' }).focus();
+    });
+    act(() => {
+      getBuzzer().focus();
+    });
+    press('Enter');
+    expect(getFigure()).toHaveAttribute('data-moment', 'caught');
+  });
+
+  it('la région d’état se tait une fois l’étoile gagnée', async () => {
+    renderBoard({ config: { ...OWL, appearances: 4, traps: 1 } });
+    await toFirstAppearance();
+    for (let index = 0; index < 3; index += 1) {
+      touch(getStage());
+      await advanceAsync(CAUGHT_AND_BREATH + 150);
+    }
+    await advanceAsync(2600 + 1000);
+    expect(getPlayArea()).toHaveAttribute('data-phase', 'won');
+    expect(getStatus()).toBeEmptyDOMElement();
   });
 });

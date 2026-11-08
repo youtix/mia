@@ -1,6 +1,7 @@
 import { getVoiceClipPath as getBearSortClipPath } from '@/games/bear-sort/voice-script';
 import { isImageId } from './subjects';
 import type { GoNoGoLevelConfig, ImageId, SubjectId } from './types';
+import manifest from './voice-manifest.json';
 import script from './voice-script.json';
 
 /**
@@ -21,6 +22,16 @@ export function getVoiceClipPath(id: GoNoGoClipId): string {
 }
 
 /**
+ * Phrases nouvelles réellement générées : celles du manifeste que `generate-voice-clips.py` réécrit. Tant
+ * qu'il est vide (aucun clip n'a encore été généré ni écouté), le jeu ne demande aucun fichier absent :
+ * la chouette est mimée, les phrases reprises d'Attrape-Piège sont dites. Une fois les clips générés, le
+ * manifeste les liste et la voix s'active sans toucher au jeu.
+ */
+const GENERATED_CLIP_PATHS: ReadonlySet<string> = new Set(
+  Object.keys(manifest.clips).map((id) => `audio/go-no-go/${id}.mp3`),
+);
+
+/**
  * Phrases d'Attrape-Piège reprises telles quelles (FEAT-22) : l'erreur d'un piège touché (« Oh, ton
  * cerveau a voulu te piéger. »), l'indice « Regarde bien. », l'étoile gagnée et la couronne.
  */
@@ -30,6 +41,11 @@ export const SHARED_CLIPS = {
   starWon: getBearSortClipPath('star-won'),
   crownWon: getBearSortClipPath('crown-won'),
 } as const;
+
+/** Le clip de ce chemin existe-t-il ? Une phrase d'Attrape-Piège reprise, ou une phrase nouvelle générée. */
+export function isClipAvailable(path: string): boolean {
+  return Object.values<string>(SHARED_CLIPS).includes(path) || GENERATED_CLIP_PATHS.has(path);
+}
 
 /** Phrase de rappel de la règle de l'étoile (§9) : au palier 4, la chouette prévient qu'elle tend un piège. */
 export function getRuleClipId({ rule, hasLure }: GoNoGoLevelConfig): GoNoGoClipId {

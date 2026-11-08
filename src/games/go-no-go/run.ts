@@ -149,6 +149,11 @@ export interface RunDeps {
   speak: (clips: readonly string[], mood?: 'talking' | 'flap') => Promise<void>;
   /** Charge des clips à l'avance */
   preload: (paths: readonly string[]) => void;
+  /**
+   * Un clip existe-t-il ? Défaut : tous. Un clip absent n'est ni dit ni chargé (aucune requête vers
+   * un fichier qui n'existe pas) : la chouette est mimée, la voix s'active quand le clip existe.
+   */
+  isClipAvailable?: (path: string) => boolean;
   /** Étoile gagnée : à enregistrer (une seule fois par partie) */
   onWin: (result: RunResult) => void;
 }
@@ -222,6 +227,7 @@ export function createRun(deps: RunDeps): Run {
   const { config } = deps;
   const rng = deps.rng ?? Math.random;
   const now = deps.now ?? (() => performance.now());
+  const isAvailable = deps.isClipAvailable ?? (() => true);
   const isOwlRule = config.rule === 'owl-says';
 
   let hasWon = deps.hasWon;
@@ -244,6 +250,17 @@ export function createRun(deps: RunDeps): Run {
   let nudgeCount = 0;
   /** Où reprendre après une pause */
   let resumeTo: 'demo' | 'trial' | 'live' = 'live';
+
+  /** Dit les clips qui existent ; la voix est résolue aussitôt s'il n'en reste aucun, le mime dure quand même. */
+  function say(clips: readonly string[], mood?: 'talking' | 'flap'): Promise<void> {
+    return deps.speak(clips.filter(isAvailable), mood);
+  }
+
+  /** Charge à l'avance les clips qui existent. */
+  function load(paths: readonly string[]): void {
+    const available = paths.filter(isAvailable);
+    if (available.length > 0) deps.preload(available);
+  }
 
   function update(patch: Partial<RunSnapshot>): void {
     snapshot = { ...snapshot, ...patch };
@@ -326,7 +343,7 @@ export function createRun(deps: RunDeps): Run {
   function nudge(): void {
     if (nudgeCount >= MAX_NUDGES || snapshot.phase !== 'paused') return;
     nudgeCount += 1;
-    void deps.speak([getVoiceClipPath(getRuleClipId(config))]);
+    void say([getVoiceClipPath(getRuleClipId(config))]);
   }
 
   /**
@@ -411,7 +428,7 @@ export function createRun(deps: RunDeps): Run {
     if (config.hasLure && isImageId(appearance.subject)) {
       // La chouette bat des ailes à chaque image et la nomme : « Vache vole ! » (§4.2). Seule l'image décide.
       poseMascot('flap', LURE_FLAP_MS);
-      void deps.speak([getVoiceClipPath(getLureClipId(appearance.subject))], 'flap');
+      void say([getVoiceClipPath(getLureClipId(appearance.subject))], 'flap');
     }
     appearanceTimers = [];
     if (presentation.windowMs !== null) {
@@ -464,7 +481,7 @@ export function createRun(deps: RunDeps): Run {
         isBuzzerEnabled: false,
         mascot: { isVisible: true, pose: 'idle' },
       });
-      const voice = deps.speak(getTrappedClips(help));
+      const voice = say(getTrappedClips(help));
       void wait(TRAPPED_PAUSE_MS, voice).then((isCurrent) => {
         if (isCurrent) settle(stage);
       });
@@ -536,9 +553,7 @@ export function createRun(deps: RunDeps): Run {
     cancel(idleTimer);
     const isPerfect = isPerfectWin(game);
     deps.playEffect('victory');
-    void deps.speak(
-      isPerfect ? [SHARED_CLIPS.starWon, SHARED_CLIPS.crownWon] : [SHARED_CLIPS.starWon],
-    );
+    void say(isPerfect ? [SHARED_CLIPS.starWon, SHARED_CLIPS.crownWon] : [SHARED_CLIPS.starWon]);
     onWin({ moves: game.trapped, timeSeconds: getHeldSpeedSeconds(game), isPerfect });
     hasWon = true;
     after(END_SCREEN_DELAY_MS, () => {
@@ -603,7 +618,7 @@ export function createRun(deps: RunDeps): Run {
         setMascot(action.mood, action.isVisible);
         break;
       case 'say':
-        return wait(action.minMs, deps.speak(action.clips, action.mood));
+        return wait(action.minMs, say(action.clips, action.mood));
       case 'wait':
         return wait(action.ms);
     }
@@ -616,7 +631,7 @@ export function createRun(deps: RunDeps): Run {
     emptyStage();
     const mine = epoch;
     const script = getDemoScript(config);
-    deps.preload(getDemoClipPaths(config));
+    load(getDemoClipPaths(config));
     void (async () => {
       for (const action of script) {
         if (mine !== epoch) return;
@@ -629,7 +644,7 @@ export function createRun(deps: RunDeps): Run {
   /** Phrase de rappel de la règle, puis la suite : au plus tôt `START_DELAY_MS` plus tard. */
   function startReminder(): void {
     update({ phase: 'starting' });
-    const voice = deps.speak([getVoiceClipPath(getRuleClipId(config))]);
+    const voice = say([getVoiceClipPath(getRuleClipId(config))]);
     void wait(START_DELAY_MS, voice).then((isCurrent) => {
       if (isCurrent && snapshot.phase === 'starting') goOn();
     });
@@ -639,8 +654,8 @@ export function createRun(deps: RunDeps): Run {
     const { game } = snapshot;
     // Les essais guidés sont tirés ici, avec la file : leurs images sont chargées avec les autres.
     trialPlan = config.intro === null ? [] : createTrialPlan(config, rng);
-    deps.preload([getVoiceClipPath(getRuleClipId(config))]);
-    deps.preload(
+    load([getVoiceClipPath(getRuleClipId(config))]);
+    load(
       getStarClipPaths(
         config,
         [...game.queue, ...trialPlan].map((entry) => entry.subject),
@@ -707,7 +722,7 @@ export function createRun(deps: RunDeps): Run {
       enterPause(false);
     },
     replayRule: () => {
-      if (snapshot.phase === 'paused') void deps.speak([getVoiceClipPath(getRuleClipId(config))]);
+      if (snapshot.phase === 'paused') void say([getVoiceClipPath(getRuleClipId(config))]);
     },
     setOnWin: (handler) => {
       onWin = handler;

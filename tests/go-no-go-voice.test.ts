@@ -23,12 +23,15 @@ import type { SubjectId } from '@/games/go-no-go/types';
 import {
   getLureClipId,
   getRuleClipId,
+  getStarClipPaths,
   getVoiceClipPath,
   GO_NO_GO_CLIP_IDS,
+  isClipAvailable,
   SHARED_CLIPS,
   VOICE_SCRIPT,
+  type GoNoGoClipId,
 } from '@/games/go-no-go/voice-script';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -197,6 +200,31 @@ describe('Phrases de la mascotte (FEAT-28 §9, §11.2)', () => {
     expect(getRuleClipId(OWL)).toBe('rule-owl-says');
   });
 
+  it('donne les clips qu’une étoile peut jouer : la phrase de rappel d’abord, puis l’erreur, l’indice, la victoire', () => {
+    const paths = getStarClipPaths(OWL, ['owl', 'fox', 'owl']);
+    expect(paths).toEqual([
+      getVoiceClipPath('rule-owl-says'),
+      SHARED_CLIPS.trapped,
+      SHARED_CLIPS.lookCarefully,
+      SHARED_CLIPS.starWon,
+      SHARED_CLIPS.crownWon,
+    ]);
+  });
+
+  it('ajoute au palier 4 le « … vole ! » de chaque image de la file, une fois chacun', () => {
+    const lure = GO_NO_GO_CATALOG.find((entry) => entry.config.hasLure)?.config;
+    if (!lure) throw new Error('aucune étoile à leurre');
+    const paths = getStarClipPaths(lure, ['cow', 'plane', 'cow', 'owl']);
+    expect(paths).toContain(getVoiceClipPath('lure-cow'));
+    expect(paths).toContain(getVoiceClipPath('lure-plane'));
+    expect(paths.filter((path) => path === getVoiceClipPath('lure-cow'))).toHaveLength(1);
+    expect(paths[0]).toBe(getVoiceClipPath('rule-lure'));
+    // Un personnage du castelet n'a pas de « … vole ! ».
+    expect(paths.some((path) => path.includes('lure-owl'))).toBe(false);
+    // Hors du palier 4, aucune image n'est annoncée.
+    expect(getStarClipPaths(OWL, ['cow']).some((path) => path.includes('lure-'))).toBe(false);
+  });
+
   it('reprend telles quelles quatre phrases d’Attrape-Piège, dont les fichiers existent', () => {
     expect(SHARED_CLIPS).toEqual({
       trapped: 'audio/bear-sort/bounce-trap.mp3',
@@ -213,20 +241,52 @@ describe('Phrases de la mascotte (FEAT-28 §9, §11.2)', () => {
 
 describe('Clips générés', () => {
   const MANIFEST_PATH = join(process.cwd(), 'src/games/go-no-go/voice-manifest.json');
-  const hasManifest = existsSync(MANIFEST_PATH);
+  const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
+    voice: string;
+    speakerId: number;
+    lengthScale: number;
+    clips: Record<string, { text: string; seconds: number }>;
+  };
+  const generated = Object.keys(manifest.clips);
 
-  it.skipIf(hasManifest)('attend encore la génération des clips : ni manifeste ni fichier', () => {
-    expect(existsSync(join(PUBLIC_DIR, 'audio/go-no-go'))).toBe(false);
+  it('nomme la voix d’Attrape-Piège : même modèle, même locuteur, même ralentissement', () => {
+    expect(manifest).toMatchObject({ voice: 'fr_FR-mls-medium', speakerId: 55, lengthScale: 1.2 });
   });
 
-  it.skipIf(!hasManifest)('a un fichier par phrase, et un manifeste à jour', () => {
-    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
-      clips: Record<string, { text: string; seconds: number }>;
-    };
-    expect(Object.keys(manifest.clips).sort()).toEqual([...GO_NO_GO_CLIP_IDS].sort());
+  it('ne liste que des phrases du script, avec leur texte à jour (clip périmé signalé)', () => {
+    for (const id of generated) {
+      expect(GO_NO_GO_CLIP_IDS).toContain(id);
+      expect(manifest.clips[id]?.text).toBe(VOICE_SCRIPT[id as keyof typeof VOICE_SCRIPT]);
+    }
+  });
+
+  it('a un vrai fichier MP3 par clip listé, et aucun fichier sans phrase', () => {
+    for (const id of generated) {
+      const content = readFileSync(join(PUBLIC_DIR, getVoiceClipPath(id as GoNoGoClipId)));
+      expect(content.length).toBeGreaterThan(1024);
+    }
+    const dir = join(PUBLIC_DIR, 'audio/go-no-go');
+    const files = existsSync(dir) ? readdirSync(dir).sort() : [];
+    expect(files).toEqual(generated.map((id) => `${id}.mp3`).sort());
+  });
+
+  it('ne demande que les clips qui existent : ceux du manifeste, et les phrases d’Attrape-Piège', () => {
     for (const id of GO_NO_GO_CLIP_IDS) {
-      expect(manifest.clips[id]?.text).toBe(VOICE_SCRIPT[id]);
-      expect(existsSync(join(PUBLIC_DIR, getVoiceClipPath(id)))).toBe(true);
+      expect(isClipAvailable(getVoiceClipPath(id))).toBe(generated.includes(id));
+    }
+    for (const path of Object.values(SHARED_CLIPS)) expect(isClipAvailable(path)).toBe(true);
+    expect(isClipAvailable('audio/go-no-go/inconnue.mp3')).toBe(false);
+    expect(isClipAvailable('audio/bear-sort/rule-color.mp3')).toBe(false);
+  });
+
+  it('tient la mise en garde dans une durée raisonnable une fois générée, et chaque « … vole ! » dans la fenêtre du palier 4', () => {
+    for (const id of generated) {
+      const { seconds } = manifest.clips[id] ?? { seconds: 0 };
+      expect(seconds).toBeGreaterThan(0.5);
+      if (id === 'demo-warning') expect(seconds).toBeLessThan(14);
+      // Le « … vole ! » doit tenir dans la fenêtre la plus courte du palier 4 (1,1 s), pause finale de 0,25 s en plus.
+      else if (id.startsWith('lure-')) expect(seconds).toBeLessThanOrEqual(1.1 + 0.25);
+      else expect(seconds).toBeLessThan(6);
     }
   });
 });

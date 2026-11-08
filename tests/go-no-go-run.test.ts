@@ -945,3 +945,64 @@ describe('voix lente : la pause d’un piège dure autant que la voix', () => {
     expect(h.snap().scene.subject).toBeNull();
   });
 });
+
+describe('phrases qui n’existent pas encore', () => {
+  /** Seules les phrases reprises d'Attrape-Piège existent : aucune requête vers un fichier absent. */
+  const ONLY_SHARED = (path: string) => Object.values<string>(SHARED_CLIPS).includes(path);
+
+  it('ne dit ni ne charge un clip absent : la voix est vide, la chouette est mimée', async () => {
+    const h = setup(OWL, { isClipAvailable: ONLY_SHARED });
+    h.run.start();
+    await advance(0);
+    expect(h.spoken).toEqual([{ clips: [], mood: undefined }]);
+    // Les phrases reprises sont chargées, jamais la phrase de rappel absente.
+    expect(h.preloaded).not.toContain(getVoiceClipPath('rule-owl-says'));
+    expect(h.preloaded).toEqual(
+      expect.arrayContaining([
+        SHARED_CLIPS.trapped,
+        SHARED_CLIPS.lookCarefully,
+        SHARED_CLIPS.starWon,
+      ]),
+    );
+    // Le jeu ne s'arrête pas pour autant : la première apparition entre.
+    await advance(START_DELAY_MS + BREATH_MS);
+    expect(h.snap().game.status).toBe('window');
+  });
+
+  it('dit les phrases reprises d’Attrape-Piège : l’erreur, la victoire, la couronne', async () => {
+    const h = setup({ ...OWL, appearances: 4, traps: 1 }, { isClipAvailable: ONLY_SHARED });
+    h.run.start();
+    for (let index = 0; index < 3; index += 1) {
+      await nextAppearance(h);
+      await advance(300);
+      h.run.press();
+    }
+    await nextAppearance(h);
+    await advance(300);
+    h.run.press();
+    expect(h.spoken.at(-1)?.clips).toEqual([SHARED_CLIPS.trapped]);
+    await until(h, (snapshot) => snapshot.phase === 'won');
+    expect(h.spoken.at(-1)?.clips).toEqual([SHARED_CLIPS.starWon]);
+  });
+
+  it('le « … vole ! » absent n’est pas demandé, mais les ailes battent', async () => {
+    const h = setup({ ...FLIES_LURE, intro: null }, { isClipAvailable: ONLY_SHARED });
+    await startLive(h);
+    expect(h.spoken.at(-1)).toEqual({ clips: [], mood: 'flap' });
+    expect(h.snap().mascot.pose).toBe('flap');
+  });
+
+  it('charge tout, comme avant, quand tous les clips existent (défaut)', async () => {
+    const h = setup(OWL);
+    h.run.start();
+    await advance(0);
+    expect(h.preloaded).toContain(getVoiceClipPath('rule-owl-says'));
+  });
+
+  it('ne charge rien quand aucun clip n’existe', async () => {
+    const h = setup(OWL, { isClipAvailable: () => false });
+    h.run.start();
+    await advance(0);
+    expect(h.preloaded).toEqual([]);
+  });
+});

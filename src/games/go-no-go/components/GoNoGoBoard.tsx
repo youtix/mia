@@ -18,6 +18,7 @@ import { isPerfectWin } from '../engine';
 import { ANNOUNCEMENTS, getRuleSentence, MASCOT_LABEL } from '../labels';
 import { createRun, type RunPhase } from '../run';
 import type { GoNoGoLevelConfig } from '../types';
+import { isClipAvailable } from '../voice-script';
 import { Buzzer } from './Buzzer';
 import { Garland } from './Garland';
 import { GoNoGoEndScreen } from './GoNoGoEndScreen';
@@ -86,6 +87,7 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
         audio.playEffect(effect);
       },
       speak: voice.speak,
+      isClipAvailable,
       preload: (paths) => {
         void audio.preloadClips(paths);
       },
