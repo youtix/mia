@@ -11,6 +11,8 @@ export {
   UPDATE_BANNER_TEXTS,
   describeCrowns,
   formatMoves,
+  formatSpeed,
+  getBestScore,
   getHubGoalLabel,
   getStarCounter,
 } from './labels';

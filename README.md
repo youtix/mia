@@ -3,7 +3,7 @@
 [![CI](https://github.com/youtix/mia/actions/workflows/ci.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/ci.yml)
 [![Release & Deploy](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml/badge.svg)](https://github.com/youtix/mia/actions/workflows/release-and-deploy.yml)
 
-**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits, raisonnement inductif sur des suites logiques (dès 4 ans), déduction par élimination sur une grille (dès 5 ans), flexibilité mentale et inhibition (dès 3 ans). Une seule base de code pour trois usages :
+**Mia** est une application gratuite et open-source (GPL-3.0-or-later) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits, raisonnement inductif sur des suites logiques (dès 4 ans), déduction par élimination sur une grille (dès 5 ans), flexibilité mentale et inhibition (dès 3 ans), et retenir son geste en un éclair (dès 3 ans). Une seule base de code pour trois usages :
 
 - **Smartphone et tablette** : au doigt (tap, glisser-déposer).
 - **Android TV** : à la télécommande (flèches, OK, Retour), avec de grands boutons, des aides à l'écran et des marges adaptées au téléviseur (« 10-foot UI »).
@@ -26,16 +26,17 @@ Mia fonctionne entièrement hors-ligne, sans compte, sans publicité, sans traqu
 
 ## Fonctionnalités
 
-| Domaine             | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| :------------------ | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Memory**          | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu des cartes au début de chaque étoile (5 s, ajustable par joueur de 2,5 à 10 s), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs.                                                                                                                                   |
-| **Traffic Jam**     | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                                                                                                                                                                                               |
-| **Suites Logiques** | Premier jeu pour les petits (4 à 8 ans), sans aucun texte à lire : complète la suite logique parmi trois grands boutons, de la règle A-B à A-B-B, puis retrouve la structure dans des sons (cloche, tambour). On ne peut pas perdre une étoile, et un panneau STOP entraîne à se retenir.                                                                                                                                                                                                                                            |
-| **Attrape-Piège**   | Pour les 3 à 6 ans : range les ours dans la bonne boîte, par couleur ou par taille, jusqu'à ce qu'un panneau STOP change la règle pendant que d'autres ours attendent ; plus loin, « tous les ours, sauf… ». La mascotte dit les règles à voix haute, aucun texte à lire pendant la partie, et personne ne peut perdre : une étoile en finissant, une couronne sans aucun rebond. Un jeu qui exerce la flexibilité mentale et l'inhibition, sans prétention clinique ni thérapeutique.                                               |
-| **Chacun sa Place** | Pour les 5 à 8 ans : place les pièces (trois formes en trois couleurs) sur une grille de morpion d'après des cartes en images, sans aucun texte : une case, une ligne, deux pièces collées ou qui se touchent, une croix pour « pas », toute une famille. La cloche vérifie tout d'un coup ; une erreur fait luire la carte à relire, puis l'aide met une pièce à sa place. Chaque puzzle est tiré à la partie, avec une seule solution. Un jeu qui exerce la déduction et l'élimination, sans prétention clinique ni thérapeutique. |
-| **Progression**     | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne (pour Suites Logiques : une série sans mauvaise réponse ni tape pendant un STOP ; pour Chacun sa Place : chaque puzzle réussi à la première vérification). Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                                          |
-| **Profils**         | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                                                                                                                                                                                                         |
-| **Réglages**        | Mode TV forcé ou automatique, son (voix de la mascotte d'Attrape-Piège, sons de Suites Logiques), contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, remise à zéro d'un jeu (étoiles et couronnes du profil actif), réinitialisation ; version de l'application et, dans la PWA, recherche de mise à jour et réparation.                                                                                                  |
+| Domaine             | Ce que Mia propose                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| :------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Memory**          | Retrouve les paires (ou les triplets) de cartes identiques : grilles de 2 × 2 à 6 × 6, aperçu des cartes au début de chaque étoile (5 s, ajustable par joueur de 2,5 à 10 s), quatre modes visuels (couleurs et formes distinctes, palette thématique, monochrome, formes abstraites orientées), limite d'erreurs et, dans les niveaux avancés, cartes qui échangent leur place après tes erreurs.                                                                                                                                                                                       |
+| **Traffic Jam**     | Libère la voiture rouge du parking en déplaçant les autres véhicules (voitures de 2 cases, camions de 3, plots fixes) en un minimum de coups. Un solveur BFS calcule le nombre de coups optimal de chaque niveau et fournit un indice.                                                                                                                                                                                                                                                                                                                                                   |
+| **Suites Logiques** | Premier jeu pour les petits (4 à 8 ans), sans aucun texte à lire : complète la suite logique parmi trois grands boutons, de la règle A-B à A-B-B, puis retrouve la structure dans des sons (cloche, tambour). On ne peut pas perdre une étoile, et un panneau STOP entraîne à se retenir.                                                                                                                                                                                                                                                                                                |
+| **Attrape-Piège**   | Pour les 3 à 6 ans : range les ours dans la bonne boîte, par couleur ou par taille, jusqu'à ce qu'un panneau STOP change la règle pendant que d'autres ours attendent ; plus loin, « tous les ours, sauf… ». La mascotte dit les règles à voix haute, aucun texte à lire pendant la partie, et personne ne peut perdre : une étoile en finissant, une couronne sans aucun rebond. Un jeu qui exerce la flexibilité mentale et l'inhibition, sans prétention clinique ni thérapeutique.                                                                                                   |
+| **Chacun sa Place** | Pour les 5 à 8 ans : place les pièces (trois formes en trois couleurs) sur une grille de morpion d'après des cartes en images, sans aucun texte : une case, une ligne, deux pièces collées ou qui se touchent, une croix pour « pas », toute une famille. La cloche vérifie tout d'un coup ; une erreur fait luire la carte à relire, puis l'aide met une pièce à sa place. Chaque puzzle est tiré à la partie, avec une seule solution. Un jeu qui exerce la déduction et l'élimination, sans prétention clinique ni thérapeutique.                                                     |
+| **Pas si vite !**   | Pour les 3 à 6 ans : des images défilent, un seul énorme buzzer. Tape quand c'est la chouette (jamais pour le renard, qui fait le même signal), quand ça vole (même quand la chouette dit « Vache vole ! »), puis retiens-toi quand le panneau STOP arrive trop tard. La cadence s'adapte à chaque enfant, un piège laissé passer déclenche un gag, et une étoile finit toujours : tout ce qui est raté repasse plus tard. Sans aucun texte à lire, la vitesse tenue se lit sur la Carte des Étoiles. Un jeu qui exerce l'inhibition motrice, sans prétention clinique ni thérapeutique. |
+| **Progression**     | Cinq paliers cognitifs (Très Facile, Facile, Moyen, Difficile, Très Difficile), 20 étoiles par jeu au départ. Un niveau réussi rapporte une étoile, un sans-faute (ou le minimum de coups) une couronne (pour Suites Logiques : une série sans mauvaise réponse ni tape pendant un STOP ; pour Chacun sa Place : chaque puzzle réussi à la première vérification ; pour Pas si vite ! : aucun piège touché). Le catalogue s'étend sans jamais casser les sauvegardes.                                                                                                                    |
+| **Profils**         | Plusieurs profils locaux sur le même appareil (famille, salon partagé), chacun avec sa progression, sans création de compte.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Réglages**        | Mode TV forcé ou automatique, son (voix de la mascotte d'Attrape-Piège et de Pas si vite !, sons de Suites Logiques), contraste élevé ; réglages de jeu par profil (temps de mémorisation et d'affichage des erreurs de Memory) ; export et import de la sauvegarde au format JSON, remise à zéro d'un jeu (étoiles et couronnes du profil actif), réinitialisation ; version de l'application et, dans la PWA, recherche de mise à jour et réparation.                                                                                                                                  |
 
 ## Architecture
 
@@ -485,6 +486,52 @@ Un niveau ne contient **aucun puzzle** : il dit combien de pièces placer, quell
 3. Lance `npm run validate:levels` : `validateLogicGridCatalog` signale chaque anomalie de configuration, puis tire une partie par graine de validation et recompte chaque puzzle par recherche exhaustive (une seule solution, six cartes au plus). Une configuration trop exigeante pour tenir en six cartes y apparaît comme « instanciation impossible ».
 4. Mets à jour les tests (voir les règles communes), puis lance `npx vitest run tests/logic-grid-catalog.test.ts`.
 
+### Pas si vite ! : un objet dans `GO_NO_GO_CATALOG`
+
+Un niveau ne contient **aucune file** : il dit la règle, le nombre d'apparitions, de pièges et de STOP tardifs, et les bornes de la cadence ; le moteur tire la file à chaque partie (aucun piège dans les 3 premières apparitions, jamais plus de `maxTrapRun` d'affilée).
+
+1. Ouvre [`src/games/go-no-go/catalog.ts`](./src/games/go-no-go/catalog.ts).
+2. Ajoute un objet dans `GO_NO_GO_CATALOG`, à sa place dans l'ordre de la carte :
+
+```ts
+{
+  id: 'gn-021',
+  gameId: 'go-no-go',
+  tier: 'medium',
+  order: 35, // s'intercale entre gn-011 (30) et gn-012 (40)
+  title: 'Avions et vaches, plus vite',
+  config: {
+    rule: 'flies',
+    appearances: 22,
+    traps: 5,
+    stops: 0,
+    startWindowMs: 1900,
+    fastestWindowMs: 1350,
+    hideouts: 1,
+    decoys: [],
+    hasLure: false,
+    stopDelayCeilingMs: null,
+    intro: null,
+    maxTrapRun: 2,
+  },
+},
+```
+
+| Champ                              | Valeurs                            | Règles                                                                                                                                                            |
+| :--------------------------------- | :--------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rule`                             | `owl-says`, `flies` ou `late-stop` | « La chouette a dit », « Ça vole ? » (avec ou sans leurre), ou le STOP tardif (seul, ou mêlé à « Ça vole ? » si `traps` > 0).                                     |
+| `appearances`, `traps`, `stops`    | Entiers : 4 à 40, ≥ 0, ≥ 0         | Les pièges (et STOP tardifs) tiennent dans la file : aucun dans les 3 premières apparitions, jamais plus de `maxTrapRun` d'affilée. Au moins un piège ou un STOP. |
+| `startWindowMs`, `fastestWindowMs` | Entiers en ms, au plus 3 000       | Fenêtre de départ et vitesse maximale (la fenêtre ne descend jamais sous elle). Aucune vitesse maximale sous 1 100 ms au catalogue : latence d'un téléviseur.     |
+| `hideouts`, `decoys`               | 1 ou 3 ; `fox`, `cat`              | Castelet de la règle 1 seulement : une ou trois cachettes, un ou deux imposteurs.                                                                                 |
+| `hasLure`                          | `true` ou `false`                  | « Ça vole ? » seulement : la chouette bat des ailes et dit « … vole ! » à chaque image.                                                                           |
+| `stopDelayCeilingMs`               | Entier ≥ 100, ou `null`            | Règle 3 seulement : délai maximal du STOP tardif, au plus la vitesse maximale moins 300 ms.                                                                       |
+| `intro`                            | `full`, `lure` ou `null`           | Démo (tant que l'étoile n'est pas gagnée) puis 4 essais guidés ; `lure` : démo courte du leurre. `null` : une phrase de rappel.                                   |
+| `maxTrapRun`                       | 1 ou 2                             | Pièges consécutifs permis : 1 aux paliers 1 et 2.                                                                                                                 |
+
+3. Lance `npm run validate:levels` : `validateGoNoGoCatalog` signale chaque anomalie de configuration, tire une file par graine de validation et **fait jouer l'étoile** à des enfants simulés (attentive, réflexe, passive, alternée) : chacun doit la terminer, la première sans erreur.
+4. Les 3 règles ont déjà leur phrase de rappel, et chaque image son « … vole ! ». Pour changer ou ajouter une phrase, modifie [`voice-script.json`](./src/games/go-no-go/voice-script.json) puis relance `scripts/generate-voice-clips.py --game go-no-go` (voir « Crédits de la voix »). Pour ajouter une image, dessine-la dans `components/art/` et ajoute son identifiant à `subjects.ts` et ses phrases ; une image n'entre au catalogue que si une enfant de 3 ans y répond sans hésiter.
+5. Mets à jour les tests (voir les règles communes), puis lance `npx vitest run tests/go-no-go-catalog.test.ts`.
+
 ## Ajouter un nouveau jeu
 
 1. Crée `src/games/<nouveau-jeu>/` avec un moteur en TypeScript pur (sans React ni DOM : testable et importable par `validate:levels`), ses composants (`'use client'` pour ceux qui ont un état) et son `catalog.ts` qui exporte un tableau de `BaseLevelDefinition<Config>` et une fonction `validate<Jeu>Catalog` (commence par `validateLevelCatalog(gameId, catalog)` de `@/core/progression/catalog-validator`).
@@ -501,13 +548,13 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 .
 ├── .github/workflows/       # ci.yml, pr-title.yml, release-and-deploy.yml
 ├── android/                 # Projet Android Gradle (Capacitor) : manifeste TV, plugin natif TvMode, signature
-├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-27 (spécifications et décisions)
+├── docs/                    # SPECIFICATION.md et FEAT-01 … FEAT-28 (spécifications et décisions)
 ├── fdroid/                  # Recette fdroiddata (org.mia.braintraining.yml)
 ├── metadata/fr-FR/          # Descriptions F-Droid (format Fastlane)
-├── public/                  # manifest.json, icônes, page WebView obsolète, clips audio (audio/bear-sort/)
+├── public/                  # manifest.json, icônes, page WebView obsolète, clips audio (audio/bear-sort/, audio/go-no-go/)
 ├── scripts/                 # build-sw.ts, generate-icons.mjs, generate-voice-clips.py, validate-levels.ts, sync-android-version.mjs, build-apk.mjs
 ├── src/
-│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /patterns, /bear-sort, /logic-grid, /settings ; écran d'erreur global
+│   ├── app/                 # Pages statiques : Hub (/), /memory, /traffic-jam, /patterns, /bear-sort, /logic-grid, /go-no-go, /settings ; écran d'erreur global
 │   ├── components/          # Design system (ui), profils, progression (Hub, Carte des Étoiles), réglages
 │   ├── core/
 │   │   ├── audio/           # Service audio (voix, effets) et synthèse (cloche, tambour, jingles), réglage Son
@@ -520,7 +567,8 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 │   │   ├── patterns/        # Moteur, banque d'éléments, composants, catalog.ts
 │   │   ├── traffic-jam/     # Moteur, parseur ASCII, solveur BFS, composants, catalog.ts
 │   │   ├── bear-sort/       # Moteur, voix (script, manifeste), composants, catalog.ts
-│   │   └── logic-grid/      # Moteur, solveur « enfant », générateur, composants, catalog.ts
+│   │   ├── logic-grid/      # Moteur, solveur « enfant », générateur, composants, catalog.ts
+│   │   └── go-no-go/        # Moteur, enfants simulés, déroulé en temps réel, voix, composants, catalog.ts
 │   └── types/               # Types partagés (sauvegarde, paliers, jeux)
 ├── tests/                   # Tests Vitest (moteurs, écrans, configuration, Android, PWA, release)
 ├── capacitor.config.ts
@@ -530,7 +578,7 @@ Le Hub, les profils, la sauvegarde locale et la Carte des Étoiles prennent auto
 
 ## Crédits de la voix
 
-La voix de la mascotte d'Attrape-Piège (`public/audio/bear-sort/*.mp3`) est une **voix de synthèse**, sous une licence distincte de celle du code : **[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/deed.fr) (CC BY 4.0)**.
+La voix de la mascotte d'Attrape-Piège et de Pas si vite ! (`public/audio/bear-sort/*.mp3` et `public/audio/go-no-go/*.mp3`) est une **voix de synthèse**, sous une licence distincte de celle du code : **[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/deed.fr) (CC BY 4.0)**.
 
 | Élément            | Source                                                                                                                                                                                                                                                                                                            | Licence                             |
 | :----------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------- |

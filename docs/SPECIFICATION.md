@@ -39,7 +39,7 @@
    - [FEAT-25.md](./FEAT-25.md) — Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur
    - [FEAT-26.md](./FEAT-26.md) — Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré
    - [FEAT-27.md](./FEAT-27.md) — Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles
-   - [FEAT-28.md](./FEAT-28.md) — Jeu n°6 (Pas si vite !) — Spécification Fonctionnelle : Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles
+   - [FEAT-28.md](./FEAT-28.md) — Jeu n°6 (Pas si vite !) — Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles
 7. [Guide d'Extension : Comment ajouter de nouveaux niveaux ou un nouveau jeu](#7-guide-dextension--comment-ajouter-de-nouveaux-niveaux-ou-un-nouveau-jeu)
 
 ---
@@ -471,7 +471,7 @@ En dents de scie : chaque palier apporte une sorte de carte sur un petit plateau
 
 ### 4.6. Jeu n°6 : Pas si vite ! (Inhibition motrice & Attention)
 
-> **Statut** : **cadrage fonctionnel seulement** ([FEAT-28](./FEAT-28.md), session du 2026-11-08) ; rien n'est encore implémenté. Le titre est un titre de travail.
+> **Statut** : cadré ([FEAT-28](./FEAT-28.md), session du 2026-11-08) et implémenté. Rien n'a été essayé avec une vraie enfant, ni sur un vrai Android TV ni dans l'APK ; le titre est un titre de travail.
 >
 > **But** : entraîner l'**inhibition motrice**, c'est-à-dire retenir en une fraction de seconde un geste que l'habitude rend automatique, sur le modèle de « Jacques a dit » et de « Pigeon vole » (paradigmes *Go / No-Go*, puis *Stop-Signal*). **Mia exerce, elle ne soigne pas** : aucun effet clinique ou thérapeutique n'est revendiqué.
 
@@ -501,9 +501,9 @@ Le détail de chaque étoile (nombre d'apparitions et de pièges, fenêtres, dé
 | ⭐ 13 à 16 | Difficile | Ça vole ? + leurre | 2,0 → 1,1 s | Ne pas imiter la chouette, qui dit toujours « vole ! ». |
 | ⭐ 17 à 20 | Très Difficile | STOP tardif | 1,8 → 1,1 s | Annuler un geste lancé, seul puis mêlé à « Ça vole ? ». Étoile 17 avec démo. |
 
-> **Non vérifié.** Rien n'a été essayé : les fenêtres, les délais du STOP et l'effet du gag sont des valeurs de départ, à régler avec une vraie enfant avant de figer le catalogue ([FEAT-28 §10](./FEAT-28.md#10-points-dattention--non-vérifié)).
+> **Non vérifié.** Rien n'a été essayé avec une vraie enfant : les fenêtres, les délais du STOP et l'effet du gag sont des valeurs de départ, à régler avant de figer le catalogue ([FEAT-28 §10](./FEAT-28.md#10-points-dattention--non-vérifié)). Les phrases nouvelles de la voix ne sont pas encore écoutées par une personne ([FEAT-28 §17](./FEAT-28.md#17-décisions-dimplémentation)).
 >
-> **À relire par le propriétaire.** Choix faits par Claude pendant la rédaction : le nom et l'identifiant proposé (`go-no-go`), le leurre du palier 4, les 75 % de cibles, toute l'aire de jeu comme buzzer, la couronne et le stockage de la vitesse tenue ([FEAT-28 §11.2](./FEAT-28.md#112-prises-par-défaut-pendant-la-rédaction-à-relire-par-le-propriétaire)).
+> **À relire par le propriétaire.** Choix faits par Claude pendant la rédaction : le nom et l'identifiant proposé (`go-no-go`), le leurre du palier 4, les 75 % de cibles, toute l'aire de jeu comme buzzer, la couronne et le stockage de la vitesse tenue ([FEAT-28 §11.2](./FEAT-28.md#112-prises-par-défaut-pendant-la-rédaction-à-relire-par-le-propriétaire)), puis, à l'implémentation, la fenêtre d'un piège à l'échelon 2 de l'aide, les enfants simulés du validateur, la file construite, les quatre effets sonores nouveaux et la place de la mascotte ([FEAT-28 §17](./FEAT-28.md#17-décisions-dimplémentation)).
 
 ---
 
@@ -592,7 +592,7 @@ flowchart TD
     F21 --> F27
     F24 --> F27
 
-    F07 --> F28["FEAT-28 : Pas si vite ! — Spécification fonctionnelle (Go / No-Go, buzzer, cadence adaptative)"]
+    F07 --> F28["FEAT-28 : Pas si vite ! — Go / No-Go, buzzer, cadence adaptative, STOP tardif & Catalogue 20 Étoiles"]
     F03 --> F28
     F04 --> F28
     F08 --> F28
@@ -636,7 +636,7 @@ Chacune des 28 features possède sa spécification complète et autonome pour l'
 | **25** | [FEAT-25.md](./FEAT-25.md) | **Jeu n°4 (Attrape-Piège) — Catalogue Initial des 20 Étoiles & Validateur** | `FEAT-08`, `FEAT-14`, `FEAT-23`, `FEAT-24` |
 | **26** | [FEAT-26.md](./FEAT-26.md) | **Jeu n°1 (Memory) — Aperçu Obligatoire & Catalogue Rééquilibré** | `FEAT-10`, `FEAT-11`, `FEAT-19` |
 | **27** | [FEAT-27.md](./FEAT-27.md) | **Jeu n°5 (Chacun sa Place) — Logique sur Grille 3 × 3, Cartes sans Texte, Solveur « Enfant » & Catalogue des 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-24` |
-| **28** | [FEAT-28.md](./FEAT-28.md) | **Jeu n°6 (Pas si vite !) — Spécification Fonctionnelle : Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-22`, `FEAT-24` |
+| **28** | [FEAT-28.md](./FEAT-28.md) | **Jeu n°6 (Pas si vite !) — Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles** | `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-22`, `FEAT-24` |
 
 ---
 
@@ -874,11 +874,11 @@ Chacune des 28 features possède sa spécification complète et autonome pour l'
 
 ---
 
-### `FEAT-28` : Jeu n°6 (Pas si vite !) — Spécification Fonctionnelle : Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles ([FEAT-28.md](./FEAT-28.md))
+### `FEAT-28` : Jeu n°6 (Pas si vite !) — Inhibition Motrice, Buzzer Unique, Cadence Adaptative & 20 Étoiles ([FEAT-28.md](./FEAT-28.md))
 
-* **Objectif** : Décrire, sans encore rien implémenter, un jeu d'action rapide pour les 3 à 6 ans qui entraîne l'inhibition motrice (*Go / No-Go*, puis *Stop-Signal*). Il comprend un seul grand buzzer, environ 75 % de cibles, des pièges touchés et des cibles ratées qui repassent plus tard, un gag réservé au piège laissé passer, une cadence adaptative bornée par étoile, une échelle d'aide à trois échelons, une introduction où la chouette se fait piéger, et 20 étoiles en trois règles (« La chouette a dit », « Ça vole ? », STOP tardif).
+* **Objectif** : Un jeu d'action rapide pour les 3 à 6 ans qui entraîne l'inhibition motrice (*Go / No-Go*, puis *Stop-Signal*). Il comprend un seul grand buzzer, environ 75 % de cibles, des pièges touchés et des cibles ratées qui repassent plus tard, un gag réservé au piège laissé passer, une cadence adaptative bornée par étoile, une échelle d'aide à trois échelons, une introduction où la chouette se fait piéger, et 20 étoiles en trois règles (« La chouette a dit », « Ça vole ? », STOP tardif).
 * **Dépendances** : `FEAT-03`, `FEAT-04`, `FEAT-07`, `FEAT-08`, `FEAT-21`, `FEAT-22`, `FEAT-24`.
-* **Statut** : cadrage fonctionnel seulement (session du 2026-11-08) ; la découpe technique (moteur, interface, catalogue et validateur) reste à écrire. Décisions consignées au §11 de [FEAT-28.md](./FEAT-28.md).
+* **Statut** : cadrée (session du 2026-11-08) et implémentée ; moteur pur, déroulé en temps réel, interface, voix, catalogue et validateur décrits aux §13 à §17, décisions d'implémentation au §17 de [FEAT-28.md](./FEAT-28.md).
 
 ---
 
@@ -920,3 +920,9 @@ Grâce au découpage modulaire :
 1. Ouvrir `src/games/logic-grid/catalog.ts`.
 2. Ajouter un objet avec un `id` unique (ex: `"lg-021"`), son palier, son `order` et sa configuration (`freePieces`, `clueKinds`, `allowsNegation`, `allowsGroups`, `reasoning`, `focus`, `hasGuide`). Aucun puzzle n'est à écrire : le générateur les tire à chaque partie.
 3. Lancer `npm run validate:levels` : `validateLogicGridCatalog` vérifie la configuration, tire une partie par graine de validation et recompte chaque puzzle par recherche exhaustive (une seule solution, six cartes au plus). Les règles de chaque champ sont détaillées dans le [README](../README.md) (« Chacun sa Place : un objet dans `LOGIC_GRID_CATALOG` »).
+
+### 7.7. Ajouter 1 ou 50 nouveaux niveaux à *Pas si vite !*
+1. Ouvrir `src/games/go-no-go/catalog.ts`.
+2. Ajouter un objet avec un `id` unique (ex: `"gn-021"`), son palier, son `order` et sa configuration (`rule`, `appearances`, `traps`, `stops`, `startWindowMs`, `fastestWindowMs`, `hideouts`, `decoys`, `hasLure`, `stopDelayCeilingMs`, `intro`, `maxTrapRun`). Aucune file n'est à écrire : le moteur la tire à chaque partie.
+3. Lancer `npm run validate:levels` : `validateGoNoGoCatalog` vérifie la configuration (les pièges tiennent dans la file, la fenêtre la plus rapide n'est pas plus lente que celle de départ, le plafond du STOP tardif laisse 300 ms avant la fin de la fenêtre…), tire une file par graine de validation et **fait jouer l'étoile** à des enfants simulés : attentive, réflexe, passive et alternée doivent la terminer. Les règles de chaque champ sont détaillées dans le [README](../README.md) (« Pas si vite ! : un objet dans `GO_NO_GO_CATALOG` ») et dans [FEAT-28 §14](./FEAT-28.md#14-spécifications-techniques).
+4. Les 3 règles ont déjà leur phrase de rappel et chaque image son « … vole ! ». Pour changer ou ajouter une phrase, modifier `src/games/go-no-go/voice-script.json` puis relancer `scripts/generate-voice-clips.py --game go-no-go` ([FEAT-22](./FEAT-22.md)) ; une nouvelle image se dessine dans `components/art/` et s'ajoute à `subjects.ts`.

@@ -3,7 +3,7 @@ import type { EnrichedLevelItem } from '@/core/progression';
 import { cn } from '@/lib/cn';
 import { Crown, Star, Target } from 'lucide-react';
 import type { Ref } from 'react';
-import { formatMoves } from './labels';
+import { getBestScore } from './labels';
 
 /** États visuels d'une étoile : verrouillée, à conquérir, réussie, parfaite (couronne). */
 export type StarTileState = 'locked' | 'open' | 'completed' | 'perfect';
@@ -57,7 +57,7 @@ export function StarLevelTile({
   onFocus,
 }: StarLevelTileProps) {
   const state = getStarTileState(level);
-  const bestMoves = level.isCompleted ? (level.completion?.bestMoves ?? null) : null;
+  const bestScore = getBestScore(level);
 
   return (
     <FocusableCard
@@ -90,9 +90,9 @@ export function StarLevelTile({
         ) : null}
       </span>
       {STATE_LABELS[state] ? <span className="sr-only">{STATE_LABELS[state]}</span> : null}
-      {bestMoves === null ? null : (
+      {bestScore === null ? null : (
         <span className="text-fluid-xs text-slate-300">
-          <span className="sr-only">, meilleur score :</span> {formatMoves(bestMoves)}
+          <span className="sr-only">{bestScore.announcement}</span> {bestScore.text}
         </span>
       )}
       {state === 'perfect' ? (

@@ -168,6 +168,11 @@ export interface Run {
   replayRule: () => void;
   /** Rejouer : nouvelle file, même étoile */
   restart: () => void;
+  /**
+   * Remplace ce qui enregistre la victoire : le plateau le renouvelle à chaque rendu, la partie lit
+   * toujours le dernier (`controls.recordVictory` change à chaque rendu de `GameScreen`).
+   */
+  setOnWin: (handler: (result: RunResult) => void) => void;
 }
 
 /** Apparition sur scène, avec ce qui la fait finir. */
@@ -220,6 +225,7 @@ export function createRun(deps: RunDeps): Run {
   const isOwlRule = config.rule === 'owl-says';
 
   let hasWon = deps.hasWon;
+  let onWin = deps.onWin;
   let snapshot = createInitialSnapshot(config, createGoNoGoGame(config, rng));
   const listeners = new Set<() => void>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
@@ -533,7 +539,7 @@ export function createRun(deps: RunDeps): Run {
     void deps.speak(
       isPerfect ? [SHARED_CLIPS.starWon, SHARED_CLIPS.crownWon] : [SHARED_CLIPS.starWon],
     );
-    deps.onWin({ moves: game.trapped, timeSeconds: getHeldSpeedSeconds(game), isPerfect });
+    onWin({ moves: game.trapped, timeSeconds: getHeldSpeedSeconds(game), isPerfect });
     hasWon = true;
     after(END_SCREEN_DELAY_MS, () => {
       update({ isEndOpen: true });
@@ -663,7 +669,8 @@ export function createRun(deps: RunDeps): Run {
       resume();
       return;
     }
-    if (phase === 'won' || phase === 'demo' || phase === 'starting') return;
+    // La démo conduit seule le buzzer ; une fois gagnée, l'étoile ne compte plus rien.
+    if (phase === 'won' || phase === 'demo') return;
     if (isBuzzerEnabled) flash();
     if (phase === 'live') armIdle();
     const stage = onStage;
@@ -701,6 +708,9 @@ export function createRun(deps: RunDeps): Run {
     },
     replayRule: () => {
       if (snapshot.phase === 'paused') void deps.speak([getVoiceClipPath(getRuleClipId(config))]);
+    },
+    setOnWin: (handler) => {
+      onWin = handler;
     },
     restart: () => {
       epoch += 1;

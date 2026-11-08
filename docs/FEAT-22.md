@@ -14,10 +14,10 @@
 L'objectif de cette **FEAT-22** est le socle audio des jeux, au-dessus de la Web Audio API, sans aucune dépendance ajoutée à l'application :
 1. **Un service audio sans React** (`src/core/audio/`) : une seule `AudioContext` pour la voix et les effets, débloquée au premier geste, qui joue des séquences de clips et des effets.
 2. **La voix de la mascotte** : 18 phrases en français, préenregistrées et livrées avec l'application, générées avec la voix de synthèse Piper « MLS » (CC BY 4.0) et remplaçables par de vrais enregistrements sans toucher au jeu.
-3. **Des effets sonores synthétisés** : 4 effets, sans aucun fichier.
+3. **Des effets sonores synthétisés** : 8 effets, sans aucun fichier (4 pour Attrape-Piège, 4 ajoutés par Pas si vite !, [FEAT-28](./FEAT-28.md)).
 4. **Le réglage « Son » de l'appareil** : le couper coupe la voix et les effets, partout.
 
-Le service et les effets sont génériques ; seules les phrases sont propres à Attrape-Piège (`src/games/bear-sort/`).
+Le service et les effets sont génériques ; seules les phrases sont propres à un jeu : celles d'Attrape-Piège (`src/games/bear-sort/`), puis celles de Pas si vite ! (`src/games/go-no-go/`, voix identique, [FEAT-28 §14.8](./FEAT-28.md#148-sons-et-voix)), dont le générateur (`scripts/generate-voice-clips.py --game …`) sert les deux.
 
 ---
 
@@ -65,7 +65,15 @@ README.md                              # Fonctionnalités, stack, crédits et li
 
 ```typescript
 /** Effets sonores synthétisés : aucun fichier, aucune licence à suivre. */
-export type SoundEffect = 'success' | 'bounce' | 'stop' | 'victory';
+export type SoundEffect =
+  | 'success'
+  | 'bounce'
+  | 'stop'
+  | 'victory'
+  | 'signal' // Pas si vite ! (FEAT-28) : le signal des personnages du castelet
+  | 'oops' //   un piège touché
+  | 'neutral' // une cible ratée
+  | 'gag'; //   un piège laissé passer
 
 export interface AudioService {
   /**
@@ -116,6 +124,10 @@ Oscillateur + enveloppe de gain (attaque de 15 ms, crête à 0,18, extinction ex
 | `bounce` | Rebond | Sinus glissant de 300 à 170 Hz (240 ms), doublé à l'octave (600 à 340 Hz) : un haut-parleur de téléphone ne rend presque rien sous 400 Hz |
 | `stop` | Panneau STOP | Triangle 523 Hz (180 ms), puis 392 Hz à + 200 ms (300 ms) |
 | `victory` | Étoile gagnée | Sinus 523, 659 et 784 Hz (140 ms chacun, toutes les 120 ms), puis 1 047 Hz (320 ms) |
+| `signal` | Pas si vite ! ([FEAT-28](./FEAT-28.md)) : le signal des personnages du castelet, le même pour tous | Triangle 784 Hz (100 ms), puis 1 047 Hz à + 110 ms (160 ms) |
+| `oops` | Pas si vite ! : un piège touché, jamais une sanction | Sinus 494 Hz (140 ms), puis 392 Hz à + 150 ms (240 ms) |
+| `neutral` | Pas si vite ! : une cible ratée | Sinus 440 Hz (220 ms) |
+| `gag` | Pas si vite ! : un piège laissé passer, la récompense du STOP | Triangle, glissando de 330 à 780 Hz (200 ms), puis de 780 à 260 Hz à + 200 ms (300 ms) |
 
 ### 3.5. Voix de la mascotte
 
@@ -213,7 +225,7 @@ Décisions prises avec le propriétaire au fil de trois séries de questions, av
 | **Licences admises** | **CC0 ou CC BY seulement.** F-Droid signale les médias `NC` et `ND` comme « Non-Free », et comme cette voix porte les règles, elle est traitée comme fonctionnelle. Écartés pour cette raison : la **licence Pixabay** ; la **voix `tom` de Piper** (AGPL et conditions séparées pour la voix). Voir les points de licence au [§4](#4-points-dattention). |
 | **Locuteur** *(choix du propriétaire, à l'écoute)* | **Le locuteur 55, choisi à l'oreille par le propriétaire, entre un échantillon des 18 phrases par le 55 et un autre par le 4.** Le modèle compte 125 locuteurs : 49 présélectionnés sur le bruit de fond, les aigus et la hauteur de voix, dont 16 marquent un vrai silence après l'amorce. 8 de ces 16 ont été comparés sur les 18 phrases, par alignement dynamique avec les mêmes phrases dites par « Siwis » : chaque clip doit retrouver sa phrase, ce qui approche l'intelligibilité sans remplacer une écoute. Sur ces seules mesures, Claude proposait le 4 : il retrouve les 18 phrases, va plus vite (62,0 s contre 70,1 s) et ne marque pas plus de 230 ms de silence dans une règle, contre 455 ms pour le 55, plus clair dans les aigus. Le 55 en retrouve 17 : `rule-except-big` tombe à égalité avec `rule-except-small` (1,885 contre 1,883), et retrouve bien « grand » sur la fin de la phrase seule. Écarté aussi : le 22, dont la mise en garde dépasse les 5 s du STOP. Pour en essayer un autre : changer `SPEAKER_ID` et relancer le script. |
 | **Amorce et coupes** *(arbitrage de Claude)* | **Une amorce dite avant chaque phrase puis coupée, et le son parasite retiré ([§3.5](#35-voix-de-la-mascotte)).** Avec le locuteur 55, le même test retrouve 13 phrases sur 18 sans amorce, 17 sur 18 avec ; le script dure 70,1 s au lieu de 77,1 s (60,4 s avec « Siwis »). Écartés : **régler le rythme phrase par phrase** (durées corrigées, mais spectrogrammes toujours aussi plats) ; **d'autres marques de silence** (plusieurs points ajoutent eux-mêmes des sons parasites, sans espace le silence disparaît). |
-| **Effets** | **Synthétisés par la Web Audio API, sans aucun fichier** : rien à gérer ni à créditer. Quatre effets (`success`, `bounce`, `stop`, `victory`), doux et brefs. |
+| **Effets** | **Synthétisés par la Web Audio API, sans aucun fichier** : rien à gérer ni à créditer. Quatre effets (`success`, `bounce`, `stop`, `victory`), doux et brefs ; Pas si vite ! en ajoute quatre (`signal`, `oops`, `neutral`, `gag`, [§3.4](#34-effets-sonores-effects-dans-audio-servicets)). |
 | **Lecture** | **Une seule `AudioContext` pour la voix et les effets, clips décodés par `decodeAudioData`.** Elle se débloque au premier geste puis joue sans autre geste, ce qu'un élément `<audio>` ne garantit pas sur iOS. Les fichiers passent par `fetch`, donc par le service worker hors-ligne. Aucune bibliothèque audio : le besoin tient en quelques appels à la Web Audio API. |
 | **Réglage Son** | **Il coupe tout : voix et effets**, jamais l'un sans l'autre. Écarté : une **voix qui ignorerait le réglage** parce qu'elle porte la règle (trahit la promesse du réglage). C'est l'image de la règle, toujours à l'écran, qui garde le jeu jouable son coupé ([FEAT-24](./FEAT-24.md)). |
 | **Texte de la voix** *(arbitrage de Claude, à relire)* | La formulation française de `voice-script.json` a été écrite par Claude : tutoiement de Mia, phrases courtes, de 1 à 5 s environ. « Oh, ton cerveau… » s'écrit avec une virgule : dit comme une phrase à part, « Oh ! » ressortait faible et morcelé. À relire : voir « Non vérifié ». |
