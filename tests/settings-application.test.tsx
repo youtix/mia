@@ -192,7 +192,7 @@ function getSection(): HTMLElement {
 /** Option en vigueur du dernier sélecteur de temps de Memory, juste au-dessus de la sauvegarde. */
 /** Élément au-dessus de la sauvegarde, atteint par le haut : le dernier jeu de la remise à zéro. */
 function getLastSettingAboveBackup(): HTMLElement {
-  return getButton('Remettre Chacun sa Place à zéro');
+  return getButton('Remettre Pas si vite ! à zéro');
 }
 
 /** Région persistante du groupe : confirmations et actions en cours. */

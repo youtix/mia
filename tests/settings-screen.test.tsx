@@ -732,7 +732,7 @@ describe('Réglages de jeu', () => {
     press('ArrowDown');
     expect(getButton('Télécharger le fichier')).toHaveFocus();
     press('ArrowUp');
-    expect(getButton('Remettre Chacun sa Place à zéro')).toHaveFocus();
+    expect(getButton('Remettre Pas si vite ! à zéro')).toHaveFocus();
     press('ArrowUp');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     // En remontant : sur l'option choisie (« Long »), pas sur la dernière visitée (« Court »).
@@ -1560,7 +1560,7 @@ describe('Sauvegarde', () => {
     // Au-dessus de la sauvegarde : la remise à zéro, sur le dernier jeu ; plus haut, le dernier
     // sélecteur de temps de Memory, sur l'option choisie.
     press('ArrowUp');
-    expect(getButton('Remettre Chacun sa Place à zéro')).toHaveFocus();
+    expect(getButton('Remettre Pas si vite ! à zéro')).toHaveFocus();
     press('ArrowUp');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     press('ArrowDown');

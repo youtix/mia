@@ -237,6 +237,7 @@ describe('Commitlint', () => {
     'feat(patterns): add the patterns game',
     'feat(bear-sort): add the sorting game',
     'feat(logic-grid): add the logic grid game',
+    'feat(go-no-go): add the go/no-go game',
   ])('accepte « %s »', SLOW, async (message) => {
     expect((await lintMessage(message)).valid).toBe(true);
   });
@@ -347,6 +348,14 @@ describe('Couverture Vitest', () => {
     expect(vitestConfig.test?.coverage).toMatchObject({
       thresholds: {
         'src/games/bear-sort/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
+      },
+    });
+  });
+
+  it('impose 90 % de couverture au moteur pur de Pas si vite ! (FEAT-28)', () => {
+    expect(vitestConfig.test?.coverage).toMatchObject({
+      thresholds: {
+        'src/games/go-no-go/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
       },
     });
   });

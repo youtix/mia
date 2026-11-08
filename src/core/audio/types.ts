@@ -1,5 +1,10 @@
-/** Effets sonores synthétisés (FEAT-22) : aucun fichier, aucune licence à suivre. */
-export type SoundEffect = 'success' | 'bounce' | 'stop' | 'victory';
+/**
+ * Effets sonores synthétisés (FEAT-22) : aucun fichier, aucune licence à suivre. `signal`, `oops`,
+ * `neutral` et `gag` sont ceux de Pas si vite ! (FEAT-28) : le signal de la chouette, un piège touché,
+ * une cible ratée, un piège laissé passer.
+ */
+export type SoundEffect =
+  'success' | 'bounce' | 'stop' | 'victory' | 'signal' | 'oops' | 'neutral' | 'gag';
 
 /**
  * Lecture du son des jeux. Le réglage « Son » de l'appareil (`DeviceSettings.soundEnabled`) coupe

@@ -190,6 +190,7 @@ export const GAME_TITLES: Readonly<Record<GameId, string>> = {
   patterns: 'Suites Logiques',
   'bear-sort': 'Attrape-Piège',
   'logic-grid': 'Chacun sa Place',
+  'go-no-go': 'Pas si vite !',
 };
 
 /** Jeux de la section « Progression », dans l'ordre du Hub (celui de `GAME_REGISTRY`, testé). */
@@ -199,6 +200,7 @@ export const GAME_RESET_ORDER: readonly GameId[] = [
   'patterns',
   'bear-sort',
   'logic-grid',
+  'go-no-go',
 ];
 
 /** Textes fixes de la section « Progression » : remise à zéro d'un jeu pour le profil actif. */

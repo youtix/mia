@@ -38,6 +38,7 @@ const config = {
         'patterns',
         'bear-sort',
         'logic-grid',
+        'go-no-go',
         'android',
         'pwa',
         'release',

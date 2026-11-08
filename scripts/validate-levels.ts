@@ -1,8 +1,9 @@
 /**
  * `npm run validate:levels` (FEAT-14) : valide tous les catalogues de niveaux de Mia (Memory, Traffic
- * Jam, Suites Logiques, Attrape-Piège et Chacun sa Place) et affiche un résumé par jeu (niveaux par
- * palier, puis chaque étoile avec sa configuration : coups optimaux mesurés par le solveur BFS pour
- * Traffic Jam, puzzles tirés et recomptés par recherche exhaustive pour Chacun sa Place). Code de
+ * Jam, Suites Logiques, Attrape-Piège, Chacun sa Place et Pas si vite !) et affiche un résumé par jeu
+ * (niveaux par palier, puis chaque étoile avec sa configuration : coups optimaux mesurés par le
+ * solveur BFS pour Traffic Jam, puzzles tirés et recomptés par recherche exhaustive pour Chacun sa
+ * Place, étoiles jouées par des enfants simulés pour Pas si vite !). Code de
  * sortie 1 à la moindre anomalie (`validate:all`, CI). Modules importés directement, jamais les barrels
  * (ils ré-exportent des composants React) : le script s'exécute avec tsx, sans DOM.
  */
@@ -11,6 +12,9 @@ import type { BaseLevelDefinition, CatalogValidationResult } from '@/core/progre
 import { BEAR_SORT_CATALOG, validateBearSortCatalog } from '@/games/bear-sort/catalog';
 import { getRuleLabel } from '@/games/bear-sort/labels';
 import type { BearSortLevelConfig } from '@/games/bear-sort/types';
+import { GO_NO_GO_CATALOG, validateGoNoGoCatalog } from '@/games/go-no-go/catalog';
+import { getRuleTitle } from '@/games/go-no-go/labels';
+import type { GoNoGoLevelConfig } from '@/games/go-no-go/types';
 import { LOGIC_GRID_CATALOG, validateLogicGridCatalog } from '@/games/logic-grid/catalog';
 import { getSeriesLength } from '@/games/logic-grid/engine';
 import type { LogicGridLevelConfig } from '@/games/logic-grid/types';
@@ -91,6 +95,22 @@ const LOGIC_GRID: CatalogCheck<LogicGridLevelConfig> = {
     ].join(', '),
 };
 
+const GO_NO_GO: CatalogCheck<GoNoGoLevelConfig> = {
+  title: 'Pas si vite !',
+  catalog: GO_NO_GO_CATALOG,
+  validate: () => validateGoNoGoCatalog(GO_NO_GO_CATALOG),
+  describe: (config) =>
+    [
+      getRuleTitle(config),
+      formatCount(config.appearances, 'apparition', 'apparitions'),
+      formatCount(config.traps, 'piège', 'pièges'),
+      config.stops > 0 ? formatCount(config.stops, 'STOP tardif', 'STOP tardifs') : null,
+      `fenêtre ${String(config.startWindowMs)} → ${String(config.fastestWindowMs)} ms`,
+    ]
+      .filter((part) => part !== null)
+      .join(', '),
+};
+
 /** Niveaux par palier : « Très Facile 4 · Facile 4 · … ». */
 function describeTiers(catalog: readonly BaseLevelDefinition[]): string {
   return DIFFICULTY_TIER_IDS.map((tier) => {
@@ -127,9 +147,14 @@ function report<TConfig>({ title, catalog, validate, describe }: CatalogCheck<TC
   return errors.length;
 }
 
-const checks = [MEMORY, TRAFFIC_JAM, PATTERNS, BEAR_SORT, LOGIC_GRID] as const;
+const checks = [MEMORY, TRAFFIC_JAM, PATTERNS, BEAR_SORT, LOGIC_GRID, GO_NO_GO] as const;
 const anomalies =
-  report(MEMORY) + report(TRAFFIC_JAM) + report(PATTERNS) + report(BEAR_SORT) + report(LOGIC_GRID);
+  report(MEMORY) +
+  report(TRAFFIC_JAM) +
+  report(PATTERNS) +
+  report(BEAR_SORT) +
+  report(LOGIC_GRID) +
+  report(GO_NO_GO);
 const levelCount = checks.reduce((total, check) => total + check.catalog.length, 0);
 
 if (anomalies > 0) {

@@ -1,0 +1,232 @@
+// @vitest-environment node
+import { isPrecacheable } from '@/core/pwa/precache';
+import { GO_NO_GO_CATALOG } from '@/games/go-no-go/catalog';
+import {
+  ANNOUNCEMENTS,
+  BUZZER_LABEL,
+  formatGarlandLabel,
+  getRuleSentence,
+  getRuleTitle,
+  getSubjectLabel,
+} from '@/games/go-no-go/labels';
+import {
+  DECOY_IDS,
+  FLYING_IMAGES,
+  GROUNDED_IMAGES,
+  IMAGE_IDS,
+  isFlyingImage,
+  isImageId,
+  isPuppetId,
+  PUPPET_IDS,
+} from '@/games/go-no-go/subjects';
+import type { SubjectId } from '@/games/go-no-go/types';
+import {
+  getLureClipId,
+  getRuleClipId,
+  getVoiceClipPath,
+  GO_NO_GO_CLIP_IDS,
+  SHARED_CLIPS,
+  VOICE_SCRIPT,
+} from '@/games/go-no-go/voice-script';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const PUBLIC_DIR = join(process.cwd(), 'public');
+
+const OWL = (() => {
+  const first = GO_NO_GO_CATALOG[0];
+  if (!first) throw new Error('catalogue vide');
+  return first.config;
+})();
+
+describe('Images et personnages (FEAT-28 §4)', () => {
+  it('compte six images qui volent et douze qui ne volent pas, toutes différentes', () => {
+    expect(FLYING_IMAGES).toEqual(['pigeon', 'plane', 'helicopter', 'butterfly', 'bee', 'rocket']);
+    expect(GROUNDED_IMAGES).toEqual([
+      'cow',
+      'pig',
+      'dog',
+      'fish',
+      'snail',
+      'turtle',
+      'car',
+      'train',
+      'boat',
+      'chair',
+      'house',
+      'tree',
+    ]);
+    expect(IMAGE_IDS).toHaveLength(18);
+    expect(new Set(IMAGE_IDS).size).toBe(18);
+  });
+
+  it('exclut les cas discutables du catalogue', () => {
+    for (const excluded of [
+      'cloud',
+      'balloon',
+      'kite',
+      'hen',
+      'penguin',
+      'ostrich',
+      'bat',
+      'duck',
+    ]) {
+      expect(isImageId(excluded)).toBe(false);
+    }
+  });
+
+  it('reconnaît ce qui vole et ce qui ne vole pas', () => {
+    for (const image of FLYING_IMAGES) expect(isFlyingImage(image)).toBe(true);
+    for (const image of GROUNDED_IMAGES) expect(isFlyingImage(image)).toBe(false);
+    expect(isFlyingImage('owl')).toBe(false);
+  });
+
+  it('la chouette est la cible du castelet, le renard puis le chat gris ses imposteurs', () => {
+    expect(PUPPET_IDS).toEqual(['owl', 'fox', 'cat']);
+    expect(DECOY_IDS).toEqual(['fox', 'cat']);
+    expect(isPuppetId('fox')).toBe(true);
+    expect(isPuppetId('cow')).toBe(false);
+    expect(isImageId('cow')).toBe(true);
+    expect(isImageId('owl')).toBe(false);
+  });
+});
+
+describe('Libellés pour les lecteurs d’écran', () => {
+  const SUBJECTS: SubjectId[] = [...PUPPET_IDS, ...IMAGE_IDS];
+
+  it('nomme chaque personnage et chaque image, avec son article, sans doublon', () => {
+    const labels = SUBJECTS.map((subject) => getSubjectLabel(subject));
+    expect(labels.every((label) => /^(Un|Une|Le|La) /.test(label))).toBe(true);
+    expect(new Set(labels).size).toBe(SUBJECTS.length);
+    expect(getSubjectLabel('owl')).toBe('La chouette');
+    expect(getSubjectLabel('cat')).toBe('Le chat gris');
+    expect(getSubjectLabel('cow')).toBe('Une vache');
+    expect(getSubjectLabel('helicopter')).toBe('Un hélicoptère');
+  });
+
+  it('résume la règle de chaque étoile, avec et sans leurre ni STOP tardif', () => {
+    const titles = new Set(GO_NO_GO_CATALOG.map((entry) => getRuleTitle(entry.config)));
+    expect(titles).toEqual(
+      new Set([
+        'La chouette a dit',
+        'Ça vole ?',
+        'Ça vole ? et le leurre de la chouette',
+        'STOP tardif',
+        'Ça vole ? et STOP tardif',
+      ]),
+    );
+  });
+
+  it('dit la consigne de chaque étoile en une phrase', () => {
+    const sentences = new Set(GO_NO_GO_CATALOG.map((entry) => getRuleSentence(entry.config)));
+    expect(sentences).toEqual(
+      new Set([
+        'Tape quand c’est la chouette.',
+        'Tape seulement si ça vole.',
+        'Tape seulement si ça vole, même quand la chouette bat des ailes.',
+        'Tape, sauf si le panneau STOP arrive.',
+        'Tape seulement si ça vole, sauf si le panneau STOP arrive.',
+      ]),
+    );
+  });
+
+  it('nomme le buzzer « Taper » et annonce la pause, la démo, les essais et le départ', () => {
+    expect(BUZZER_LABEL).toBe('Taper');
+    expect(Object.values(ANNOUNCEMENTS).every((text) => text.length > 0)).toBe(true);
+    expect(ANNOUNCEMENTS.paused).toContain('Pause');
+  });
+
+  it('décrit la guirlande sans la montrer en chiffres', () => {
+    expect(formatGarlandLabel(3, 12)).toBe('3 sur 12 réussies');
+  });
+});
+
+describe('Phrases de la mascotte (FEAT-28 §9, §11.2)', () => {
+  /** Les phrases nouvelles, telles que la spécification les écrit (ponctuation de l'oral près). */
+  const EXPECTED: Record<string, string> = {
+    'rule-owl-says': "Tape quand c'est moi !",
+    'rule-flies': 'Tape seulement si ça vole !',
+    'rule-late-stop': 'Tape, sauf si le STOP arrive !',
+    'rule-lure': 'Attention, je vais essayer de te piéger !',
+    'demo-bravo': 'Bravo !',
+    'demo-oops': 'Oups, même moi, mon cerveau est allé trop vite !',
+    'demo-warning':
+      'Ton cerveau va vouloir taper très vite pour tout attraper. Attention, il risque de te tendre un piège ! Prépare-toi à faire STOP.',
+  };
+
+  it('écrit les phrases de la spécification', () => {
+    for (const [id, text] of Object.entries(EXPECTED)) {
+      expect(VOICE_SCRIPT[id as keyof typeof VOICE_SCRIPT]).toBe(text);
+    }
+  });
+
+  it('dit « taper », jamais « cliquer », le mot des enfants au doigt comme à la télécommande', () => {
+    expect(Object.values(VOICE_SCRIPT).join(' ').toLowerCase()).not.toContain('clique');
+    expect(VOICE_SCRIPT['demo-warning']).toContain('taper');
+  });
+
+  it('a une phrase « … vole ! » pour chacune des 18 images, et pour elles seules', () => {
+    const lures = GO_NO_GO_CLIP_IDS.filter((id) => id.startsWith('lure-'));
+    expect(new Set(lures)).toEqual(new Set(IMAGE_IDS.map((image) => getLureClipId(image))));
+    for (const image of IMAGE_IDS) {
+      expect(VOICE_SCRIPT[getLureClipId(image)]).toMatch(/^[A-ZÉ][a-zéè]+ vole !$/);
+    }
+    expect(VOICE_SCRIPT['lure-cow']).toBe('Vache vole !');
+    expect(VOICE_SCRIPT['lure-plane']).toBe('Avion vole !');
+  });
+
+  it('compte 25 phrases nouvelles, aux identifiants sans doublon', () => {
+    expect(GO_NO_GO_CLIP_IDS).toHaveLength(7 + 18);
+    expect(new Set(GO_NO_GO_CLIP_IDS).size).toBe(GO_NO_GO_CLIP_IDS.length);
+  });
+
+  it('range les clips là où le pré-cache hors-ligne les prend', () => {
+    for (const id of GO_NO_GO_CLIP_IDS) {
+      expect(getVoiceClipPath(id)).toBe(`audio/go-no-go/${id}.mp3`);
+      expect(isPrecacheable(getVoiceClipPath(id))).toBe(true);
+    }
+  });
+
+  it('choisit la phrase de rappel de chaque règle, et celle du leurre au palier 4', () => {
+    const ids = GO_NO_GO_CATALOG.map((entry) => getRuleClipId(entry.config));
+    expect(ids.slice(0, 8).every((id) => id === 'rule-owl-says')).toBe(true);
+    expect(ids.slice(8, 12).every((id) => id === 'rule-flies')).toBe(true);
+    expect(ids.slice(12, 16).every((id) => id === 'rule-lure')).toBe(true);
+    expect(ids.slice(16).every((id) => id === 'rule-late-stop')).toBe(true);
+    expect(getRuleClipId(OWL)).toBe('rule-owl-says');
+  });
+
+  it('reprend telles quelles quatre phrases d’Attrape-Piège, dont les fichiers existent', () => {
+    expect(SHARED_CLIPS).toEqual({
+      trapped: 'audio/bear-sort/bounce-trap.mp3',
+      lookCarefully: 'audio/bear-sort/hint-look.mp3',
+      starWon: 'audio/bear-sort/star-won.mp3',
+      crownWon: 'audio/bear-sort/crown-won.mp3',
+    });
+    for (const path of Object.values(SHARED_CLIPS)) {
+      expect(existsSync(join(PUBLIC_DIR, path))).toBe(true);
+      expect(isPrecacheable(path)).toBe(true);
+    }
+  });
+});
+
+describe('Clips générés', () => {
+  const MANIFEST_PATH = join(process.cwd(), 'src/games/go-no-go/voice-manifest.json');
+  const hasManifest = existsSync(MANIFEST_PATH);
+
+  it.skipIf(hasManifest)('attend encore la génération des clips : ni manifeste ni fichier', () => {
+    expect(existsSync(join(PUBLIC_DIR, 'audio/go-no-go'))).toBe(false);
+  });
+
+  it.skipIf(!hasManifest)('a un fichier par phrase, et un manifeste à jour', () => {
+    const manifest = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8')) as {
+      clips: Record<string, { text: string; seconds: number }>;
+    };
+    expect(Object.keys(manifest.clips).sort()).toEqual([...GO_NO_GO_CLIP_IDS].sort());
+    for (const id of GO_NO_GO_CLIP_IDS) {
+      expect(manifest.clips[id]?.text).toBe(VOICE_SCRIPT[id]);
+      expect(existsSync(join(PUBLIC_DIR, getVoiceClipPath(id)))).toBe(true);
+    }
+  });
+});

@@ -1,4 +1,5 @@
 import { BEAR_SORT_CATALOG } from '@/games/bear-sort/catalog';
+import { GO_NO_GO_CATALOG } from '@/games/go-no-go/catalog';
 import { LOGIC_GRID_CATALOG } from '@/games/logic-grid/catalog';
 import { MEMORY_CATALOG } from '@/games/memory/catalog';
 import { PATTERNS_CATALOG } from '@/games/patterns/catalog';
@@ -13,8 +14,8 @@ export type GameRegistry = { readonly [K in GameId]: GameManifest & { readonly i
 /**
  * Registre central des jeux, dans l'ordre d'affichage du Hub. Données seules : les icônes sont
  * associées dans `components/`. FEAT-11 (Memory), FEAT-14 (Traffic Jam), FEAT-21 (Suites Logiques),
- * FEAT-25 (Attrape-Piège) et FEAT-27 (Chacun sa Place) y branchent leur catalogue ; un niveau publié
- * n'en est jamais retiré (`countProfileStars` divergerait).
+ * FEAT-25 (Attrape-Piège), FEAT-27 (Chacun sa Place) et FEAT-28 (Pas si vite !) y branchent leur
+ * catalogue ; un niveau publié n'en est jamais retiré (`countProfileStars` divergerait).
  */
 export const GAME_REGISTRY: GameRegistry = {
   memory: {
@@ -51,6 +52,13 @@ export const GAME_REGISTRY: GameRegistry = {
     skill: 'Déduction & Élimination · dès 5 ans',
     path: '/logic-grid',
     catalog: LOGIC_GRID_CATALOG,
+  },
+  'go-no-go': {
+    id: 'go-no-go',
+    title: 'Pas si vite !',
+    skill: 'Inhibition & Attention · dès 3 ans',
+    path: '/go-no-go',
+    catalog: GO_NO_GO_CATALOG,
   },
 };
 
