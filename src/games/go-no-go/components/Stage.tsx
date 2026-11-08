@@ -2,7 +2,7 @@ import { NoBadge } from '@/games/bear-sort/components/NoBadge';
 import { OwlMascot, type MascotMood } from '@/games/bear-sort/components/OwlMascot';
 import { StopSign } from '@/games/bear-sort/components/StopSign';
 import { cn } from '@/lib/cn';
-import type { MascotPose, Scene } from '../run';
+import type { Scene } from '../run';
 import { isImageId } from '../subjects';
 import type { GoNoGoLevelConfig, SubjectId } from '../types';
 import {
@@ -246,11 +246,6 @@ function Hills({ scene }: { scene: Scene }) {
       ) : null}
     </div>
   );
-}
-
-/** Pose de la mascotte → humeur du dessin (la voix qui parle l'emporte, côté plateau). */
-export function getMascotMood(pose: MascotPose): MascotMood {
-  return pose;
 }
 
 /**

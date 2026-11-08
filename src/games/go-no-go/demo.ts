@@ -1,6 +1,6 @@
 import type { SoundEffect } from '@/core/audio/types';
 import type { AppearanceKind, GoNoGoLevelConfig, SubjectId } from './types';
-import { getLureClipId, getRuleClipId, getVoiceClipPath, SHARED_CLIPS } from './voice-script';
+import { getLureClipId, getRuleClipId, getVoiceClipPath } from './voice-script';
 
 /**
  * Introduction à la première étoile de chaque règle (FEAT-28 §9) : « on apprend le STOP en le faisant,
@@ -160,6 +160,3 @@ export function getDemoClipPaths(config: GoNoGoLevelConfig): string[] {
   }
   return [...paths];
 }
-
-/** Phrases d'Attrape-Piège reprises (erreur, indice, victoire) : à charger avec celles de l'étoile. */
-export const SHARED_CLIP_PATHS: readonly string[] = Object.values(SHARED_CLIPS);
