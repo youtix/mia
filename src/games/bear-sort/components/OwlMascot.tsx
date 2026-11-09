@@ -1,10 +1,13 @@
 import { cn } from '@/lib/cn';
 import { ART_STYLE_PRECEDENCE, INK } from './art-tokens';
 
-export type MascotMood = 'idle' | 'talking' | 'happy' | 'no';
+export type MascotMood = 'idle' | 'talking' | 'happy' | 'no' | 'flap';
 
 export interface OwlMascotProps {
-  /** `talking` : bec animé ; `happy` : petit saut ; `no` : la tête dit non (règle « sauf ») */
+  /**
+   * `talking` : bec animé ; `happy` : petit saut ; `no` : la tête dit non (règle « sauf ») ; `flap` :
+   * les ailes se lèvent et battent, yeux ouverts (le signal et le leurre de Pas si vite !, FEAT-28)
+   */
   mood: MascotMood;
   className?: string;
 }
@@ -26,6 +29,8 @@ const OWL_KEYFRAMES = [
   '@keyframes bear-sort-owl-flap-left{0%,62%,100%{transform:rotate(0)}36%{transform:rotate(30deg)}}',
   '@keyframes bear-sort-owl-flap-right{0%,62%,100%{transform:rotate(0)}36%{transform:rotate(-30deg)}}',
   '@keyframes bear-sort-owl-shake{0%,62%,100%{transform:rotate(0)}10%{transform:rotate(-9deg)}26%{transform:rotate(9deg)}42%{transform:rotate(-7deg)}54%{transform:rotate(3deg)}}',
+  '@keyframes bear-sort-owl-wave-left{0%,100%{transform:rotate(0)}50%{transform:rotate(62deg)}}',
+  '@keyframes bear-sort-owl-wave-right{0%,100%{transform:rotate(0)}50%{transform:rotate(-62deg)}}',
 ].join('');
 
 /** Clignement : autour du centre de l'œil, quelle que soit sa position. */
@@ -38,6 +43,7 @@ const BODY_ANIMATION: Readonly<Record<MascotMood, string | null>> = {
   talking: null,
   happy: 'motion-safe:animate-[bear-sort-owl-hop_1.1s_ease-in-out_infinite]',
   no: null,
+  flap: null,
 };
 
 /** Un œil ouvert : blanc, pupille et reflet, légèrement tourné vers le centre. */
@@ -59,7 +65,8 @@ function OpenEye({ cx, pupilOffset }: { cx: number; pupilOffset: number }) {
  */
 export function OwlMascot({ mood, className }: OwlMascotProps) {
   const isHappy = mood === 'happy';
-  const isBeakOpen = mood === 'talking' || isHappy;
+  const isFlapping = mood === 'flap';
+  const isBeakOpen = mood === 'talking' || isHappy || isFlapping;
 
   return (
     <>
@@ -99,6 +106,9 @@ export function OwlMascot({ mood, className }: OwlMascotProps) {
             style={{ transformOrigin: '27px 52px' }}
             className={cn(
               isHappy && 'motion-safe:animate-[bear-sort-owl-flap-left_1.1s_ease-in-out_infinite]',
+              // Animations réduites : les ailes restent levées, la pose seule porte le signal.
+              isFlapping &&
+                'motion-safe:animate-[bear-sort-owl-wave-left_0.55s_ease-in-out_infinite] motion-reduce:rotate-[62deg]',
             )}
           />
           <path
@@ -107,6 +117,8 @@ export function OwlMascot({ mood, className }: OwlMascotProps) {
             style={{ transformOrigin: '73px 52px' }}
             className={cn(
               isHappy && 'motion-safe:animate-[bear-sort-owl-flap-right_1.1s_ease-in-out_infinite]',
+              isFlapping &&
+                'motion-safe:animate-[bear-sort-owl-wave-right_0.55s_ease-in-out_infinite] motion-reduce:-rotate-[62deg]',
             )}
           />
 

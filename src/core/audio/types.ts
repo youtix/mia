@@ -1,5 +1,10 @@
-/** Effets sonores synthétisés (FEAT-22) : aucun fichier, aucune licence à suivre. */
-export type SoundEffect = 'success' | 'bounce' | 'stop' | 'victory';
+/**
+ * Effets sonores synthétisés (FEAT-22) : aucun fichier, aucune licence à suivre. `signal`, `oops`,
+ * `neutral` et `gag` sont ceux de Pas si vite ! (FEAT-28) : le signal de la chouette, un piège touché,
+ * une cible ratée, un piège laissé passer.
+ */
+export type SoundEffect =
+  'success' | 'bounce' | 'stop' | 'victory' | 'signal' | 'oops' | 'neutral' | 'gag';
 
 /**
  * Lecture du son des jeux. Le réglage « Son » de l'appareil (`DeviceSettings.soundEnabled`) coupe
@@ -31,6 +36,11 @@ export interface AudioService {
   ) => Promise<void>;
   /** Interrompt la voix en cours ou en attente du premier geste */
   stopClips: () => void;
+  /**
+   * Oublie les clips décodés dont le chemin commence par `prefix` (ceux d'un jeu qu'on quitte) : décodé,
+   * un clip pèse dix fois son MP3. Ils se rechargent au besoin (hors-ligne, depuis le service worker).
+   */
+  releaseClips: (prefix: string) => void;
   /** Joue un effet par-dessus la voix ; sans effet si le son est coupé ou encore bloqué, ou la page masquée */
   playEffect: (effect: SoundEffect) => void;
 }

@@ -67,6 +67,13 @@ export default defineConfig({
           branches: 90,
           statements: 90,
         },
+        // Moteur pur de Pas si vite ! (FEAT-28) : 90 % exigés, hors composants d'interface.
+        'src/games/go-no-go/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
       },
     },
   },

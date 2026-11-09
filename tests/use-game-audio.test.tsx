@@ -16,6 +16,7 @@ const audio = vi.hoisted(() => ({
     preloadClips: vi.fn(() => Promise.resolve()),
     playClips: vi.fn(() => Promise.resolve()),
     stopClips: vi.fn(),
+    releaseClips: vi.fn(),
     playEffect: vi.fn(),
   },
   getAudioService: vi.fn(),

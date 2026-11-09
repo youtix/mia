@@ -569,6 +569,44 @@ describe('Réglage « Son »', () => {
     expect(context.resume).toHaveBeenCalledOnce();
   });
 
+  it('remis : réveille aussitôt la sortie que l’écran précédent avait libérée, les effets jouent', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    // « Étoile suivante » : l'ancien plateau coupe le son, le nouveau le remet.
+    service.setEnabled(false);
+    expect(context.state).toBe('suspended');
+    context.resume.mockClear();
+    service.setEnabled(true);
+    await flush();
+    expect(context.resume).toHaveBeenCalledOnce();
+    expect(context.state).toBe('running');
+    // Le premier effet du nouvel écran (le signal de la démo) n'attend pas une voix pour s'entendre.
+    service.playEffect('signal');
+    expect(context.oscillators.length).toBeGreaterThan(0);
+  });
+
+  it('remis page masquée : ne réveille rien, le retour au premier plan s’en charge', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    service.setEnabled(false);
+    context.resume.mockClear();
+    setPageHidden(true);
+    service.setEnabled(true);
+    await flush();
+    expect(context.resume).not.toHaveBeenCalled();
+    setPageHidden(false);
+    await flush();
+    expect(context.resume).toHaveBeenCalledOnce();
+  });
+
+  it('remis sans contexte : n’en crée pas pour autant', () => {
+    const { createContext, service } = setup();
+    service.setEnabled(true);
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
   it('coupé puis remis : oublie la séquence en attente du premier geste', async () => {
     const { context, service } = setupBlocked();
     await service.playClips(['un.mp3']);
@@ -1087,6 +1125,28 @@ describe('Clips illisibles', () => {
   });
 });
 
+describe('releaseClips', () => {
+  it('oublie les clips décodés d’un jeu : ils se rechargent, les autres restent', async () => {
+    const { fetchClip, service } = setup();
+    void service.preloadClips(['audio/go-no-go/a.mp3', 'audio/bear-sort/b.mp3']);
+    await flush();
+    expect(fetchClip).toHaveBeenCalledTimes(2);
+
+    service.releaseClips('audio/go-no-go/');
+    void service.preloadClips(['audio/go-no-go/a.mp3', 'audio/bear-sort/b.mp3']);
+    await flush();
+
+    expect(fetchClip).toHaveBeenCalledTimes(3);
+    expect(fetchClip).toHaveBeenLastCalledWith('/audio/go-no-go/a.mp3');
+  });
+
+  it('ne fait rien sans clip décodé', () => {
+    const { createContext, service } = setup();
+    service.releaseClips('audio/go-no-go/');
+    expect(createContext).not.toHaveBeenCalled();
+  });
+});
+
 describe('Réveil de la sortie audio', () => {
   it('laisse la sortie se rouvrir avant la première voix, puis enchaîne sans délai', async () => {
     const { context, service } = setup();
@@ -1259,6 +1319,10 @@ describe('Effets sonores', () => {
     ['bounce', BOUNCE_NOTES],
     ['stop', 2],
     ['victory', 4],
+    ['signal', 2],
+    ['oops', 2],
+    ['neutral', 1],
+    ['gag', 2],
   ];
 
   it.each(EFFECT_NOTES)(
@@ -1337,6 +1401,20 @@ describe('Effets sonores', () => {
       { type: 'sine', hz: 784, atMs: 240, lengthMs: 140 },
       { type: 'sine', hz: 1047, atMs: 360, lengthMs: 320 },
     ],
+    // Pas si vite ! (FEAT-28 §6) : le signal des personnages, un piège touché, une cible ratée, le gag.
+    signal: [
+      { type: 'triangle', hz: 784, atMs: 0, lengthMs: 100 },
+      { type: 'triangle', hz: 1047, atMs: 110, lengthMs: 160 },
+    ],
+    oops: [
+      { type: 'sine', hz: 494, atMs: 0, lengthMs: 140 },
+      { type: 'sine', hz: 392, atMs: 150, lengthMs: 240 },
+    ],
+    neutral: [{ type: 'sine', hz: 440, atMs: 0, lengthMs: 220 }],
+    gag: [
+      { type: 'triangle', hz: 330, toHz: 780, atMs: 0, lengthMs: 200 },
+      { type: 'triangle', hz: 780, toHz: 260, atMs: 200, lengthMs: 300 },
+    ],
   };
 
   it.each(Object.entries(EFFECT_TABLE))(
@@ -1371,7 +1449,7 @@ describe('Effets sonores', () => {
     },
   );
 
-  it('fait glisser le rebond vers le grave, seul effet en glissando', () => {
+  it('fait glisser le rebond vers le grave ; seuls le rebond et le gag glissent', () => {
     const { context, service } = setup();
 
     service.playEffect('bounce');
@@ -1383,7 +1461,7 @@ describe('Effets sonores', () => {
     expect(endFrequency).toBeLessThan(startFrequency ?? 0);
     expect(endTime).toBe(oscillator?.stop.mock.calls[0]?.[0]);
 
-    for (const effect of ['success', 'stop', 'victory'] as const) {
+    for (const effect of ['success', 'stop', 'victory', 'signal', 'oops', 'neutral'] as const) {
       const { context: other, service: otherService } = setup();
       otherService.playEffect(effect);
 
@@ -1554,10 +1632,23 @@ describe('Effets sonores', () => {
     context.suspend.mockImplementationOnce(() => Promise.resolve());
 
     service.setEnabled(false);
-    service.setEnabled(true);
     service.playEffect('bounce');
 
     expect(context.oscillators).toEqual([]);
+  });
+
+  it('remis juste après suspend() : la sortie est réveillée, l’effet suivant joue', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+    context.oscillators.length = 0;
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+
+    service.setEnabled(false);
+    service.setEnabled(true);
+    service.playEffect('bounce');
+
+    expect(context.resume).toHaveBeenCalled();
+    expect(context.oscillators.length).toBeGreaterThan(0);
   });
 
   it('perd un effet demandé juste après le masquage de la page, quand `state` dit encore `running`', () => {

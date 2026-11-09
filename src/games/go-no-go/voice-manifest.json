@@ -1,0 +1,125 @@
+{
+  "voice": "fr_FR-mls-medium",
+  "speakerId": 55,
+  "lengthScale": 1.2,
+  "clips": {
+    "rule-owl-says": {
+      "text": "Tape quand c'est moi !",
+      "seconds": 1.58
+    },
+    "rule-flies": {
+      "text": "Tape seulement si ça vole !",
+      "seconds": 2.02
+    },
+    "rule-late-stop": {
+      "text": "Tape, sauf si le STOP arrive !",
+      "seconds": 2.69
+    },
+    "rule-lure": {
+      "text": "Attention, je vais essayer de te piéger !",
+      "seconds": 3.26
+    },
+    "demo-bravo": {
+      "text": "Bravo !",
+      "seconds": 0.93
+    },
+    "demo-oops": {
+      "text": "Oups, même moi, mon cerveau est allé trop vite !",
+      "seconds": 3.35
+    },
+    "demo-warning": {
+      "text": "Ton cerveau va vouloir taper très vite pour tout attraper. Attention, il risque de te tendre un piège ! Prépare-toi à faire STOP.",
+      "seconds": 9.7
+    },
+    "lure-pigeon": {
+      "text": "Pigeon vole !",
+      "seconds": 1.08,
+      "lengthScale": 1.0
+    },
+    "lure-plane": {
+      "text": "Avion vole !",
+      "seconds": 1.04,
+      "lengthScale": 1.0
+    },
+    "lure-helicopter": {
+      "text": "Hélicoptère vole !",
+      "seconds": 1.33,
+      "lengthScale": 0.85
+    },
+    "lure-butterfly": {
+      "text": "Papillon vole !",
+      "seconds": 1.19,
+      "lengthScale": 1.0
+    },
+    "lure-bee": {
+      "text": "Abeille vole !",
+      "seconds": 1.14,
+      "lengthScale": 1.0
+    },
+    "lure-rocket": {
+      "text": "Fusée vole !",
+      "seconds": 1.04,
+      "lengthScale": 1.0
+    },
+    "lure-cow": {
+      "text": "Vache vole !",
+      "seconds": 1.0,
+      "lengthScale": 1.0
+    },
+    "lure-pig": {
+      "text": "Cochon vole !",
+      "seconds": 1.1,
+      "lengthScale": 1.0
+    },
+    "lure-dog": {
+      "text": "Chien vole !",
+      "seconds": 1.05,
+      "lengthScale": 1.0
+    },
+    "lure-fish": {
+      "text": "Poisson vole !",
+      "seconds": 1.11,
+      "lengthScale": 1.0
+    },
+    "lure-snail": {
+      "text": "Escargot vole !",
+      "seconds": 1.34,
+      "lengthScale": 1.0
+    },
+    "lure-turtle": {
+      "text": "Tortue vole !",
+      "seconds": 1.31,
+      "lengthScale": 1.0
+    },
+    "lure-car": {
+      "text": "Voiture vole !",
+      "seconds": 1.11,
+      "lengthScale": 1.0
+    },
+    "lure-train": {
+      "text": "Train vole !",
+      "seconds": 0.97,
+      "lengthScale": 1.0
+    },
+    "lure-boat": {
+      "text": "Bateau vole !",
+      "seconds": 1.12,
+      "lengthScale": 1.0
+    },
+    "lure-chair": {
+      "text": "Chaise vole !",
+      "seconds": 1.2,
+      "lengthScale": 1.0
+    },
+    "lure-house": {
+      "text": "Maison vole !",
+      "seconds": 1.15,
+      "lengthScale": 1.0
+    },
+    "lure-tree": {
+      "text": "Arbre vole !",
+      "seconds": 1.16,
+      "lengthScale": 1.0
+    }
+  }
+}

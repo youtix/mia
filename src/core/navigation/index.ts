@@ -6,6 +6,7 @@ export {
   guardActivations,
   installActivationGuard,
   isActivationGuarded,
+  isSynthesizedActivation,
 } from './activation-guard';
 export { ActivationGuardBridge } from './ActivationGuardBridge';
 export { AndroidBackButtonBridge } from './AndroidBackButtonBridge';

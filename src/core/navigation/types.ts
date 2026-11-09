@@ -29,8 +29,11 @@ export interface NavigationTarget extends Point2D {
 export interface NavigationScope {
   /** Flèche, répétée tant que la touche est maintenue (`isRepeat` pour les répétitions). */
   onDirection?: (direction: Direction, isRepeat: boolean) => void;
-  /** OK / Entrée / Espace, une seule fois par appui. */
-  onSelect?: () => void;
+  /**
+   * OK / Entrée / Espace, une seule fois par appui. `event` : le `keydown`, dont l'horodatage date
+   * l'appui (un jeu de vitesse le juge sur cet instant, pas sur celui de son traitement).
+   */
+  onSelect?: (event: KeyboardEvent) => void;
   /** Retour : Échap, Retour arrière ou bouton Retour Android (`dispatchBack`). */
   onBack?: () => void;
   /** Élément DOM du curseur : s'il a déjà le focus DOM, le premier appui agit sans réveil. */

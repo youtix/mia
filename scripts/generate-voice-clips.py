@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Génère les phrases de la mascotte d'Attrape-Piège (FEAT-22) avec la voix Piper « MLS ».
+"""Génère les phrases de la mascotte (FEAT-22, FEAT-28) avec la voix Piper « MLS ».
 
-Lit `src/games/bear-sort/voice-script.json`, écrit un MP3 par phrase dans
-`public/audio/bear-sort/` et `src/games/bear-sort/voice-manifest.json`, que les tests comparent au
-texte pour signaler un clip périmé. Un outil de développement : ni Piper ni le modèle ne sont livrés
-avec l'application, seuls les MP3 le sont. Un clip enregistré par une vraie voix peut remplacer un
-fichier du même nom sans rien changer au jeu.
+Pour chaque jeu qui parle (Attrape-Piège, Pas si vite !), lit `src/games/<jeu>/voice-script.json`,
+écrit un MP3 par phrase dans `public/audio/<jeu>/` et `src/games/<jeu>/voice-manifest.json`, que les
+tests comparent au texte pour signaler un clip périmé. Un outil de développement : ni Piper ni le
+modèle ne sont livrés avec l'application, seuls les MP3 le sont. Un clip enregistré par une vraie voix
+peut remplacer un fichier du même nom sans rien changer au jeu.
 
 Prérequis :
     pip install "piper-tts[alignment]" lameenc
@@ -15,6 +15,10 @@ Prérequis :
 
 Usage :
     python scripts/generate-voice-clips.py --model chemin/vers/fr_FR-mls-medium.onnx
+    python scripts/generate-voice-clips.py --model chemin/vers/fr_FR-mls-medium.onnx --game go-no-go
+
+Sans `--game`, tous les jeux sont régénérés ; le script redonnant les mêmes fichiers (aucun bruit
+aléatoire), seuls les clips dont le texte a changé diffèrent.
 """
 
 import argparse
@@ -27,9 +31,21 @@ import numpy as np
 from piper import PiperVoice, SynthesisConfig
 
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPT_PATH = ROOT / "src/games/bear-sort/voice-script.json"
-MANIFEST_PATH = ROOT / "src/games/bear-sort/voice-manifest.json"
-OUTPUT_DIR = ROOT / "public/audio/bear-sort"
+
+# Les jeux qui parlent : leur dossier dans `src/games/` et dans `public/audio/` porte le même nom.
+GAMES = ["bear-sort", "go-no-go"]
+
+# Pas si vite ! (FEAT-28 §10) : le leurre « Vache vole ! » doit tenir dans la fenêtre la plus courte du
+# palier 4, soit 1,1 s de parole (la pause finale en plus). Ces clips-là sont dits au rythme normal du
+# modèle, sans ralentissement, puis accélérés un par un, juste assez, quand ils dépassent encore.
+FAST_PREFIX = "lure-"
+FAST_LENGTH_SCALE = 1.0
+FAST_MAX_SPEECH_SECONDS = 1.1
+
+# Plus vite que cela, la voix n'est plus celle d'une chouette qui parle à un enfant de 3 ans : mieux vaut
+# échouer que livrer un clip hâtif, la fenêtre se réglera alors à la main.
+FAST_MIN_LENGTH_SCALE = 0.7
+FAST_MAX_ATTEMPTS = 4
 
 VOICE_NAME = "fr_FR-mls-medium"
 
@@ -97,13 +113,15 @@ def end_of_stray_sound(audio: np.ndarray, start: int, end: int, sample_rate: int
     return start + (peak + int(fallen[0])) * frame if len(fallen) > 0 else start
 
 
-def synthesize_sentence(voice: PiperVoice, sentence: str) -> tuple[np.ndarray, int]:
+def synthesize_sentence(
+    voice: PiperVoice, sentence: str, length_scale: float = LENGTH_SCALE
+) -> tuple[np.ndarray, int]:
     """Renvoie l'audio d'une phrase, sans l'amorce dite avant elle, et sa fréquence d'échantillonnage."""
     # Aucun bruit aléatoire : le même script redonne les mêmes fichiers, et une phrase corrigée ne
     # réécrit pas les autres. La crête est réglée sur le clip entier, pas sur l'amorce.
     config = SynthesisConfig(
         speaker_id=SPEAKER_ID,
-        length_scale=LENGTH_SCALE,
+        length_scale=length_scale,
         noise_scale=0,
         noise_w_scale=0,
         normalize_audio=False,
@@ -139,15 +157,33 @@ def split_sentences(text: str) -> list[str]:
     return [sentence for sentence in sentences if re.search(r"\w", sentence)]
 
 
-def synthesize(voice: PiperVoice, text: str) -> tuple[bytes, int]:
+def synthesize(voice: PiperVoice, text: str, length_scale: float = LENGTH_SCALE) -> tuple[bytes, int]:
     """Renvoie le PCM 16 bits mono du clip et sa fréquence d'échantillonnage."""
     parts: list[np.ndarray] = []
     sample_rate = 0
     for sentence in split_sentences(text):
-        audio, sample_rate = synthesize_sentence(voice, sentence)
+        audio, sample_rate = synthesize_sentence(voice, sentence, length_scale)
         parts += [audio, np.zeros(int(SENTENCE_PAUSE_SECONDS * sample_rate), dtype=audio.dtype)]
     clip = np.concatenate(parts)
     return (clip / np.abs(clip).max() * 32767).astype(np.int16).tobytes(), sample_rate
+
+
+def synthesize_to_fit(voice: PiperVoice, text: str) -> tuple[bytes, int, float]:
+    """Dit `text` au rythme normal du modèle, accéléré juste assez pour que la parole tienne dans
+    `FAST_MAX_SPEECH_SECONDS`. Renvoie le PCM, la fréquence d'échantillonnage et le ralentissement retenu."""
+    pauses = SENTENCE_PAUSE_SECONDS * len(split_sentences(text))
+    length_scale = FAST_LENGTH_SCALE
+    for _ in range(FAST_MAX_ATTEMPTS):
+        pcm, sample_rate = synthesize(voice, text, length_scale)
+        speech = len(pcm) / 2 / sample_rate - pauses
+        if speech <= FAST_MAX_SPEECH_SECONDS:
+            return pcm, sample_rate, length_scale
+        # La durée suit à peu près le ralentissement : un cran de marge sous la cible, que la durée des
+        # phonèmes, arrondie à la trame, ne rend pas tout à fait proportionnelle.
+        length_scale = round(length_scale * FAST_MAX_SPEECH_SECONDS / speech - 0.02, 2)
+        if length_scale < FAST_MIN_LENGTH_SCALE:
+            break
+    raise ValueError(f"« {text} » ne tient pas dans {FAST_MAX_SPEECH_SECONDS} s sans aller trop vite")
 
 
 def encode_mp3(pcm: bytes, sample_rate: int) -> bytes:
@@ -160,33 +196,49 @@ def encode_mp3(pcm: bytes, sample_rate: int) -> bytes:
     return bytes(encoder.encode(pcm)) + bytes(encoder.flush())
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--model", required=True, type=Path, help="fichier .onnx de la voix MLS")
-    args = parser.parse_args()
-    # Le manifeste et les crédits nomment cette voix : un autre modèle les rendrait faux sans rien dire.
-    if args.model.stem != VOICE_NAME:
-        parser.error(f"modèle attendu : {VOICE_NAME}.onnx")
+def generate(voice: PiperVoice, game: str) -> None:
+    """Écrit les MP3 et le manifeste d'un jeu d'après son script de phrases."""
+    script_path = ROOT / f"src/games/{game}/voice-script.json"
+    manifest_path = ROOT / f"src/games/{game}/voice-manifest.json"
+    output_dir = ROOT / f"public/audio/{game}"
+    script: dict[str, str] = json.loads(script_path.read_text(encoding="utf-8"))
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    script: dict[str, str] = json.loads(SCRIPT_PATH.read_text(encoding="utf-8"))
-    voice = PiperVoice.load(args.model, include_alignments=True)
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    for stale in OUTPUT_DIR.glob("*.mp3"):
+    for stale in output_dir.glob("*.mp3"):
         if stale.stem not in script:
             stale.unlink()
 
     clips = {}
     for clip_id, text in script.items():
-        pcm, sample_rate = synthesize(voice, text)
-        (OUTPUT_DIR / f"{clip_id}.mp3").write_bytes(encode_mp3(pcm, sample_rate))
+        is_fast = clip_id.startswith(FAST_PREFIX)
+        if is_fast:
+            pcm, sample_rate, length_scale = synthesize_to_fit(voice, text)
+        else:
+            pcm, sample_rate = synthesize(voice, text, LENGTH_SCALE)
+        (output_dir / f"{clip_id}.mp3").write_bytes(encode_mp3(pcm, sample_rate))
         # 2 octets par échantillon : PCM 16 bits mono.
         seconds = round(len(pcm) / 2 / sample_rate, 2)
         clips[clip_id] = {"text": text, "seconds": seconds}
-        print(f"{clip_id}: {seconds} s")
+        if is_fast:
+            clips[clip_id]["lengthScale"] = length_scale
+        print(f"{game}/{clip_id}: {seconds} s" + (f" (ralentissement {length_scale})" if is_fast and length_scale != FAST_LENGTH_SCALE else ""))
 
     manifest = {"voice": VOICE_NAME, "speakerId": SPEAKER_ID, "lengthScale": LENGTH_SCALE, "clips": clips}
-    MANIFEST_PATH.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--model", required=True, type=Path, help="fichier .onnx de la voix MLS")
+    parser.add_argument("--game", choices=GAMES, help="un seul jeu (défaut : tous)")
+    args = parser.parse_args()
+    # Le manifeste et les crédits nomment cette voix : un autre modèle les rendrait faux sans rien dire.
+    if args.model.stem != VOICE_NAME:
+        parser.error(f"modèle attendu : {VOICE_NAME}.onnx")
+
+    voice = PiperVoice.load(args.model, include_alignments=True)
+    for game in [args.game] if args.game else GAMES:
+        generate(voice, game)
 
 
 if __name__ == "__main__":

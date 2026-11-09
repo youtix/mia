@@ -39,6 +39,23 @@ const EFFECTS: Readonly<Record<SoundEffect, readonly EffectNote[]>> = {
     { type: 'sine', frequency: 784, start: 0.24, duration: 0.14 },
     { type: 'sine', frequency: 1047, start: 0.36, duration: 0.32 },
   ],
+  // Pas si vite ! (FEAT-28) : le signal des personnages du castelet, deux notes vives qui montent.
+  signal: [
+    { type: 'triangle', frequency: 784, start: 0, duration: 0.1 },
+    { type: 'triangle', frequency: 1047, start: 0.11, duration: 0.16 },
+  ],
+  // Un piège touché : deux notes douces qui descendent, ni buzzer ni sanction.
+  oops: [
+    { type: 'sine', frequency: 494, start: 0, duration: 0.14 },
+    { type: 'sine', frequency: 392, start: 0.15, duration: 0.24 },
+  ],
+  // Une cible ratée : une seule note ronde, neutre, qui s'éteint doucement.
+  neutral: [{ type: 'sine', frequency: 440, start: 0, duration: 0.22 }],
+  // Le gag d'un piège laissé passer : un glissando qui monte puis retombe, comme un « boing ».
+  gag: [
+    { type: 'triangle', frequency: 330, endFrequency: 780, start: 0, duration: 0.2 },
+    { type: 'triangle', frequency: 780, endFrequency: 260, start: 0.2, duration: 0.3 },
+  ],
 };
 
 const EFFECT_PEAK_GAIN = 0.18;
@@ -174,6 +191,8 @@ export function createAudioService({
   /** Notes d'effet pas encore finies, certaines encore à venir. */
   const effectNotes = new Set<OscillatorNode>();
   const buffers = new Map<string, Promise<AudioBuffer | null>>();
+  /** Clips déjà décodés (le cache garde aussi les chargements en cours). */
+  const decoded = new Set<string>();
 
   function stopClips(): void {
     sequence += 1;
@@ -252,6 +271,7 @@ export function createAudioService({
         (buffer) => {
           // Y compris après le délai de `waitForBuffer`, qui l'avait retiré du cache.
           buffers.set(path, Promise.resolve(buffer));
+          decoded.add(path);
           return buffer;
         },
         () => {
@@ -349,10 +369,23 @@ export function createAudioService({
   return {
     setEnabled: (enabled) => {
       isEnabled = enabled;
-      if (enabled) return;
+      if (enabled) {
+        // L'écran précédent a libéré la sortie audio (« Étoile suivante ») : sans réveil, les effets
+        // du début du nouvel écran resteraient muets jusqu'à la première voix. Page masquée, elle
+        // se réveillera à son retour.
+        if (context && !isAwake(context) && !document.hidden) void wakeContext(context);
+        return;
+      }
       stopClips();
       // Rien ne joue : la sortie audio reste libérée jusqu'à la voix suivante.
       if (context) releaseContext(context);
+    },
+    releaseClips: (prefix) => {
+      for (const path of decoded) {
+        if (!path.startsWith(prefix)) continue;
+        decoded.delete(path);
+        buffers.delete(path);
+      }
     },
     preloadClips: async (paths) => {
       if (!isEnabled) return;

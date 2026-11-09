@@ -14,10 +14,10 @@
 L'objectif de cette **FEAT-22** est le socle audio des jeux, au-dessus de la Web Audio API, sans aucune dépendance ajoutée à l'application :
 1. **Un service audio sans React** (`src/core/audio/`) : une seule `AudioContext` pour la voix et les effets, débloquée au premier geste, qui joue des séquences de clips et des effets.
 2. **La voix de la mascotte** : 18 phrases en français, préenregistrées et livrées avec l'application, générées avec la voix de synthèse Piper « MLS » (CC BY 4.0) et remplaçables par de vrais enregistrements sans toucher au jeu.
-3. **Des effets sonores synthétisés** : 4 effets, sans aucun fichier.
+3. **Des effets sonores synthétisés** : 8 effets, sans aucun fichier (4 pour Attrape-Piège, 4 ajoutés par Pas si vite !, [FEAT-28](./FEAT-28.md)).
 4. **Le réglage « Son » de l'appareil** : le couper coupe la voix et les effets, partout.
 
-Le service et les effets sont génériques ; seules les phrases sont propres à Attrape-Piège (`src/games/bear-sort/`).
+Le service et les effets sont génériques ; seules les phrases sont propres à un jeu : celles d'Attrape-Piège (`src/games/bear-sort/`), puis celles de Pas si vite ! (`src/games/go-no-go/`, voix identique, [FEAT-28 §14.8](./FEAT-28.md#148-sons-et-voix)), dont le générateur (`scripts/generate-voice-clips.py --game …`) sert les deux.
 
 ---
 
@@ -65,7 +65,15 @@ README.md                              # Fonctionnalités, stack, crédits et li
 
 ```typescript
 /** Effets sonores synthétisés : aucun fichier, aucune licence à suivre. */
-export type SoundEffect = 'success' | 'bounce' | 'stop' | 'victory';
+export type SoundEffect =
+  | 'success'
+  | 'bounce'
+  | 'stop'
+  | 'victory'
+  | 'signal' // Pas si vite ! (FEAT-28) : le signal des personnages du castelet
+  | 'oops' //   un piège touché
+  | 'neutral' // une cible ratée
+  | 'gag'; //   un piège laissé passer
 
 export interface AudioService {
   /**
@@ -83,6 +91,8 @@ export interface AudioService {
   playClips: (paths: readonly string[]) => Promise<void>;
   /** Interrompt la voix en cours ou en attente du premier geste */
   stopClips: () => void;
+  /** Oublie les clips décodés dont le chemin commence par `prefix` (ceux d'un jeu qu'on quitte) */
+  releaseClips: (prefix: string) => void;
   /** Joue un effet par-dessus la voix ; sans effet si le son est coupé ou encore bloqué, ou la page masquée */
   playEffect: (effect: SoundEffect) => void;
 }
@@ -95,7 +105,7 @@ La promesse de `playClips` est résolue à la fin de la séquence, à son interr
 * **Une seule instance** : `getAudioService()` renvoie le service de l'application (le navigateur limite le nombre de contextes audio) ; `createAudioService({ createContext, fetchClip })` permet de les simuler en test.
 * **Contexte paresseux** : l'`AudioContext` est créée au premier usage. Sans l'API, ou si son constructeur lève (trop de contextes, aucune sortie audio sur le boîtier TV), le service reste muet et le jeu reste jouable.
 * **Déblocage** : écouteurs `pointerdown`, `pointerup`, `touchend` et `keydown` sur `window` (`capture`, `passive`) ; à chacun de ces gestes tant que le contexte dort et que le son est activé, `resume()`, puis la séquence en attente part. Au doigt, `pointerdown` n'active pas la page (seuls `pointerup` et `touchend` le font), d'où les quatre évènements. `playClips` n'attend `resume()` que 150 ms (`RESUME_TIMEOUT_MS`) : sans geste préalable, sa promesse peut ne jamais se résoudre. Un contexte qui démarre seul après ce délai lance aussi la séquence en attente (`onstatechange`) : aucun geste de plus n'est nécessaire.
-* **Sortie audio libérée** : `setEnabled(false)` interrompt la voix, arrête les notes d'effet (en cours ou à venir) et suspend le contexte (batterie, sortie HDMI ou Bluetooth) ; son coupé, rien ne crée ni ne réveille le contexte (`preloadClips`, geste, retour au premier plan). Les notes s'arrêtent d'abord : `suspend()` les figerait, et leur fin partirait à la reprise, sur le début de la voix suivante. `state` peut encore dire `running` juste après `suspend()` (dans Firefox, jusqu'à la résolution de sa promesse) : la voix suivante et le geste suivant appellent donc `resume()` quand même, et un effet demandé entre-temps est perdu (`isSuspendRequested`), sinon ils partiraient sur un contexte en train de se suspendre.
+* **Sortie audio libérée** : `setEnabled(false)` interrompt la voix, arrête les notes d'effet (en cours ou à venir) et suspend le contexte (batterie, sortie HDMI ou Bluetooth) ; son coupé, rien ne crée ni ne réveille le contexte (`preloadClips`, geste, retour au premier plan). Les notes s'arrêtent d'abord : `suspend()` les figerait, et leur fin partirait à la reprise, sur le début de la voix suivante. `state` peut encore dire `running` juste après `suspend()` (dans Firefox, jusqu'à la résolution de sa promesse) : la voix suivante et le geste suivant appellent donc `resume()` quand même, et un effet demandé entre-temps est perdu (`isSuspendRequested`), sinon ils partiraient sur un contexte en train de se suspendre. Remis (`setEnabled(true)`, l'écran suivant qui réapplique le réglage), le contexte qui existe déjà est réveillé aussitôt, page visible : sans cela, les effets du début de l'écran (le premier signal d'une démo de Pas si vite !, [FEAT-28](./FEAT-28.md)) resteraient muets jusqu'à la première voix. Un contexte qui n'existe pas encore n'est pas créé pour autant.
 * **Séquences** : `playClips` commence par invalider la séquence en cours (un numéro incrémenté, y compris par `stopClips` et `setEnabled(false)`) ; chaque étape revérifie ce numéro : une ancienne séquence ne reprend jamais la main. Un arrêt résout la promesse sans attendre le chargement du clip en cours, qui finira quand même dans le cache.
 * **Fichiers** : `fetch` puis `decodeAudioData`, tampons gardés en mémoire par chemin ; un échec n'est pas retenu, le clip sera réessayé au prochain appel. Un chargement sans réponse après 4 s (`CLIP_LOAD_TIMEOUT_MS`) fait sauter le clip, sans l'annuler : il sort du cache, le prochain appel réessaie, et s'il aboutit quand même, son tampon revient dans le cache. `resolveAudioUrl(path)` préfixe `NEXT_PUBLIC_BASE_PATH`, lu à l'appel.
 * **Réveil de la sortie** : un téléviseur (HDMI) ou un casque Bluetooth peut mettre un instant à rouvrir une sortie audio, et couper les premiers mots. À la création du contexte et à chaque reprise (`statechange` vers `running`), la voix ne part qu'à 300 ms du réveil (`WAKE_LEAD_SECONDS`, `start(currentTime + délai)`) ; les clips suivants enchaînent sans délai.
@@ -116,6 +126,10 @@ Oscillateur + enveloppe de gain (attaque de 15 ms, crête à 0,18, extinction ex
 | `bounce` | Rebond | Sinus glissant de 300 à 170 Hz (240 ms), doublé à l'octave (600 à 340 Hz) : un haut-parleur de téléphone ne rend presque rien sous 400 Hz |
 | `stop` | Panneau STOP | Triangle 523 Hz (180 ms), puis 392 Hz à + 200 ms (300 ms) |
 | `victory` | Étoile gagnée | Sinus 523, 659 et 784 Hz (140 ms chacun, toutes les 120 ms), puis 1 047 Hz (320 ms) |
+| `signal` | Pas si vite ! ([FEAT-28](./FEAT-28.md)) : le signal des personnages du castelet, le même pour tous | Triangle 784 Hz (100 ms), puis 1 047 Hz à + 110 ms (160 ms) |
+| `oops` | Pas si vite ! : un piège touché, jamais une sanction | Sinus 494 Hz (140 ms), puis 392 Hz à + 150 ms (240 ms) |
+| `neutral` | Pas si vite ! : une cible ratée | Sinus 440 Hz (220 ms) |
+| `gag` | Pas si vite ! : un piège laissé passer, la récompense du STOP | Triangle, glissando de 330 à 780 Hz (200 ms), puis de 780 à 260 Hz à + 200 ms (300 ms) |
 
 ### 3.5. Voix de la mascotte
 
@@ -143,7 +157,7 @@ Oscillateur + enveloppe de gain (attaque de 15 ms, crête à 0,18, extinction ex
 | `star-won` | Bravo ! Tu as gagné une étoile. | 2,60 s | Étoile gagnée |
 | `crown-won` | Et une couronne, c'est parfait ! | 2,56 s | Étoile gagnée sans aucun rebond, après `star-won` |
 
-* **Génération** (`scripts/generate-voice-clips.py`, outil de développement, jamais lancé par le build, la CI ni F-Droid) : voix `fr_FR-mls-medium`, locuteur 55 sur 125 (`SPEAKER_ID`), `LENGTH_SCALE = 1.2` (plus lent que la voix d'origine), sans bruit aléatoire (`noise_scale` et `noise_w_scale` à 0 : le même script redonne les mêmes fichiers), MP3 mono à 64 kbit/s (`lameenc`, qualité 2). Le script supprime les MP3 sans phrase et réécrit `voice-manifest.json`. Ni Piper ni le modèle ne sont livrés avec l'application.
+* **Génération** (`scripts/generate-voice-clips.py`, outil de développement, jamais lancé par le build, la CI ni F-Droid) : voix `fr_FR-mls-medium`, locuteur 55 sur 125 (`SPEAKER_ID`), `LENGTH_SCALE = 1.2` (plus lent que la voix d'origine), sans bruit aléatoire (`noise_scale` et `noise_w_scale` à 0 : le même script redonne les mêmes fichiers), MP3 mono à 64 kbit/s (`lameenc`, qualité 2). Le script supprime les MP3 sans phrase et réécrit `voice-manifest.json`. Les clips dont l'identifiant commence par `lure-` (Pas si vite !, [FEAT-28](./FEAT-28.md)) sont dits au rythme du modèle, accélérés un par un juste assez pour tenir en 1,1 s de parole. Ni Piper ni le modèle ne sont livrés avec l'application.
 * **Amorce** : ce modèle a appris sur de longues phrases de livres audio. Dite seule, une phrase courte ressort hachée et traînante : avec le locuteur 55, « Il reste des ours à placer. » dure 4,73 s. Chaque phrase est donc dite après une amorce fixe (`LEAD_IN`), terminée par la marque brute `[[.]]` qui force un vrai silence, et le script coupe à la fin de ce silence (2,18 s pour la même phrase, pause finale comprise). Il le repère grâce aux temps de phonèmes du modèle, d'où `piper-tts[alignment]`. Un locuteur qui ne marque aucun silence fait échouer le script.
 * **Son parasite** : devant une consonne en tête de phrase, le modèle laisse échapper un son voisé, comme le « e » de « e-place ». Le script le coupe aussi, là où son niveau a chuté de 10 dB (`STRAY_SOUND_BEFORE`), puis applique un fondu d'entrée de 10 ms. Ce son se fond dans /l/, /m/ et /n/ : il n'y a alors rien à couper.
 * **Pause finale** : 250 ms de silence suivent chaque phrase, la dernière du clip comprise (`SENTENCE_PAUSE_SECONDS`). Le jeu enchaîne certains clips, comme un indice et la règle, ou `star-won` et `crown-won` : sans elle, deux phrases ne seraient séparées que de 200 ms au plus.
@@ -158,7 +172,7 @@ python scripts/generate-voice-clips.py --model chemin/vers/fr_FR-mls-medium.onnx
 
 ### 3.6. Réglage Son et hors-ligne
 
-* **Réglage** : `DeviceSettings.soundEnabled` ([FEAT-05](./FEAT-05.md), interrupteur de [FEAT-18](./FEAT-18.md)) coupe tout : voix et effets. Note de l'interrupteur (`SETTINGS_TEXTS.soundNote`) : « Voix et sons des jeux. Son coupé, les cloches et tambours de Suites Logiques s’affichent en images. Voix générée avec le modèle Piper « MLS » (corpus Multilingual LibriSpeech : Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert), puis modifiée : coupée et ralentie. Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/ » (adresse en texte visible : l'application n'a aucun lien). Un jeu doit donc rester jouable sans aucun son ([FEAT-24](./FEAT-24.md)).
+* **Réglage** : `DeviceSettings.soundEnabled` ([FEAT-05](./FEAT-05.md), interrupteur de [FEAT-18](./FEAT-18.md)) coupe tout : voix et effets. Note de l'interrupteur (`SETTINGS_TEXTS.soundNote`) : « Voix et sons des jeux. Son coupé, les cloches et tambours de Suites Logiques s’affichent en images. Voix générée avec le modèle Piper « MLS » (corpus Multilingual LibriSpeech : Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert), puis modifiée : coupée, ralentie ou accélérée selon la phrase. Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/ » (adresse en texte visible : l'application n'a aucun lien). Un jeu doit donc rester jouable sans aucun son ([FEAT-24](./FEAT-24.md)).
 * **PWA** : `next build` copie `public/audio/` dans `out/`, et le service worker les pré-cache comme n'importe quel fichier de l'export ([FEAT-17](./FEAT-17.md)) ; `fetch` passe par lui hors-ligne. 18 fichiers, 570 Ko.
 * **APK** : `out/` est embarqué tel quel par Capacitor et servi depuis `https://localhost` ([FEAT-15](./FEAT-15.md)) : les clips sont locaux.
 
@@ -169,7 +183,7 @@ Voix distribuée sous **Creative Commons Attribution 4.0 International (CC BY 4.
 * **Corpus** : *MLS: A Large-Scale Multilingual Dataset for Speech Research* (Multilingual LibriSpeech), Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert, 2020 ([arXiv:2012.03411](https://arxiv.org/abs/2012.03411), [OpenSLR 94](https://www.openslr.org/94/)), CC BY 4.0, tiré de livres audio de LibriVox.
 * **Modèle** : [`fr_FR-mls-medium`](https://huggingface.co/rhasspy/piper-voices/tree/main/fr/fr_FR/mls/medium), dont la fiche indique CC-BY 4.0 et « Trained from scratch ».
 * **Moteur** : [Piper](https://github.com/OHF-Voice/piper1-gpl), GPL-3.0, outil de développement non livré avec l'application.
-* **Modifications** : synthèse des phrases du script par un seul locuteur du modèle, à la suite d'une amorce ensuite coupée, ralentissement, encodage en MP3.
+* **Modifications** : synthèse des phrases du script par un seul locuteur du modèle, à la suite d'une amorce ensuite coupée, ralentissement, encodage en MP3. Les « … vole ! » de Pas si vite ! ([FEAT-28](./FEAT-28.md) §14.8) ne sont pas ralentis : ils gardent la vitesse du modèle, et l'un d'eux est accéléré pour tenir dans la fenêtre la plus courte du jeu.
 
 ---
 
@@ -213,7 +227,7 @@ Décisions prises avec le propriétaire au fil de trois séries de questions, av
 | **Licences admises** | **CC0 ou CC BY seulement.** F-Droid signale les médias `NC` et `ND` comme « Non-Free », et comme cette voix porte les règles, elle est traitée comme fonctionnelle. Écartés pour cette raison : la **licence Pixabay** ; la **voix `tom` de Piper** (AGPL et conditions séparées pour la voix). Voir les points de licence au [§4](#4-points-dattention). |
 | **Locuteur** *(choix du propriétaire, à l'écoute)* | **Le locuteur 55, choisi à l'oreille par le propriétaire, entre un échantillon des 18 phrases par le 55 et un autre par le 4.** Le modèle compte 125 locuteurs : 49 présélectionnés sur le bruit de fond, les aigus et la hauteur de voix, dont 16 marquent un vrai silence après l'amorce. 8 de ces 16 ont été comparés sur les 18 phrases, par alignement dynamique avec les mêmes phrases dites par « Siwis » : chaque clip doit retrouver sa phrase, ce qui approche l'intelligibilité sans remplacer une écoute. Sur ces seules mesures, Claude proposait le 4 : il retrouve les 18 phrases, va plus vite (62,0 s contre 70,1 s) et ne marque pas plus de 230 ms de silence dans une règle, contre 455 ms pour le 55, plus clair dans les aigus. Le 55 en retrouve 17 : `rule-except-big` tombe à égalité avec `rule-except-small` (1,885 contre 1,883), et retrouve bien « grand » sur la fin de la phrase seule. Écarté aussi : le 22, dont la mise en garde dépasse les 5 s du STOP. Pour en essayer un autre : changer `SPEAKER_ID` et relancer le script. |
 | **Amorce et coupes** *(arbitrage de Claude)* | **Une amorce dite avant chaque phrase puis coupée, et le son parasite retiré ([§3.5](#35-voix-de-la-mascotte)).** Avec le locuteur 55, le même test retrouve 13 phrases sur 18 sans amorce, 17 sur 18 avec ; le script dure 70,1 s au lieu de 77,1 s (60,4 s avec « Siwis »). Écartés : **régler le rythme phrase par phrase** (durées corrigées, mais spectrogrammes toujours aussi plats) ; **d'autres marques de silence** (plusieurs points ajoutent eux-mêmes des sons parasites, sans espace le silence disparaît). |
-| **Effets** | **Synthétisés par la Web Audio API, sans aucun fichier** : rien à gérer ni à créditer. Quatre effets (`success`, `bounce`, `stop`, `victory`), doux et brefs. |
+| **Effets** | **Synthétisés par la Web Audio API, sans aucun fichier** : rien à gérer ni à créditer. Quatre effets (`success`, `bounce`, `stop`, `victory`), doux et brefs ; Pas si vite ! en ajoute quatre (`signal`, `oops`, `neutral`, `gag`, [§3.4](#34-effets-sonores-effects-dans-audio-servicets)). |
 | **Lecture** | **Une seule `AudioContext` pour la voix et les effets, clips décodés par `decodeAudioData`.** Elle se débloque au premier geste puis joue sans autre geste, ce qu'un élément `<audio>` ne garantit pas sur iOS. Les fichiers passent par `fetch`, donc par le service worker hors-ligne. Aucune bibliothèque audio : le besoin tient en quelques appels à la Web Audio API. |
 | **Réglage Son** | **Il coupe tout : voix et effets**, jamais l'un sans l'autre. Écarté : une **voix qui ignorerait le réglage** parce qu'elle porte la règle (trahit la promesse du réglage). C'est l'image de la règle, toujours à l'écran, qui garde le jeu jouable son coupé ([FEAT-24](./FEAT-24.md)). |
 | **Texte de la voix** *(arbitrage de Claude, à relire)* | La formulation française de `voice-script.json` a été écrite par Claude : tutoiement de Mia, phrases courtes, de 1 à 5 s environ. « Oh, ton cerveau… » s'écrit avec une virgule : dit comme une phrase à part, « Oh ! » ressortait faible et morcelé. À relire : voir « Non vérifié ». |

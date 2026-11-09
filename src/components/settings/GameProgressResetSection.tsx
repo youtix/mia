@@ -5,7 +5,7 @@ import { CONFIRM_GUARD_MS } from '@/core/navigation';
 import { resetGameProgress, useMiaStorage } from '@/core/storage';
 import type { GameId, GameProgress, UserProfile } from '@/types/mia';
 import { RotateCcw, TriangleAlert } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, type CSSProperties } from 'react';
 import { ConfirmActions } from './ConfirmActions';
 import type { SettingsOptionZone } from './GameSettingsSection';
 import {
@@ -117,8 +117,13 @@ export function GameProgressResetSection({
         title={GAME_RESET_TEXTS.groupTitle}
         description={describeGameResetNote(profile.name)}
       >
-        {/* Une rangée sur TV, deux colonnes en étroit : la zone D-Pad suit (SettingsScreen). */}
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5 md:gap-3">
+        {/* Une rangée sur TV, un bouton par jeu, deux colonnes en étroit : la zone D-Pad suit
+            (SettingsScreen). Le nombre de colonnes vient de la même liste que la zone, pour qu'un jeu
+            ajouté ne passe pas à la ligne sous le premier. */}
+        <div
+          className="grid grid-cols-2 gap-2 sm:grid-cols-[repeat(var(--reset-cols),minmax(0,1fr))] md:gap-3"
+          style={{ '--reset-cols': GAME_RESET_ORDER.length } as CSSProperties}
+        >
           {GAME_RESET_ORDER.map((gameId, index) => {
             const { stars, crowns } = countGameStars(profile.gamesProgress[gameId]);
             return (
@@ -134,8 +139,9 @@ export function GameProgressResetSection({
                 }}
                 onFocus={onFocus}
               >
-                {/* Titre puis décompte, sur deux lignes : même patron que les options de temps. */}
-                <span className="flex flex-col items-center leading-tight">
+                {/* Titre puis décompte, sur deux lignes : même patron que les options de temps. Lignes
+                    équilibrées : à six colonnes, « Pas si vite ! » ne laisse pas son « ! » seul. */}
+                <span className="flex flex-col items-center leading-tight text-balance">
                   {GAME_TITLES[gameId]}
                   <span className="text-fluid-xs font-normal text-slate-300">
                     {describeGameStars(stars, crowns)}

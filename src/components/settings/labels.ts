@@ -23,7 +23,7 @@ export const SETTINGS_TEXTS = {
   tvModeNote:
     'Force la mise en page TV (marges, aides de la télécommande) quand la détection automatique se trompe, par exemple avec une télécommande à pointeur.',
   soundNote:
-    'Voix et sons des jeux. Son coupé, les cloches et tambours de Suites Logiques s’affichent en images. Voix générée avec le modèle Piper « MLS » (corpus Multilingual LibriSpeech : Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert), puis modifiée : coupée et ralentie. Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/',
+    'Voix et sons des jeux. Son coupé, les cloches et tambours de Suites Logiques s’affichent en images. Voix générée avec le modèle Piper « MLS » (corpus Multilingual LibriSpeech : Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert), puis modifiée : coupée, ralentie ou accélérée selon la phrase. Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/',
   contrastNote: 'Texte plus clair, bordures et anneau de focus renforcés, fonds opaques.',
 } as const;
 
@@ -190,6 +190,7 @@ export const GAME_TITLES: Readonly<Record<GameId, string>> = {
   patterns: 'Suites Logiques',
   'bear-sort': 'Attrape-Piège',
   'logic-grid': 'Chacun sa Place',
+  'go-no-go': 'Pas si vite !',
 };
 
 /** Jeux de la section « Progression », dans l'ordre du Hub (celui de `GAME_REGISTRY`, testé). */
@@ -199,6 +200,7 @@ export const GAME_RESET_ORDER: readonly GameId[] = [
   'patterns',
   'bear-sort',
   'logic-grid',
+  'go-no-go',
 ];
 
 /** Textes fixes de la section « Progression » : remise à zéro d'un jeu pour le profil actif. */

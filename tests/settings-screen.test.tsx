@@ -732,7 +732,7 @@ describe('Réglages de jeu', () => {
     press('ArrowDown');
     expect(getButton('Télécharger le fichier')).toHaveFocus();
     press('ArrowUp');
-    expect(getButton('Remettre Chacun sa Place à zéro')).toHaveFocus();
+    expect(getButton('Remettre Pas si vite ! à zéro')).toHaveFocus();
     press('ArrowUp');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     // En remontant : sur l'option choisie (« Long »), pas sur la dernière visitée (« Court »).
@@ -839,6 +839,14 @@ describe('Progression', () => {
     expect(
       within(getButton('Remettre Suites Logiques à zéro')).getByText('Aucune étoile'),
     ).toBeInTheDocument();
+  });
+
+  it('dessine une rangée d’un bouton par jeu au-delà du seuil `sm`, comme la zone D-Pad', async () => {
+    await renderSettings();
+    const grid = getButton('Remettre Memory à zéro').parentElement;
+    expect(grid).toHaveClass('sm:grid-cols-[repeat(var(--reset-cols),minmax(0,1fr))]');
+    expect(grid?.style.getPropertyValue('--reset-cols')).toBe(String(GAME_RESET_ORDER.length));
+    expect(GAME_RESET_ORDER).toHaveLength(6);
   });
 
   it('suit l’ordre et les noms du registre', () => {
@@ -1560,7 +1568,7 @@ describe('Sauvegarde', () => {
     // Au-dessus de la sauvegarde : la remise à zéro, sur le dernier jeu ; plus haut, le dernier
     // sélecteur de temps de Memory, sur l'option choisie.
     press('ArrowUp');
-    expect(getButton('Remettre Chacun sa Place à zéro')).toHaveFocus();
+    expect(getButton('Remettre Pas si vite ! à zéro')).toHaveFocus();
     press('ArrowUp');
     expect(getFactorRadio(MISMATCH_GROUP, 'Normal')).toHaveFocus();
     press('ArrowDown');
@@ -1695,7 +1703,7 @@ describe('Libellés', () => {
       'Voix générée avec le modèle Piper « MLS »',
       'corpus Multilingual LibriSpeech',
       'Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert',
-      'puis modifiée : coupée et ralentie',
+      'puis modifiée : coupée, ralentie ou accélérée selon la phrase',
       'Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/',
     ];
 

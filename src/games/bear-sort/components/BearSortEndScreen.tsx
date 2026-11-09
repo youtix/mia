@@ -2,6 +2,7 @@
 
 import { FocusableButton, ModalDialog } from '@/components/ui';
 import { END_SCREEN_GUARD_MS, useGridNavigation } from '@/core/navigation';
+import { cn } from '@/lib/cn';
 import { ArrowRight, MapIcon, RotateCcw, type LucideIcon } from 'lucide-react';
 import { StarAward } from './StarAward';
 
@@ -15,6 +16,12 @@ export interface BearSortEndScreenProps {
   onNext: () => void;
   onReplay: () => void;
   onExitToMap: () => void;
+  /** Boutons sans effet pendant ce délai (défaut : `END_SCREEN_GUARD_MS`, celui de tous les jeux) */
+  inputGuardMs?: number;
+  /** Zone D-Pad des boutons (défaut : celle d'Attrape-Piège) */
+  scopeId?: string;
+  /** Boîte en haut de l'écran : aucun bouton ne tombe là où la main tapait encore (Pas si vite !) */
+  isTopAligned?: boolean;
 }
 
 /** Phrase réservée aux lecteurs d'écran : la couronne n'est qu'un dessin. */
@@ -26,6 +33,7 @@ const CROWN_SENTENCE = 'Tu as la couronne !';
  * Étoiles). Ni coups ni erreurs : l'enfant finit toujours sur son étoile. Boutons sans effet pendant
  * que l'étoile se pose : un enfant qui tape encore, au même endroit, ne saute pas sa récompense.
  * Paysage très bas : l'étoile à côté des boutons, qui resteraient sinon en partie sous le bord.
+ * Partagé avec Pas si vite !, qui allonge la garde et monte la boîte en haut de l'écran.
  */
 export function BearSortEndScreen({
   isOpen,
@@ -35,6 +43,9 @@ export function BearSortEndScreen({
   onNext,
   onReplay,
   onExitToMap,
+  inputGuardMs = END_SCREEN_GUARD_MS,
+  scopeId = 'bear-sort-end-actions',
+  isTopAligned = false,
 }: BearSortEndScreenProps) {
   const actions: EndAction[] = [
     { id: 'replay', label: 'Rejouer', icon: RotateCcw, onClick: onReplay },
@@ -50,13 +61,21 @@ export function BearSortEndScreen({
       title={`Étoile #${String(starNumber)} gagnée`}
       subtitle={hasCrown ? CROWN_SENTENCE : undefined}
       isTextless
-      inputGuardMs={END_SCREEN_GUARD_MS}
-      className="items-center landscape:[@media(max-height:24rem)]:max-w-2xl landscape:[@media(max-height:24rem)]:flex-row landscape:[@media(max-height:24rem)]:justify-center"
+      inputGuardMs={inputGuardMs}
+      className={cn(
+        'items-center landscape:[@media(max-height:24rem)]:max-w-2xl landscape:[@media(max-height:24rem)]:flex-row landscape:[@media(max-height:24rem)]:justify-center',
+        isTopAligned && 'self-start',
+      )}
     >
       <div data-star-award="true" data-crown={hasCrown || undefined}>
-        <StarAward hasCrown={hasCrown} className="size-[clamp(8rem,42vmin,18rem)]" />
+        <StarAward
+          hasCrown={hasCrown}
+          className={
+            isTopAligned ? 'size-[clamp(8rem,38vmin,16rem)]' : 'size-[clamp(8rem,42vmin,18rem)]'
+          }
+        />
       </div>
-      <EndActions actions={actions} onBack={onExitToMap} />
+      <EndActions actions={actions} scopeId={scopeId} onBack={onExitToMap} />
     </ModalDialog>
   );
 }
@@ -73,9 +92,17 @@ interface EndAction {
  * Zone D-Pad déclarée dans la modale (FEAT-04 §5) : sa couche suspend le plateau. Curseur sur la
  * première action ; Retour → Carte des Étoiles (la modale n'a pas d'`onClose`).
  */
-function EndActions({ actions, onBack }: { actions: EndAction[]; onBack: () => void }) {
+function EndActions({
+  actions,
+  scopeId,
+  onBack,
+}: {
+  actions: EndAction[];
+  scopeId: string;
+  onBack: () => void;
+}) {
   const zone = useGridNavigation({
-    scopeId: 'bear-sort-end-actions',
+    scopeId,
     rows: 1,
     cols: actions.length,
     onBack,

@@ -67,6 +67,17 @@ interface ReplacedClick {
 let installCount = 0;
 let guardedUntil = 0;
 let lastPopAt = Number.NEGATIVE_INFINITY;
+/** Vrai pendant le `click()` que la garde déclenche elle-même, faute de clic du navigateur. */
+let isSynthesizing = false;
+
+/**
+ * Le clic en cours vient-il de la garde (un tap sans clic du navigateur, cliqué à sa place après le
+ * relâchement) ? Un plateau qui compte déjà le contact lui-même (`pointerdown`) l'ignore : ce n'est
+ * pas un second appui, contrairement au clic d'un lecteur d'écran, qui n'a été précédé d'aucun contact.
+ */
+export function isSynthesizedActivation(): boolean {
+  return isSynthesizing;
+}
 
 /**
  * Ignore les activations pendant `durationMs`. Sans `installActivationGuard` (composant rendu seul,
@@ -120,8 +131,13 @@ export function installActivationGuard(): () => void {
     replacedClick = { control, until: performance.now() + LATE_CLICK_WINDOW_MS };
     control.focus({ preventScroll: true });
     isClickingControl = true;
-    control.click();
-    isClickingControl = false;
+    isSynthesizing = true;
+    try {
+      control.click();
+    } finally {
+      isClickingControl = false;
+      isSynthesizing = false;
+    }
   };
 
   const onPointerDown = (event: PointerEvent) => {

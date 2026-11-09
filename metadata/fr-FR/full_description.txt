@@ -1,4 +1,4 @@
-Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits, raisonnement sur des suites logiques (dès 4 ans), déduction par élimination (dès 5 ans), flexibilité mentale et inhibition (dès 3 ans).
+Mia est une application gratuite et open-source (GPL-3.0) d'entraînement cérébral pour toute la famille : mémoire de travail, repérage dans l'espace, logique et planification, et, pour les petits, raisonnement sur des suites logiques (dès 4 ans), déduction par élimination (dès 5 ans), flexibilité mentale et inhibition (dès 3 ans), retenir son geste en un éclair (dès 3 ans).
 
 Une seule application pour trois usages :
 
@@ -13,6 +13,7 @@ Les jeux :
 - Suites Logiques : pour les petits dès 4 ans, complète la suite en images puis en sons, sans aucun texte à lire ; on ne peut pas perdre, et un panneau STOP apprend à se retenir.
 - Attrape-Piège (pour les 3 à 6 ans) : range les ours dans la bonne boîte, par couleur ou par taille, jusqu'à ce qu'un panneau STOP change la règle. La mascotte dit les règles à voix haute, sans aucun texte à lire pendant la partie, et personne ne peut perdre.
 - Chacun sa Place (pour les 5 à 8 ans) : place les pièces sur une grille de morpion d'après des cartes en images (une case, une ligne, deux pièces qui se touchent, une croix pour « pas »), puis sonne la cloche pour vérifier. Sans aucun texte à lire ; une erreur montre la carte à relire, et personne ne peut perdre.
+- Pas si vite ! (pour les 3 à 6 ans) : un seul énorme buzzer, des images qui défilent. Tape quand c'est la chouette, quand ça vole, puis retiens-toi quand le panneau STOP arrive trop tard ; la vitesse s'adapte à chaque enfant. Sans aucun texte à lire, personne ne peut perdre : tout ce qui est raté repasse plus tard.
 
 Une progression par étoiles sur cinq paliers de difficulté, de Très Facile à Très Difficile : chaque niveau réussi rapporte une étoile, un sans-faute rapporte une couronne. Plusieurs profils peuvent coexister sur le même appareil (famille, salon partagé), chacun avec sa propre progression. La sauvegarde s'exporte et s'importe au format JSON.
 
