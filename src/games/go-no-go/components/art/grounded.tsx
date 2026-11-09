@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import type { GroundedImageId } from '../../types';
+import { ART_STROKE, ART_INK as INK } from '../art-tokens';
 
 /**
  * Dessins des images qui ne volent pas (règle 2 de « Pas si vite ! », FEAT-28 §4.2). Chacun remplit
@@ -9,16 +10,11 @@ import type { GroundedImageId } from '../../types';
  * eux ; le reste pose simplement ses pieds sur la ligne de base (vers y = 90).
  */
 
-const INK = '#1e293b';
 const WHITE = '#ffffff';
 
-/** Contour commun : chaque dessin l'hérite de son groupe racine. */
+/** Contour commun à tous les dessins (`ART_STROKE`) : chaque dessin l'hérite de son groupe racine. */
 function Drawing({ children }: { children: ReactNode }) {
-  return (
-    <g stroke={INK} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round">
-      {children}
-    </g>
-  );
+  return <g {...ART_STROKE}>{children}</g>;
 }
 
 /** Œil rond : pupille sombre et petit reflet blanc. */

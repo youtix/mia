@@ -1,39 +1,10 @@
-import type { GoNoGoLevelConfig, SubjectId } from './types';
+import type { GoNoGoLevelConfig } from './types';
 
 /**
  * Libellés de Pas si vite ! (FEAT-28 §8.3), réservés aux lecteurs d'écran et à `validate:levels` : le
  * jeu n'affiche aucun texte. TypeScript pur, sans React. Un jeu de vitesse visuel reste peu adapté à
  * TalkBack : aucune annonce par apparition, elle arriverait après la fenêtre.
  */
-
-const SUBJECT_LABELS: Readonly<Record<SubjectId, string>> = {
-  owl: 'La chouette',
-  fox: 'Le renard',
-  cat: 'Le chat gris',
-  pigeon: 'Un pigeon',
-  plane: 'Un avion',
-  helicopter: 'Un hélicoptère',
-  butterfly: 'Un papillon',
-  bee: 'Une abeille',
-  rocket: 'Une fusée',
-  cow: 'Une vache',
-  pig: 'Un cochon',
-  dog: 'Un chien',
-  fish: 'Un poisson',
-  snail: 'Un escargot',
-  turtle: 'Une tortue',
-  car: 'Une voiture',
-  train: 'Un train',
-  boat: 'Un bateau',
-  chair: 'Une chaise',
-  house: 'Une maison',
-  tree: 'Un arbre',
-};
-
-/** Nom d'un personnage ou d'une image, avec son article (« Une vache »). */
-export function getSubjectLabel(subject: SubjectId): string {
-  return SUBJECT_LABELS[subject];
-}
 
 /** Règle de l'étoile en quelques mots (résumé de `validate:levels`, titre de la scène). */
 export function getRuleTitle({ rule, hasLure, traps }: GoNoGoLevelConfig): string {

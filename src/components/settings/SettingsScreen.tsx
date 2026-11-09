@@ -32,7 +32,7 @@ import { SettingsSection } from './SettingsSection';
  */
 const WIDE_OPTIONS_QUERY = '(min-width: 40rem)';
 const NARROW_TIME_FACTOR_COLS = 2;
-/** Boutons de remise à zéro par jeu, en étroit (une rangée de cinq sur TV). */
+/** Boutons de remise à zéro par jeu, en étroit (une rangée d'un bouton par jeu sur TV). */
 const NARROW_GAME_RESET_COLS = 2;
 
 /**

@@ -18,15 +18,10 @@ import {
   resolveAppearance,
   startAppearance,
   TRAP_FREE_APPEARANCES,
-  TRIAL_COUNT,
 } from '@/games/go-no-go/engine';
 import { FLYING_IMAGES, GROUNDED_IMAGES } from '@/games/go-no-go/subjects';
-import type {
-  Appearance,
-  GoNoGoLevelConfig,
-  GoNoGoState,
-  Presentation,
-} from '@/games/go-no-go/types';
+import type { Appearance, GoNoGoLevelConfig, GoNoGoState, OnStage } from '@/games/go-no-go/types';
+import { createSeededRng } from '@/games/logic-grid/generator';
 import type { Rng } from '@/games/memory/random';
 import { describe, expect, it } from 'vitest';
 
@@ -35,17 +30,8 @@ const FIRST: Rng = () => 0;
 /** Tirage toujours au plus haut : la dernière série, la dernière image, la remise la plus lointaine. */
 const LAST: Rng = () => 0.999999;
 
-/** Générateur à graine (mulberry32) : parties reproductibles. */
-function seeded(seed: number): Rng {
-  let state = seed >>> 0;
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0;
-    let t = state;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+/** Générateur à graine du catalogue (mulberry32) : parties reproductibles. */
+const seeded = createSeededRng;
 
 /** Règle 1 : 12 apparitions dont 3 pièges (le renard), fenêtre de 2,5 à 2 s. */
 const OWL: GoNoGoLevelConfig = {
@@ -115,13 +101,12 @@ function pattern(queue: readonly Appearance[]): string {
   return queue.map((entry) => ({ target: '.', trap: 'T', stop: 'S' })[entry.kind]).join('');
 }
 
-/** Fait entrer l'apparition suivante et renvoie l'état, avec sa présentation. */
-function enter(
-  state: GoNoGoState,
-): GoNoGoState & { presentation: Presentation; current: Appearance } {
+/** Fait entrer l'apparition suivante et renvoie l'état, l'apparition sur scène présente. */
+function enter(state: GoNoGoState): GoNoGoState & { onStage: OnStage } {
   const next = startAppearance(state);
-  if (!next.presentation || !next.current) throw new Error('aucune apparition sur scène');
-  return { ...next, presentation: next.presentation, current: next.current };
+  const { onStage } = next;
+  if (!onStage) throw new Error('aucune apparition sur scène');
+  return { ...next, onStage };
 }
 
 /** Une apparition, jouée avec un appui à `pressedAtMs` (`null` : fenêtre écoulée sans appui). */
@@ -132,7 +117,11 @@ function play(state: GoNoGoState, pressedAtMs: number | null, rng: Rng = FIRST):
 /** L'enfant attentive : appuie sur la cible, se retient devant un piège ou un STOP. */
 function answerCorrectly(state: GoNoGoState): GoNoGoState {
   const entered = enter(state);
-  return resolveAppearance(entered, entered.current.kind === 'target' ? 500 : null, FIRST);
+  return resolveAppearance(
+    entered,
+    entered.onStage.appearance.kind === 'target' ? 500 : null,
+    FIRST,
+  );
 }
 
 /** Joue `count` apparitions correctes à la suite. */
@@ -256,11 +245,9 @@ describe('createGoNoGoGame', () => {
     expect(game).toMatchObject({
       config: OWL,
       status: 'between',
-      current: null,
-      presentation: null,
+      onStage: null,
       windowMs: 2500,
       stopDelayMs: 150,
-      paceStreak: 0,
       runLength: 0,
       heldWindowMs: null,
       trapStreak: 0,
@@ -402,7 +389,7 @@ describe('createGoNoGoGame', () => {
 describe('createTrialPlan', () => {
   it('prépare quatre essais : cible, cible, piège, cible', () => {
     const plan = createTrialPlan(OWL, seeded(1));
-    expect(plan).toHaveLength(TRIAL_COUNT);
+    expect(plan).toHaveLength(4);
     expect(pattern(plan)).toBe('..T.');
     expect(plan.map((entry) => entry.subject)).toEqual(['owl', 'owl', 'fox', 'owl']);
   });
@@ -449,13 +436,13 @@ describe('startAppearance', () => {
     const game = createGoNoGoGame(OWL, FIRST);
     const entered = startAppearance(game);
     expect(entered.status).toBe('window');
-    expect(entered.current).toBe(game.queue[0]);
+    expect(entered.onStage?.appearance).toBe(game.queue[0]);
     expect(entered.queue).toEqual(game.queue.slice(1));
     expect(entered.shown).toBe(1);
   });
 
   it('fige les paramètres de la cible : la fenêtre en vigueur, rien d’autre', () => {
-    expect(enter(createGoNoGoGame(OWL, FIRST)).presentation).toEqual({
+    expect(enter(createGoNoGoGame(OWL, FIRST)).onStage.presentation).toEqual({
       windowMs: 2500,
       stopAtMs: null,
       help: 0,
@@ -492,8 +479,7 @@ describe('resolveAppearance : les quatre issues', () => {
       cleared: 1,
       missed: 0,
       trapped: 0,
-      current: null,
-      presentation: null,
+      onStage: null,
       lastResult: { appearance: game.queue[0], outcome: 'caught', help: 0 },
     });
     expect(next.queue).toHaveLength(11);
@@ -525,6 +511,73 @@ describe('resolveAppearance : les quatre issues', () => {
     const next = play(game, null, LAST);
     expect(next.queue).toHaveLength(2);
     expect(next.queue[1]).toBe(first);
+  });
+
+  it('une remise ne suit ni ne précède la même image (§14.2.2)', () => {
+    const game = createGoNoGoGame(FLIES, FIRST);
+    const target = (subject: Appearance['subject'], id: number): Appearance => ({
+      id,
+      kind: 'target',
+      subject,
+      hideout: 0,
+    });
+    const missed = target('pigeon', 1);
+    const queue = [
+      target('butterfly', 2),
+      target('pigeon', 3),
+      target('plane', 4),
+      target('bee', 5),
+    ];
+    // Avec le tirage le plus bas, la remise irait en 2e place, juste avant un pigeon ; en 3e, juste
+    // après lui : elle glisse jusqu'en 4e.
+    const next = play({ ...game, queue: [missed, ...queue] }, null, FIRST);
+    expect(next.queue.map((entry) => entry.id)).toEqual([2, 3, 4, 1, 5]);
+  });
+
+  it('une remise change de cachette quand l’une de ses voisines a la sienne', () => {
+    const config: GoNoGoLevelConfig = { ...OWL, hideouts: 3 };
+    const owl = (id: number, hideout: number): Appearance => ({
+      id,
+      kind: 'target',
+      subject: 'owl',
+      hideout,
+    });
+    const game = createGoNoGoGame(config, FIRST);
+    const next = play(
+      { ...game, queue: [owl(1, 1), owl(2, 0), owl(3, 1), owl(4, 2)] },
+      null,
+      FIRST,
+    );
+    // Remise en 2e place, entre la cachette 0 et la cachette 1 : elle prend la 2.
+    expect(next.queue.map((entry) => [entry.id, entry.hideout])).toEqual([
+      [2, 0],
+      [1, 2],
+      [3, 1],
+      [4, 2],
+    ]);
+  });
+
+  it('un piège remis compte celui qui vient d’être montré : jamais trois d’affilée (§14.1)', () => {
+    const game = createGoNoGoGame(FLIES, FIRST);
+    const entry = (id: number, kind: Appearance['kind'], subject: Appearance['subject']) => ({
+      id,
+      kind,
+      subject,
+      hideout: 0,
+    });
+    // Le piège touché ouvrait une paire : en 2e place, il suivrait son partenaire et ferait, avec
+    // lui-même juste montré, trois pièges d'affilée.
+    const queue = [
+      entry(1, 'trap', 'cow'),
+      entry(2, 'trap', 'pig'),
+      entry(3, 'target', 'plane'),
+      entry(4, 'target', 'bee'),
+      entry(5, 'target', 'rocket'),
+    ];
+    const next = play({ ...game, queue }, 300, FIRST);
+    expect(next.lastResult?.outcome).toBe('trapped');
+    expect(pattern(next.queue)).toBe('T.T..');
+    expect(next.queue.map((appearance) => appearance.id)).toEqual([2, 3, 1, 4, 5]);
   });
 
   it('remet une cible ratée seule dans la file si c’était la dernière', () => {
@@ -627,10 +680,15 @@ describe('résolution : la cadence (§5.1)', () => {
     let game = createGoNoGoGame(OWL, FIRST);
     game = playCorrectly(game, 2);
     expect(game.windowMs).toBe(2500);
-    expect(game.paceStreak).toBe(2);
+    expect(game.runLength).toBe(2);
     game = playCorrectly(game, 1);
     expect(game.windowMs).toBe(2250);
-    expect(game.paceStreak).toBe(0);
+    // La série continue : c'est la 6e réussite qui accélère de nouveau, pas la 4e.
+    game = playCorrectly(game, 2);
+    expect(game.windowMs).toBe(2250);
+    game = playCorrectly(game, 1);
+    expect(game.windowMs).toBe(2025);
+    expect(game.runLength).toBe(6);
   });
 
   it('ne descend jamais sous la vitesse maximale de l’étoile', () => {
@@ -658,7 +716,7 @@ describe('résolution : la cadence (§5.1)', () => {
   it('remet à zéro les réussites d’affilée à chaque erreur', () => {
     let game = playCorrectly(createGoNoGoGame(OWL, FIRST), 2);
     game = play(game, null);
-    expect(game).toMatchObject({ paceStreak: 0, runLength: 0 });
+    expect(game).toMatchObject({ runLength: 0 });
     game = playCorrectly(game, 2);
     expect(game.windowMs).toBe(2750);
   });
@@ -699,6 +757,51 @@ describe('résolution : la vitesse tenue (§11.2)', () => {
     expect(getHeldWindowMs(game)).toBe(game.windowMs);
   });
 
+  it('la réussite qui gagne l’étoile n’accélère rien : la fin de partie est la fenêtre jouée', () => {
+    // Une étoile de 6 apparitions, parfaite : 3 réussites à 2500 ms, puis 3 à 2250 ms. La 6e aurait
+    // raccourci la fenêtre à 2025 ms, que l'enfant n'a jamais jouée.
+    const config: GoNoGoLevelConfig = { ...OWL, appearances: 6, traps: 1 };
+    let game = createGoNoGoGame(config, FIRST);
+    while (game.status !== 'won') game = answerCorrectly(game);
+    expect(game.heldWindowMs).toBeNull();
+    expect(game.windowMs).toBe(2250);
+    expect(getHeldSpeedSeconds(game)).toBe(2.25);
+  });
+
+  describe('une cible qui attendait (échelon 3) ne dit rien de la vitesse (§14.2.1)', () => {
+    /** Trois cibles ratées d'affilée : la quatrième attend sans limite de temps. */
+    function waitingTarget(patch: Partial<GoNoGoState> = {}): GoNoGoState & { onStage: OnStage } {
+      const entered = enter({ ...createGoNoGoGame(OWL, FIRST), missStreak: 3, ...patch });
+      expect(entered.onStage.presentation.windowMs).toBeNull();
+      return entered;
+    }
+
+    it('attrapée, elle remet l’aide à zéro et compte une perle, sans accélérer', () => {
+      const next = resolveAppearance(waitingTarget({ runLength: 2 }), 900, FIRST);
+      expect(next).toMatchObject({ cleared: 1, missStreak: 0, runLength: 0, windowMs: 2500 });
+      expect(next.lastResult).toMatchObject({ outcome: 'caught', help: 0 });
+    });
+
+    it('elle interrompt la série : la 8e réussite d’affilée n’est pas la sienne', () => {
+      const next = resolveAppearance(waitingTarget({ runLength: 7 }), 900, FIRST);
+      expect(next.heldWindowMs).toBeNull();
+      expect(next.runLength).toBe(0);
+    });
+
+    it('l’enfant qui n’attrape que les cibles qui attendent garde la fenêtre la plus lente', () => {
+      // Le garde-fou passé, toutes les cibles attendent : l'enfant passive les attrape toutes et
+      // laisse passer les pièges, sans jamais rien jouer contre le temps.
+      let game = { ...createGoNoGoGame(OWL, FIRST), windowMs: MAX_WINDOW_MS, shown: 18 };
+      while (game.status !== 'won') {
+        const entered = enter(game);
+        const { windowMs } = entered.onStage.presentation;
+        game = resolveAppearance(entered, windowMs === null ? 500 : null, FIRST);
+      }
+      expect(game.heldWindowMs).toBeNull();
+      expect(getHeldSpeedSeconds(game)).toBe(3);
+    });
+  });
+
   it('exprime la vitesse tenue en secondes, au centième près', () => {
     const game = { ...createGoNoGoGame(OWL, FIRST), heldWindowMs: 1234 };
     expect(getHeldWindowMs(game)).toBe(1234);
@@ -718,8 +821,8 @@ describe('résolution : le STOP tardif (§5.2, §4.3)', () => {
 
   it('part à 150 ms de l’entrée, la fenêtre en vigueur moins 300 ms permettant', () => {
     const entered = enter(stopFirst());
-    expect(entered.presentation.stopAtMs).toBe(150);
-    expect(entered.presentation.windowMs).toBe(1800);
+    expect(entered.onStage.presentation.stopAtMs).toBe(150);
+    expect(entered.onStage.presentation.windowMs).toBe(1800);
   });
 
   it('un STOP réussi allonge le délai de 50 ms, sans dépasser le plafond de l’étoile', () => {
@@ -756,12 +859,12 @@ describe('résolution : le STOP tardif (§5.2, §4.3)', () => {
 
   it('ne laisse pas le STOP arriver à moins de 300 ms de la fin de la fenêtre', () => {
     const entered = enter({ ...stopFirst(), stopDelayMs: 300, windowMs: 520 });
-    expect(entered.presentation.stopAtMs).toBe(220);
+    expect(entered.onStage.presentation.stopAtMs).toBe(220);
   });
 
   it('ne laisse pas le STOP descendre sous 100 ms, même avec une fenêtre très courte', () => {
     const entered = enter({ ...stopFirst(), stopDelayMs: 300, windowMs: 350 });
-    expect(entered.presentation.stopAtMs).toBe(MIN_STOP_DELAY_MS);
+    expect(entered.onStage.presentation.stopAtMs).toBe(MIN_STOP_DELAY_MS);
   });
 
   it('borne le délai de départ par le plafond de l’étoile', () => {
@@ -787,7 +890,7 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
   describe('cibles ratées', () => {
     it('1 raté : rien de plus, la cible repasse', () => {
       const game = { ...createGoNoGoGame(OWL, FIRST), missStreak: 1 };
-      expect(enter(game).presentation).toMatchObject({
+      expect(enter(game).onStage.presentation).toMatchObject({
         help: 1,
         pulsesBuzzer: false,
         showsHand: false,
@@ -796,7 +899,7 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
 
     it('2 ratés d’affilée : la cible suivante arrive avec le buzzer qui pulse', () => {
       const game = { ...createGoNoGoGame(OWL, FIRST), missStreak: 2 };
-      expect(enter(game).presentation).toMatchObject({
+      expect(enter(game).onStage.presentation).toMatchObject({
         windowMs: 2500,
         help: 2,
         pulsesBuzzer: true,
@@ -806,7 +909,7 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
 
     it('3 ratés d’affilée : la cible attend sans limite de temps, buzzer qui pulse et main qui montre', () => {
       const game = { ...createGoNoGoGame(OWL, FIRST), missStreak: 3 };
-      expect(enter(game).presentation).toMatchObject({
+      expect(enter(game).onStage.presentation).toMatchObject({
         windowMs: null,
         help: 3,
         pulsesBuzzer: true,
@@ -831,18 +934,22 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
       for (let index = 0; index < 3; index += 1) game = play(game, null);
       expect(game.missStreak).toBe(3);
       expect(game.lastResult?.help).toBe(3);
-      expect(enter(game).presentation.windowMs).toBeNull();
+      expect(enter(game).onStage.presentation.windowMs).toBeNull();
     });
 
     it('ne touche pas la présentation d’un piège', () => {
       const game = { ...trapFirst(), missStreak: 3 };
-      expect(enter(game).presentation).toMatchObject({ windowMs: 2500, help: 0, showsHand: false });
+      expect(enter(game).onStage.presentation).toMatchObject({
+        windowMs: 2500,
+        help: 0,
+        showsHand: false,
+      });
     });
   });
 
   describe('pièges touchés', () => {
     it('1 touché : rien de plus à l’entrée du suivant', () => {
-      expect(enter({ ...trapFirst(), trapStreak: 1 }).presentation).toMatchObject({
+      expect(enter({ ...trapFirst(), trapStreak: 1 }).onStage.presentation).toMatchObject({
         help: 1,
         isSlow: false,
         hasNoBadge: false,
@@ -851,7 +958,7 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
     });
 
     it('2 touchés d’affilée : le piège suivant entre plus lentement, avec une fenêtre plus longue', () => {
-      expect(enter({ ...trapFirst(), trapStreak: 2 }).presentation).toMatchObject({
+      expect(enter({ ...trapFirst(), trapStreak: 2 }).onStage.presentation).toMatchObject({
         help: 2,
         isSlow: true,
         hasNoBadge: false,
@@ -860,7 +967,7 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
     });
 
     it('3 touchés et plus : le piège porte le signe « non »', () => {
-      expect(enter({ ...trapFirst(), trapStreak: 5 }).presentation).toMatchObject({
+      expect(enter({ ...trapFirst(), trapStreak: 5 }).onStage.presentation).toMatchObject({
         help: 3,
         isSlow: true,
         hasNoBadge: true,
@@ -868,17 +975,17 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
     });
 
     it('allonge la fenêtre de moitié sans dépasser 3 s', () => {
-      expect(enter({ ...trapFirst(), trapStreak: 2, windowMs: 1600 }).presentation.windowMs).toBe(
-        2400,
-      );
-      expect(enter({ ...trapFirst(), trapStreak: 2, windowMs: 2400 }).presentation.windowMs).toBe(
-        3000,
-      );
+      expect(
+        enter({ ...trapFirst(), trapStreak: 2, windowMs: 1600 }).onStage.presentation.windowMs,
+      ).toBe(2400);
+      expect(
+        enter({ ...trapFirst(), trapStreak: 2, windowMs: 2400 }).onStage.presentation.windowMs,
+      ).toBe(3000);
     });
 
     it('ne touche pas la présentation d’une cible', () => {
       const game = { ...createGoNoGoGame(OWL, FIRST), trapStreak: 3 };
-      expect(enter(game).presentation).toMatchObject({
+      expect(enter(game).onStage.presentation).toMatchObject({
         help: 0,
         windowMs: 2500,
         hasNoBadge: false,
@@ -889,14 +996,22 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
       const game = createGoNoGoGame(LATE_STOP, FIRST);
       const stop = must(game.queue.find((entry) => entry.kind === 'stop'));
       const entered = enter({ ...game, queue: [stop], trapStreak: 3 });
-      expect(entered.presentation).toMatchObject({ stopAtMs: 100, hasNoBadge: false, help: 3 });
+      expect(entered.onStage.presentation).toMatchObject({
+        stopAtMs: 100,
+        hasNoBadge: false,
+        help: 3,
+      });
     });
 
     it('un STOP tardif au 2e échelon entre plus lentement', () => {
       const game = createGoNoGoGame(LATE_STOP, FIRST);
       const stop = must(game.queue.find((entry) => entry.kind === 'stop'));
       const entered = enter({ ...game, queue: [stop], trapStreak: 2 });
-      expect(entered.presentation).toMatchObject({ isSlow: true, windowMs: 2700, stopAtMs: 150 });
+      expect(entered.onStage.presentation).toMatchObject({
+        isSlow: true,
+        windowMs: 2700,
+        stopAtMs: 150,
+      });
     });
   });
 
@@ -909,12 +1024,20 @@ describe('résolution : l’échelle d’aide (§6.4)', () => {
 
     it('passe toutes les apparitions restantes à l’échelon 3 : les cibles attendent', () => {
       const game = { ...createGoNoGoGame(OWL, FIRST), shown: 18 };
-      expect(enter(game).presentation).toMatchObject({ windowMs: null, help: 3, showsHand: true });
+      expect(enter(game).onStage.presentation).toMatchObject({
+        windowMs: null,
+        help: 3,
+        showsHand: true,
+      });
     });
 
     it('passe les pièges à l’échelon 3 : signe « non », fenêtre plus longue', () => {
       const game = { ...trapFirst(), shown: 18 };
-      expect(enter(game).presentation).toMatchObject({ help: 3, hasNoBadge: true, isSlow: true });
+      expect(enter(game).onStage.presentation).toMatchObject({
+        help: 3,
+        hasNoBadge: true,
+        isSlow: true,
+      });
     });
   });
 });
@@ -925,8 +1048,7 @@ describe('interruptAppearance', () => {
     const entered = enter(game);
     const interrupted = interruptAppearance(entered);
     expect(interrupted.status).toBe('between');
-    expect(interrupted.current).toBeNull();
-    expect(interrupted.presentation).toBeNull();
+    expect(interrupted.onStage).toBeNull();
     expect(interrupted.queue).toEqual(game.queue);
     expect(interrupted.shown).toBe(0);
     expect(interrupted.windowMs).toBe(game.windowMs);
@@ -940,7 +1062,7 @@ describe('interruptAppearance', () => {
   it('l’apparition interrompue revient entière, avec les paramètres du moment', () => {
     const game = createGoNoGoGame(OWL, FIRST);
     const again = enter(interruptAppearance(enter(game)));
-    expect(again.current).toBe(game.queue[0]);
+    expect(again.onStage.appearance).toBe(game.queue[0]);
     expect(again.shown).toBe(1);
   });
 });
@@ -995,7 +1117,7 @@ describe('étoiles entières, jouées de bout en bout', () => {
     while (game.status !== 'won' && guard < 400) {
       const entered = enter(game);
       const isRight = rng() < 0.5;
-      const pressesTarget = entered.current.kind === 'target';
+      const pressesTarget = entered.onStage.appearance.kind === 'target';
       const press = pressesTarget === isRight ? 400 : null;
       game = resolveAppearance(entered, press, rng);
       guard += 1;

@@ -1,14 +1,14 @@
 import { getVoiceClipPath as getBearSortClipPath } from '@/games/bear-sort/voice-script';
 import { isImageId } from './subjects';
 import type { GoNoGoLevelConfig, ImageId, SubjectId } from './types';
-import manifest from './voice-manifest.json';
 import script from './voice-script.json';
 
 /**
  * Phrases propres à Pas si vite ! (FEAT-28 §11.2), dites par la chouette d'Attrape-Piège avec la même
  * voix (FEAT-22). Le JSON est lu aussi par `scripts/generate-voice-clips.py`, qui en tire les fichiers
- * de `public/audio/go-no-go/` ; après un changement de texte, relancer ce script (`voice-manifest.json`
- * vérifie l'accord en test). Quatre phrases d'Attrape-Piège sont reprises telles quelles (`SHARED_CLIPS`).
+ * de `public/audio/go-no-go/` et réécrit `voice-manifest.json` ; les tests exigent que le manifeste
+ * liste exactement ces phrases, chacune avec son MP3. Après un changement de texte, relancer ce script.
+ * Quatre phrases d'Attrape-Piège sont reprises telles quelles (`SHARED_CLIPS`).
  */
 export type GoNoGoClipId = keyof typeof script;
 
@@ -16,20 +16,13 @@ export const VOICE_SCRIPT: Readonly<Record<GoNoGoClipId, string>> = script;
 
 export const GO_NO_GO_CLIP_IDS = Object.keys(script) as GoNoGoClipId[];
 
+/** Dossier des phrases propres au jeu, relatif à la racine de l'export. */
+export const VOICE_CLIP_PREFIX = 'audio/go-no-go/';
+
 /** Chemin d'un clip relatif à la racine de l'export (`basePath` ajouté par le service audio). */
 export function getVoiceClipPath(id: GoNoGoClipId): string {
-  return `audio/go-no-go/${id}.mp3`;
+  return `${VOICE_CLIP_PREFIX}${id}.mp3`;
 }
-
-/**
- * Phrases nouvelles réellement générées : celles du manifeste que `generate-voice-clips.py` réécrit. Tant
- * qu'il est vide (aucun clip n'a encore été généré ni écouté), le jeu ne demande aucun fichier absent :
- * la chouette est mimée, les phrases reprises d'Attrape-Piège sont dites. Une fois les clips générés, le
- * manifeste les liste et la voix s'active sans toucher au jeu.
- */
-const GENERATED_CLIP_PATHS: ReadonlySet<string> = new Set(
-  Object.keys(manifest.clips).map((id) => `audio/go-no-go/${id}.mp3`),
-);
 
 /**
  * Phrases d'Attrape-Piège reprises telles quelles (FEAT-22) : l'erreur d'un piège touché (« Oh, ton
@@ -42,16 +35,22 @@ export const SHARED_CLIPS = {
   crownWon: getBearSortClipPath('crown-won'),
 } as const;
 
-/** Le clip de ce chemin existe-t-il ? Une phrase d'Attrape-Piège reprise, ou une phrase nouvelle générée. */
-export function isClipAvailable(path: string): boolean {
-  return Object.values<string>(SHARED_CLIPS).includes(path) || GENERATED_CLIP_PATHS.has(path);
+/**
+ * Phrases de rappel de la règle de l'étoile (§9), dans l'ordre où la chouette les dit : au palier 4,
+ * elle prévient qu'elle tend un piège ; aux étoiles 19 et 20, « Ça vole ? » et le STOP tardif sont
+ * mêlés, elle dit les deux règles (« Tape seulement si ça vole ! », puis « Tape, sauf si le STOP
+ * arrive ! ») : la voix seule suffit à jouer, comme la phrase des lecteurs d'écran (§4.3).
+ */
+export function getRuleClipIds({ rule, hasLure, traps }: GoNoGoLevelConfig): GoNoGoClipId[] {
+  if (hasLure) return ['rule-lure'];
+  if (rule === 'owl-says') return ['rule-owl-says'];
+  if (rule === 'flies') return ['rule-flies'];
+  return traps > 0 ? ['rule-flies', 'rule-late-stop'] : ['rule-late-stop'];
 }
 
-/** Phrase de rappel de la règle de l'étoile (§9) : au palier 4, la chouette prévient qu'elle tend un piège. */
-export function getRuleClipId({ rule, hasLure }: GoNoGoLevelConfig): GoNoGoClipId {
-  if (hasLure) return 'rule-lure';
-  if (rule === 'owl-says') return 'rule-owl-says';
-  return rule === 'flies' ? 'rule-flies' : 'rule-late-stop';
+/** Chemins des phrases de rappel de la règle (`getRuleClipIds`). */
+export function getRuleClipPaths(config: GoNoGoLevelConfig): string[] {
+  return getRuleClipIds(config).map(getVoiceClipPath);
 }
 
 /** « Vache vole ! » : ce que dit la chouette de chaque image au palier 4, cibles comme pièges. */
@@ -69,7 +68,7 @@ export function getStarClipPaths(
   subjects: readonly SubjectId[],
 ): string[] {
   const paths = [
-    getVoiceClipPath(getRuleClipId(config)),
+    ...getRuleClipPaths(config),
     SHARED_CLIPS.trapped,
     SHARED_CLIPS.lookCarefully,
     SHARED_CLIPS.starWon,

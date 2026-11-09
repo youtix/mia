@@ -6,7 +6,7 @@ import {
   startAppearance,
   TRAP_FREE_APPEARANCES,
 } from './engine';
-import type { GoNoGoLevelConfig, GoNoGoState, Presentation } from './types';
+import type { GoNoGoLevelConfig, GoNoGoState, OnStage, Presentation } from './types';
 
 /**
  * Enfants simulés (FEAT-28 §10) : la terminaison d'une étoile se vérifie en la jouant, avec le moteur
@@ -34,7 +34,7 @@ const THOUGHTFUL_PRESS_MS = 500;
 const REFLEX_PRESS_MS = 200;
 const TAPPER_PRESS_MS = 120;
 
-type PressPolicy = (state: GoNoGoState, presentation: Presentation) => number | null;
+type PressPolicy = (onStage: OnStage, state: GoNoGoState) => number | null;
 
 /** Ne jamais dépasser la fenêtre : un appui à `atMs`, ou juste avant la fin si elle est plus courte. */
 function pressWithin(presentation: Presentation, atMs: number): number {
@@ -43,23 +43,23 @@ function pressWithin(presentation: Presentation, atMs: number): number {
 
 const POLICIES: Readonly<Record<ChildProfile, PressPolicy>> = {
   // Appuie sur chaque cible, se retient devant chaque piège et chaque STOP : l'étoile parfaite.
-  attentive: (state, presentation) =>
-    state.current?.kind === 'target' ? pressWithin(presentation, THOUGHTFUL_PRESS_MS) : null,
+  attentive: ({ appearance, presentation }) =>
+    appearance.kind === 'target' ? pressWithin(presentation, THOUGHTFUL_PRESS_MS) : null,
   // Tape sur tout, sans réfléchir, jusqu'à ce que l'indice le plus fort (signe « non », STOP presque
   // immédiat) lui fasse retenir son geste.
-  reflex: (state, presentation) => {
-    if (state.current?.kind !== 'target' && presentation.help === 3) return null;
+  reflex: ({ appearance, presentation }) => {
+    if (appearance.kind !== 'target' && presentation.help === 3) return null;
     return pressWithin(presentation, REFLEX_PRESS_MS);
   },
   // N'appuie jamais, sauf sur une cible qui attend sans limite de temps (échelon 3).
-  passive: (_state, presentation) => (presentation.windowMs === null ? THOUGHTFUL_PRESS_MS : null),
+  passive: ({ presentation }) => (presentation.windowMs === null ? THOUGHTFUL_PRESS_MS : null),
   // Une apparition sur deux : appui, puis abstention ; une cible qui attend est toujours attrapée.
-  alternating: (state, presentation) => {
+  alternating: ({ presentation }, state) => {
     if (presentation.windowMs === null) return THOUGHTFUL_PRESS_MS;
     return state.shown % 2 === 1 ? pressWithin(presentation, THOUGHTFUL_PRESS_MS) : null;
   },
   // Tape sans arrêt, même devant le signe « non » : chaque piège lui coûte une pause.
-  tapper: (_state, presentation) => pressWithin(presentation, TAPPER_PRESS_MS),
+  tapper: ({ presentation }) => pressWithin(presentation, TAPPER_PRESS_MS),
   // Ne tape jamais, même quand la cible l'attend.
   sleeper: () => null,
 };
@@ -77,7 +77,8 @@ export function getShownCap(appearances: number): number {
 
 /**
  * Joue une étoile avec le moteur seul : chaque apparition entre, l'enfant appuie (ou non) selon son
- * profil, et l'issue est résolue. Reproductible avec un `rng` à graine.
+ * profil, et l'issue est résolue. Reproductible avec un `rng` à graine. Une file vide avant la victoire
+ * est un moteur cassé, pas une étoile sans fin : elle lève une `Error`.
  */
 export function simulateStar(
   config: GoNoGoLevelConfig,
@@ -90,10 +91,9 @@ export function simulateStar(
   while (state.status !== 'won') {
     if (state.shown >= cap) return { status: 'capped', state };
     state = startAppearance(state);
-    const { presentation } = state;
-    if (!presentation) return { status: 'capped', state };
-    const pressedAtMs = policy(state, presentation);
-    const resolved = resolveAppearance(state, pressedAtMs, rng);
+    const { onStage } = state;
+    if (!onStage) throw new Error('Pas si vite ! : file vide avant la victoire');
+    const resolved = resolveAppearance(state, policy(onStage, state), rng);
     // Rien ne s'est passé : la cible attend et personne n'appuie.
     if (resolved === state) return { status: 'stalled', state };
     state = resolved;

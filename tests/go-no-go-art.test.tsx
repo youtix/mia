@@ -91,12 +91,11 @@ describe('Marionnettes du castelet', () => {
   it.each([
     ['le renard', FoxPuppet],
     ['le chat', CatPuppet],
-  ])('%s a deux bras et une tête animables', (_name, Puppet) => {
+  ])('%s a deux bras animables', (_name, Puppet) => {
     const { container } = render(<Puppet />);
     expect(container.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     expect(container.querySelector('.go-no-go-arm-left')).not.toBeNull();
     expect(container.querySelector('.go-no-go-arm-right')).not.toBeNull();
-    expect(container.querySelector('.go-no-go-head')).not.toBeNull();
     expect(container.querySelector('.go-no-go-arm-left')).toHaveStyle({ transformBox: 'view-box' });
   });
 
@@ -242,6 +241,75 @@ describe('Images clés CSS', () => {
     }
     expect(used.size).toBeGreaterThan(8);
     for (const name of used) expect(defined.has(name)).toBe(true);
+  });
+
+  it('chaque élément animé porte la classe de son animation, que les animations réduites visent', () => {
+    const reduced = GO_NO_GO_KEYFRAMES.slice(GO_NO_GO_KEYFRAMES.indexOf('@media'));
+    /** Les images clés qui ne font que changer l'opacité : un fondu reste permis. */
+    const fadesOnly = new Set(
+      [...GO_NO_GO_KEYFRAMES.matchAll(/@keyframes ([\w-]+)\{((?:[^{}]*\{[^{}]*\})+)\}/g)]
+        .filter(([, , body = '']) => !body.includes('transform'))
+        .map(([, name]) => name),
+    );
+    const renders = [
+      ...(['entering', 'caught', 'missed', 'passed'] as const).flatMap((moment) => [
+        stage({ subject: 'owl', moment }),
+        stage({ subject: 'fox', kind: 'trap', moment }),
+        stage({ subject: 'cow', kind: 'trap', moment }, 'flies'),
+        stage({ subject: 'pigeon', kind: 'stop', moment, hasStop: true }, 'late-stop'),
+      ]),
+      render(
+        <Buzzer
+          isPressed={false}
+          isDisabled={false}
+          isPulsing
+          isRemote={false}
+          hand="tap"
+          onAssistiveClick={vi.fn()}
+        />,
+      ),
+      render(
+        <Buzzer
+          isPressed={false}
+          isDisabled={false}
+          isPulsing={false}
+          isRemote={false}
+          hand="freeze"
+          onAssistiveClick={vi.fn()}
+        />,
+      ),
+      render(<Garland total={6} cleared={3} />),
+    ];
+    const animated = renders.flatMap(({ container }) => [
+      ...container.querySelectorAll<HTMLElement>('[style*="animation"]'),
+    ]);
+    const names = new Set<string>();
+    for (const element of animated) {
+      const name = /gng-[\w-]+/.exec(element.style.animation)?.[0];
+      if (!name) continue;
+      names.add(name);
+      // Le style en ligne l'emporte sur une règle sans `!important` : seule la classe permet aux
+      // animations réduites de l'arrêter.
+      expect(element.classList.contains(name)).toBe(true);
+      if (!fadesOnly.has(name)) expect(reduced).toContain(`.${name}`);
+    }
+    // Le buzzer qui pulse, la perle qui gonfle, les étincelles, la main : rien n'est oublié.
+    for (const name of ['gng-buzzer-pulse', 'gng-pearl', 'gng-spark', 'gng-hand-tap', 'gng-ice']) {
+      expect(names).toContain(name);
+    }
+  });
+
+  it('sous « animations réduites », les étincelles ne s’empilent pas en un disque : elles disparaissent', () => {
+    const reduced = GO_NO_GO_KEYFRAMES.slice(GO_NO_GO_KEYFRAMES.indexOf('@media'));
+    expect(/\.gng-spark\{([^}]*)\}/.exec(reduced)?.[1]).toContain('display:none');
+    expect(/\.gng-buzzer-pulse,\.gng-pearl\{([^}]*)\}/.exec(reduced)?.[1]).toContain(
+      'animation:none',
+    );
+  });
+
+  it('ne garde aucune image clé que rien n’utilise', () => {
+    expect(GO_NO_GO_KEYFRAMES).not.toContain('gng-bob');
+    expect(GO_NO_GO_KEYFRAMES).not.toContain('gng-pause-bob');
   });
 });
 
@@ -474,6 +542,14 @@ describe('Buzzer', () => {
     expect(pressed.button).toHaveAttribute('data-pressed', 'true');
     expect(pressed.container.innerHTML).toContain('translate-y-[6%]');
     expect(pressed.container.innerHTML).toContain('0 0 0 0.6rem');
+  });
+
+  it('allume sa lumière par l’opacité d’un halo toujours dessiné, pas en redessinant une ombre', () => {
+    const glow = (isPressed: boolean) =>
+      buzzer({ isPressed }).container.querySelector<HTMLElement>('[data-press-glow]');
+    expect(glow(false)?.style.opacity).toBe('0');
+    expect(glow(true)?.style.opacity).toBe('1');
+    expect(glow(false)?.style.boxShadow).toBe(glow(true)?.style.boxShadow);
   });
 
   it('se grise pendant une pause : un bouton désactivé pour le lecteur d’écran, sans l’être pour le focus', () => {

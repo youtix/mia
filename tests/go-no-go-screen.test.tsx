@@ -10,6 +10,9 @@ import { isValidElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const gameScreen = vi.hoisted(() => vi.fn());
+const releaseClips = vi.hoisted(() => vi.fn());
+
+vi.mock('@/core/audio/audio-service', () => ({ getAudioService: () => ({ releaseClips }) }));
 
 // La porte de l'écran (joueur, étoile verrouillée) est couverte par tests/star-map.test.tsx : ici, ce
 // que la page de Pas si vite ! lui confie.
@@ -45,6 +48,17 @@ describe('GoNoGoGameScreen (FEAT-28)', () => {
     const board = renderLevel?.(level, controls);
     expect(isValidElement(board)).toBe(true);
     expect(board).toMatchObject({ type: GoNoGoBoard, props: { level, controls } });
+  });
+});
+
+describe('mémoire des voix', () => {
+  it('oublie les voix décodées du jeu quand on le quitte, pas entre deux étoiles', () => {
+    releaseClips.mockClear();
+    const { rerender, unmount } = render(<GoNoGoGameScreen />);
+    rerender(<GoNoGoGameScreen />);
+    expect(releaseClips).not.toHaveBeenCalled();
+    unmount();
+    expect(releaseClips).toHaveBeenCalledExactlyOnceWith('audio/go-no-go/');
   });
 });
 

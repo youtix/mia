@@ -57,8 +57,7 @@ export const OVERRUN_FACTOR = 1.5;
 /** La fenêtre d'un piège à l'échelon 2 de l'aide : « plus longue » (§6.4). */
 export const SLOW_TRAP_FACTOR = 1.5;
 
-/** Essais guidés : quatre, à fenêtre longue, sans conséquence (§9). */
-export const TRIAL_COUNT = 4;
+/** Essais guidés : à fenêtre longue, sans conséquence (§9). */
 export const TRIAL_WINDOW_MS = MAX_WINDOW_MS;
 export const TRIAL_STOP_DELAY_MS = 300;
 
@@ -243,12 +242,19 @@ function pickNoGoSlots(config: GoNoGoLevelConfig, rng: Rng): number[] {
   return slots;
 }
 
-/** Un élément de `pool` différent de `previous` quand c'est possible, `undefined` si `pool` est vide. */
-function pickDifferent<T>(pool: readonly T[], previous: T | null, rng: Rng): T | undefined {
-  const candidates = pool.filter((item) => item !== previous);
+/** Un élément de `pool` absent de `excluded` quand c'est possible, `undefined` si `pool` est vide. */
+function pickDifferent<T>(
+  pool: readonly T[],
+  excluded: readonly (T | null)[],
+  rng: Rng,
+): T | undefined {
+  const candidates = pool.filter((item) => !excluded.includes(item));
   const choices = candidates.length > 0 ? candidates : pool;
   return choices[randomInt(choices.length, rng)];
 }
+
+/** Les cachettes du castelet à trois fenêtres. */
+const HIDEOUTS: readonly number[] = [0, 1, 2];
 
 /** Ce qui entre pour une apparition de ce genre : un personnage ou une image, jamais deux fois de suite. */
 function pickSubject(
@@ -259,11 +265,11 @@ function pickSubject(
 ): SubjectId {
   if (config.rule === 'owl-says') {
     if (kind === 'target') return 'owl';
-    return pickDifferent<SubjectId>(config.decoys, previous, rng) ?? 'fox';
+    return pickDifferent<SubjectId>(config.decoys, [previous], rng) ?? 'fox';
   }
   return kind === 'trap'
-    ? (pickDifferent<SubjectId>(GROUNDED_IMAGES, previous, rng) ?? 'cow')
-    : (pickDifferent<SubjectId>(FLYING_IMAGES, previous, rng) ?? 'pigeon');
+    ? (pickDifferent<SubjectId>(GROUNDED_IMAGES, [previous], rng) ?? 'cow')
+    : (pickDifferent<SubjectId>(FLYING_IMAGES, [previous], rng) ?? 'pigeon');
 }
 
 /**
@@ -287,11 +293,8 @@ function planQueue(config: GoNoGoLevelConfig, rng: Rng): Appearance[] {
   for (let slot = 0; slot < config.appearances; slot += 1) {
     const kind: AppearanceKind = kindAt.get(slot) ?? 'target';
     const subject = pickSubject(config, kind, previousSubject, rng);
-    let hideout = 0;
-    if (config.hideouts === 3) {
-      const others = [0, 1, 2].filter((candidate) => candidate !== previousHideout);
-      hideout = others[randomInt(others.length, rng)] ?? 0;
-    }
+    const hideout =
+      config.hideouts === 3 ? (pickDifferent(HIDEOUTS, [previousHideout], rng) ?? 0) : 0;
     queue.push({ id: slot + 1, kind, subject, hideout });
     previousSubject = subject;
     previousHideout = hideout;
@@ -311,11 +314,9 @@ export function createGoNoGoGame(config: GoNoGoLevelConfig, rng: Rng = Math.rand
     config,
     status: 'between',
     queue: planQueue(config, rng),
-    current: null,
-    presentation: null,
+    onStage: null,
     windowMs: config.startWindowMs,
     stopDelayMs: Math.min(START_STOP_DELAY_MS, config.stopDelayCeilingMs ?? START_STOP_DELAY_MS),
-    paceStreak: 0,
     runLength: 0,
     heldWindowMs: null,
     trapStreak: 0,
@@ -427,42 +428,79 @@ export function startAppearance(state: GoNoGoState): GoNoGoState {
     ...state,
     status: 'window',
     queue,
-    current: next,
-    presentation: describePresentation(state, next),
+    onStage: { appearance: next, presentation: describePresentation(state, next) },
     shown: state.shown + 1,
   };
 }
 
-/** Un piège posé à l'index `index` de la file ne dépasse-t-il pas `maxRun` pièges d'affilée ? */
+/**
+ * Un piège remis à l'index `index` de la file reste-t-il dans `maxRun` pièges d'affilée ? Celui qui
+ * vient d'être montré, juste avant la file, compte aussi : l'enfant vient de le voir.
+ */
 function fitsAt(queue: readonly Appearance[], index: number, maxRun: number): boolean {
-  const flags = queue.map((entry) => isNoGo(entry.kind));
-  flags.splice(index, 0, true);
-  return getRunLength(flags, index) <= maxRun;
+  const flags = [true, ...queue.map((entry) => isNoGo(entry.kind))];
+  flags.splice(index + 1, 0, true);
+  return getRunLength(flags, index + 1) <= maxRun;
 }
 
 /**
- * Remet une apparition dans la file, 2 à 4 apparitions plus tard. Un piège évite de s'aligner avec
- * d'autres au-delà de `maxRun` : il glisse vers la fin, puis vers le début, jusqu'à une place qui
- * convient (à défaut, tout à la fin).
+ * Voisines d'une remise posée à l'index `index` : celle qui la précède (à l'index 0, l'apparition qui
+ * vient d'être montrée) et celle qui la suit, s'il y en a une.
+ */
+function getNeighbours(
+  queue: readonly Appearance[],
+  index: number,
+  shown: Appearance,
+): Appearance[] {
+  const before = index === 0 ? shown : queue[index - 1];
+  return [before, queue[index]].filter((entry): entry is Appearance => entry !== undefined);
+}
+
+/** La même image deux fois de suite ; la chouette, seule cible de la règle 1, revient par nature. */
+function isSameImage(left: Appearance, right: Appearance): boolean {
+  return left.subject === right.subject && left.subject !== 'owl';
+}
+
+/**
+ * Remet une apparition dans la file, 2 à 4 apparitions plus tard (index 1 à 3), selon les règles de la
+ * file (§3.3, §14.2.2) : un piège ne s'aligne pas au-delà de `maxTrapRun` avec ses voisins, celui qui
+ * vient d'être montré compris, et l'image ne côtoie pas la même image. La remise glisse vers la fin,
+ * puis vers le début (jamais à l'index 0 : elle reviendrait aussitôt) ; à défaut d'une place qui
+ * respecte tout, la première qui respecte les pièges, sinon tout à la fin. Avec trois cachettes, elle
+ * change de cachette si l'une de ses voisines a la sienne.
  */
 function insertRetry(
   queue: readonly Appearance[],
   appearance: Appearance,
-  maxRun: number,
+  config: GoNoGoLevelConfig,
   rng: Rng,
 ): Appearance[] {
   const gap = MIN_RETRY_GAP + randomInt(MAX_RETRY_GAP - MIN_RETRY_GAP + 1, rng);
   const wanted = Math.min(gap - 1, queue.length);
-  let index = wanted;
-  if (isNoGo(appearance.kind)) {
-    const order = [
-      ...Array.from({ length: queue.length - wanted + 1 }, (_, offset) => wanted + offset),
-      // Jamais l'index 0 : la remise reviendrait aussitôt.
-      ...Array.from({ length: Math.max(0, wanted - 1) }, (_, offset) => wanted - 1 - offset),
-    ];
-    index = order.find((candidate) => fitsAt(queue, candidate, maxRun)) ?? queue.length;
+  const order = [
+    ...Array.from({ length: queue.length - wanted + 1 }, (_, offset) => wanted + offset),
+    ...Array.from({ length: Math.max(0, wanted - 1) }, (_, offset) => wanted - 1 - offset),
+  ];
+  const fitsTraps = (index: number) =>
+    !isNoGo(appearance.kind) || fitsAt(queue, index, config.maxTrapRun);
+  const index =
+    order.find(
+      (candidate) =>
+        fitsTraps(candidate) &&
+        getNeighbours(queue, candidate, appearance).every(
+          (neighbour) => !isSameImage(neighbour, appearance),
+        ),
+    ) ??
+    order.find(fitsTraps) ??
+    queue.length;
+  let retry = appearance;
+  if (config.hideouts === 3) {
+    const taken = getNeighbours(queue, index, appearance).map((neighbour) => neighbour.hideout);
+    if (taken.includes(appearance.hideout)) {
+      retry = { ...appearance, hideout: pickDifferent(HIDEOUTS, taken, rng) ?? 0 };
+    }
   }
-  return [...queue.slice(0, index), appearance, ...queue.slice(index)];
+  return [...queue.slice(0, index), retry, ...queue.slice(index)];
 }
 
 /**
@@ -470,15 +508,19 @@ function insertRetry(
  * `null` si elle s'est écoulée sans appui. Une cible ratée ou un piège touché est remis dans la file ;
  * la cadence s'adapte (§5) ; l'étoile est gagnée quand la file est vide après une réussite. Un appui
  * hors de la fenêtre est ignoré comme une fenêtre écoulée, et une cible qui attend (échelon 3) ne
- * s'écoule pas : sans appui, l'état reçu est renvoyé tel quel.
+ * s'écoule pas : sans appui, l'état reçu est renvoyé tel quel. Attrapée, cette cible qui attendait
+ * remet l'échelle d'aide à zéro, mais ne dit rien de la vitesse : elle interrompt la série de réussites
+ * sans toucher à la fenêtre (§14.2.1). La réussite qui gagne l'étoile n'accélère rien : la fenêtre de
+ * fin de partie est celle que l'enfant vient de jouer.
  */
 export function resolveAppearance(
   state: GoNoGoState,
   pressedAtMs: number | null,
   rng: Rng = Math.random,
 ): GoNoGoState {
-  const { current, presentation, config } = state;
-  if (state.status !== 'window' || !current || !presentation) return state;
+  const { onStage, config } = state;
+  if (state.status !== 'window' || !onStage) return state;
+  const { appearance: current, presentation } = onStage;
   const isLate =
     pressedAtMs !== null && presentation.windowMs !== null && pressedAtMs >= presentation.windowMs;
   const press = isLate ? null : pressedAtMs;
@@ -486,23 +528,24 @@ export function resolveAppearance(
 
   const outcome = judgeAppearance(current.kind, press, presentation.stopAtMs);
   const isSuccess = outcome === 'caught' || outcome === 'passed';
-  let { windowMs, paceStreak, runLength, heldWindowMs, trapStreak, missStreak, stopDelayMs } =
-    state;
+  const isWon = isSuccess && state.queue.length === 0;
+  let { windowMs, runLength, heldWindowMs, trapStreak, missStreak, stopDelayMs } = state;
 
-  if (isSuccess) {
+  if (isSuccess && presentation.windowMs === null) {
+    // La cible attendait : rien n'a été joué contre le temps.
+    runLength = 0;
+    missStreak = 0;
+  } else if (isSuccess) {
     runLength += 1;
-    paceStreak += 1;
     if (runLength >= HELD_RUN)
       heldWindowMs = Math.min(heldWindowMs ?? state.windowMs, state.windowMs);
-    if (paceStreak >= SPEED_UP_STREAK) {
+    if (runLength % SPEED_UP_STREAK === 0 && !isWon) {
       windowMs = Math.max(config.fastestWindowMs, Math.round(windowMs * SPEED_UP_FACTOR));
-      paceStreak = 0;
     }
     if (outcome === 'caught') missStreak = 0;
     else trapStreak = 0;
   } else {
     runLength = 0;
-    paceStreak = 0;
     windowMs = Math.min(
       MAX_WINDOW_MS,
       Math.round(windowMs * (outcome === 'missed' ? MISS_SLOWDOWN : TRAP_SLOWDOWN)),
@@ -519,7 +562,7 @@ export function resolveAppearance(
         : Math.max(MIN_STOP_DELAY_MS, stopDelayMs - STOP_FAILURE_STEP_MS);
   }
 
-  const queue = isSuccess ? state.queue : insertRetry(state.queue, current, config.maxTrapRun, rng);
+  const queue = isSuccess ? state.queue : insertRetry(state.queue, current, config, rng);
   let help: HelpStage = 0;
   if (outcome === 'missed') help = getHelpStage(missStreak);
   else if (outcome === 'trapped') help = getHelpStage(trapStreak);
@@ -527,13 +570,11 @@ export function resolveAppearance(
 
   return {
     ...state,
-    status: isSuccess && queue.length === 0 ? 'won' : 'between',
+    status: isWon ? 'won' : 'between',
     queue,
-    current: null,
-    presentation: null,
+    onStage: null,
     windowMs,
     stopDelayMs,
-    paceStreak,
     runLength,
     heldWindowMs,
     trapStreak,
@@ -550,14 +591,13 @@ export function resolveAppearance(
  * en tête de la file, n'est pas comptée parmi les apparitions montrées, et la cadence ne bouge pas.
  */
 export function interruptAppearance(state: GoNoGoState): GoNoGoState {
-  const { current } = state;
-  if (state.status !== 'window' || !current) return state;
+  const { onStage } = state;
+  if (state.status !== 'window' || !onStage) return state;
   return {
     ...state,
     status: 'between',
-    queue: [current, ...state.queue],
-    current: null,
-    presentation: null,
+    queue: [onStage.appearance, ...state.queue],
+    onStage: null,
     shown: state.shown - 1,
   };
 }
@@ -568,8 +608,8 @@ export function isPerfectWin(state: GoNoGoState): boolean {
 }
 
 /**
- * Vitesse tenue, en ms : la fenêtre la plus courte sur laquelle l'enfant a enchaîné 8 réussites, à
- * défaut la fenêtre de fin de partie (§11.2).
+ * Vitesse tenue, en ms : la fenêtre la plus courte sur laquelle l'enfant a enchaîné 8 réussites dans le
+ * temps, à défaut la fenêtre de fin de partie, celle de la dernière apparition (§11.2, §14.2.1).
  */
 export function getHeldWindowMs(state: GoNoGoState): number {
   return state.heldWindowMs ?? state.windowMs;

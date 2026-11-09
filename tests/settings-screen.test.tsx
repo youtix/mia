@@ -841,6 +841,14 @@ describe('Progression', () => {
     ).toBeInTheDocument();
   });
 
+  it('dessine une rangée d’un bouton par jeu au-delà du seuil `sm`, comme la zone D-Pad', async () => {
+    await renderSettings();
+    const grid = getButton('Remettre Memory à zéro').parentElement;
+    expect(grid).toHaveClass('sm:grid-cols-[repeat(var(--reset-cols),minmax(0,1fr))]');
+    expect(grid?.style.getPropertyValue('--reset-cols')).toBe(String(GAME_RESET_ORDER.length));
+    expect(GAME_RESET_ORDER).toHaveLength(6);
+  });
+
   it('suit l’ordre et les noms du registre', () => {
     expect(GAME_RESET_ORDER).toEqual(GAMES.map((game) => game.id));
     for (const game of GAMES) {
@@ -1695,7 +1703,7 @@ describe('Libellés', () => {
       'Voix générée avec le modèle Piper « MLS »',
       'corpus Multilingual LibriSpeech',
       'Vineel Pratap, Qiantong Xu, Anuroop Sriram, Gabriel Synnaeve, Ronan Collobert',
-      'puis modifiée : coupée et ralentie',
+      'puis modifiée : coupée, ralentie ou accélérée selon la phrase',
       'Licence CC BY 4.0 : https://creativecommons.org/licenses/by/4.0/',
     ];
 

@@ -3,9 +3,10 @@
 import type { LevelControls } from '@/components/progression';
 import { AppShell } from '@/components/ui';
 import { useGameAudio } from '@/core/audio';
-import { useGridNavigation, useNavigationScope } from '@/core/navigation';
+import { isSynthesizedActivation, useGridNavigation, useNavigationScope } from '@/core/navigation';
 import type { EnrichedLevelItem } from '@/core/progression';
 import type { MascotMood } from '@/games/bear-sort/components/OwlMascot';
+import { useMascotVoice } from '@/games/bear-sort/components/useMascotSpeech';
 import {
   useEffect,
   useRef,
@@ -16,23 +17,17 @@ import {
 } from 'react';
 import { isPerfectWin } from '../engine';
 import { ANNOUNCEMENTS, getRuleSentence, MASCOT_LABEL } from '../labels';
-import { createRun, type RunPhase } from '../run';
-import type { GoNoGoLevelConfig } from '../types';
-import { isClipAvailable } from '../voice-script';
-import { Buzzer } from './Buzzer';
+import { createRun, type Run, type RunPhase } from '../run';
+import type { GoNoGoLevelConfig, VoiceMood } from '../types';
+import { Buzzer, type BuzzerProps } from './Buzzer';
 import { Garland } from './Garland';
 import { GoNoGoEndScreen } from './GoNoGoEndScreen';
 import { Stage } from './Stage';
-import { useMascotVoice } from './useMascotVoice';
 
 /**
- * Un clic de lecteur d'écran (TalkBack) n'est précédé d'aucun contact ; un clic au doigt ou à la souris
- * suit un contact déjà compté, comme celui que la garde d'activation clique elle-même (FEAT-04), 120 ms
- * après le relâchement d'un appui long. Le délai se compte donc depuis le dernier contact posé ou levé.
+ * Texte de la région `role="status"` à l'entrée de chaque phase (§8.3) : la consigne au départ, la
+ * démo, les essais, la pause ; au départ de la partie, et à chaque reprise, la consigne encore.
  */
-const ASSISTIVE_CLICK_GUARD_MS = 1000;
-
-/** Texte de la région `role="status"` : la consigne au départ, la pause, la démo, les essais (§8.3). */
 function getStatusText(phase: RunPhase, config: GoNoGoLevelConfig): string {
   switch (phase) {
     case 'starting':
@@ -44,7 +39,7 @@ function getStatusText(phase: RunPhase, config: GoNoGoLevelConfig): string {
     case 'paused':
       return ANNOUNCEMENTS.paused;
     case 'live':
-      return ANNOUNCEMENTS.starting;
+      return `${ANNOUNCEMENTS.starting} ${getRuleSentence(config)}`;
     case 'won':
       return '';
   }
@@ -53,11 +48,22 @@ function getStatusText(phase: RunPhase, config: GoNoGoLevelConfig): string {
 /**
  * L'instant d'un évènement dans l'horloge de la partie (`performance.now`), ou `undefined` s'il n'en a
  * pas qui s'y rapporte (jsdom date en millisecondes depuis 1970) : l'appui est alors daté à son
- * traitement. L'horodatage de l'évènement, jamais l'image suivante (§10).
+ * traitement. L'horodatage de l'évènement, jamais l'image suivante (§10), au doigt comme à la
+ * télécommande ou au lecteur d'écran.
  */
 function getEventTime(event: { timeStamp: number }): number | undefined {
   const time = event.timeStamp;
   return Number.isFinite(time) && time > 0 && time <= performance.now() ? time : undefined;
+}
+
+/** Le buzzer abonné à son seul état enfoncé : un appui ne redessine pas tout le plateau. */
+function RunBuzzer({ run, ...props }: Omit<BuzzerProps, 'isPressed'> & { run: Run }) {
+  const isPressed = useSyncExternalStore(
+    run.subscribeBuzzer,
+    run.isBuzzerPressed,
+    run.isBuzzerPressed,
+  );
+  return <Buzzer {...props} isPressed={isPressed} />;
 }
 
 export interface GoNoGoBoardProps {
@@ -78,7 +84,7 @@ export interface GoNoGoBoardProps {
 export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
   // En premier (voir `useGameAudio`) : le réglage « Son » est appliqué avant la première voix.
   const audio = useGameAudio();
-  const voice = useMascotVoice(audio);
+  const voice = useMascotVoice<VoiceMood>(audio);
   const { config } = level.definition;
   const [run] = useState(() =>
     createRun({
@@ -87,11 +93,10 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
       playEffect: (effect) => {
         audio.playEffect(effect);
       },
-      speak: voice.speak,
-      isClipAvailable,
-      preload: (paths) => {
-        void audio.preloadClips(paths);
-      },
+      speak: (clips, mood = 'talking') => voice.speak(clips, mood),
+      stopVoice: voice.stop,
+      preload: (paths) => audio.preloadClips(paths),
+      isHidden: () => document.hidden,
       // Remplacé à chaque rendu juste après : `controls.recordVictory` change à chaque rendu.
       onWin: () => undefined,
     }),
@@ -105,7 +110,6 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
   const snapshot = useSyncExternalStore(run.subscribe, run.getSnapshot, run.getSnapshot);
   const [isBackZone, setIsBackZone] = useState(false);
   const buzzerRef = useRef<HTMLButtonElement>(null);
-  const lastContactRef = useRef(Number.NEGATIVE_INFINITY);
 
   useEffect(() => {
     run.start();
@@ -114,11 +118,14 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
     };
   }, [run]);
 
-  // Page masquée (appel, autre application, écran éteint) : pause immédiate, rien n'est compté.
+  // Page masquée (appel, autre application, écran éteint) : pause immédiate, rien n'est compté. Une
+  // page déjà masquée au montage (onglet rouvert en arrière-plan) n'enverra aucun évènement : la pause
+  // est demandée tout de suite, et part dès le début de la démo ou à la fin du rappel.
   useEffect(() => {
     const onVisibilityChange = () => {
       if (document.hidden) run.pause();
     };
+    onVisibilityChange();
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -136,8 +143,8 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
     },
   });
 
-  const pressFromRemote = () => {
-    run.press();
+  const pressFromRemote = (event: KeyboardEvent) => {
+    run.press(getEventTime(event));
   };
 
   const { isFocusVisible, inputMode } = useNavigationScope({
@@ -160,7 +167,6 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
   const onPlayAreaPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     // Un clic droit n'est pas un appui ; tout nouveau contact l'est, y compris celui d'une main posée.
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    lastContactRef.current = performance.now();
     const isMascot = event.target instanceof Element && event.target.closest('[data-mascot]');
     // La mascotte touchée pendant une pause répète la règle sans relancer le jeu ; pendant le
     // défilement, la toucher serait un appui comme un autre.
@@ -171,24 +177,17 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
     run.press(getEventTime(event));
   };
 
-  // Un doigt resté posé près d'une seconde ne donne aucun clic au navigateur : la garde d'activation
-  // clique le buzzer après le relâchement. Ce clic suit un contact déjà compté, il ne compte pas.
-  const onPlayAreaPointerUp = () => {
-    lastContactRef.current = performance.now();
-  };
-
+  // Un clic sans contact (`detail` à 0) est celui d'un lecteur d'écran (TalkBack) : un appui. Le clic
+  // que la garde d'activation donne au buzzer après un doigt resté posé (FEAT-04) suit un contact déjà
+  // compté au `pointerdown` : la garde le signale, il ne compte pas.
   const onAssistiveClick = (event: ReactMouseEvent) => {
-    if (
-      event.detail !== 0 ||
-      performance.now() - lastContactRef.current < ASSISTIVE_CLICK_GUARD_MS
-    ) {
-      return;
-    }
-    run.press();
+    if (event.detail !== 0 || isSynthesizedActivation()) return;
+    run.press(getEventTime(event));
   };
 
   const nextLevel = controls.summary.allLevels[level.globalIndex + 1] ?? null;
   const mood: MascotMood = voice.speakingMood ?? snapshot.mascot.pose;
+  const statusText = snapshot.statusKey > 0 ? getStatusText(snapshot.phase, config) : '';
 
   return (
     <AppShell
@@ -208,7 +207,6 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
         data-phase={snapshot.phase}
         className="relative flex min-h-0 flex-1 flex-col gap-[clamp(0.25rem,1.5vmin,0.75rem)] overflow-hidden"
         onPointerDown={onPlayAreaPointerDown}
-        onPointerUp={onPlayAreaPointerUp}
       >
         <Garland total={config.appearances} cleared={snapshot.game.cleared} />
         <div className="min-h-0 flex-[55] landscape:flex-[58]">
@@ -218,10 +216,10 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
             mascot={{ isVisible: snapshot.mascot.isVisible, mood }}
           />
         </div>
-        <Buzzer
+        <RunBuzzer
+          run={run}
           ref={buzzerRef}
           className="min-h-0 flex-[35] landscape:flex-[42]"
-          isPressed={snapshot.isBuzzerPressed}
           isDisabled={!snapshot.isBuzzerEnabled}
           isPulsing={snapshot.isBuzzerPulsing}
           isRemote={isRemote}
@@ -240,10 +238,11 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
         </button>
       ) : null}
 
-      {/* Région toujours présente : la consigne au départ, la pause, la démo, les essais. Aucune
-          annonce par apparition : elle arriverait après la fenêtre. */}
+      {/* Région toujours présente, vide au montage (son contenu initial ne serait pas lu) : une
+          annonce par entrée dans une phase, la consigne au départ et à chaque reprise. Aucune annonce
+          par apparition : elle arriverait après la fenêtre. */}
       <p role="status" className="sr-only">
-        {getStatusText(snapshot.phase, config)}
+        {statusText ? <span key={snapshot.statusKey}>{statusText}</span> : null}
       </p>
 
       <GoNoGoEndScreen

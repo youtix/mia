@@ -1,6 +1,6 @@
 import type { SoundEffect } from '@/core/audio/types';
-import type { AppearanceKind, GoNoGoLevelConfig, SubjectId } from './types';
-import { getLureClipId, getRuleClipId, getVoiceClipPath } from './voice-script';
+import type { AppearanceKind, GoNoGoLevelConfig, SubjectId, VoiceMood } from './types';
+import { getLureClipId, getRuleClipPaths, getVoiceClipPath } from './voice-script';
 
 /**
  * Introduction à la première étoile de chaque règle (FEAT-28 §9) : « on apprend le STOP en le faisant,
@@ -27,7 +27,7 @@ export type DemoAction =
   /** La mascotte apparaît (règle 1 : elle se tient près du buzzer) ou disparaît */
   | { do: 'mascot'; isVisible: boolean; mood: 'idle' | 'happy' | 'flap' }
   /** La chouette parle : l'étape dure autant que la voix, et au moins `minMs` (son coupé) */
-  | { do: 'say'; clips: readonly string[]; minMs: number; mood?: 'talking' | 'flap' }
+  | { do: 'say'; clips: readonly string[]; minMs: number; mood?: VoiceMood }
   | { do: 'wait'; ms: number };
 
 /** Une main fantôme qui tape, une chouette qui rit : durées minimales du film, son coupé. */
@@ -41,7 +41,7 @@ const SIGNAL: DemoAction = { do: 'effect', effect: 'signal' };
 function say(
   clip: Parameters<typeof getVoiceClipPath>[0],
   minMs: number,
-  mood?: 'talking' | 'flap',
+  mood?: VoiceMood,
 ): DemoAction {
   return { do: 'say', clips: [getVoiceClipPath(clip)], minMs, mood };
 }
@@ -58,7 +58,7 @@ function showTheRule(config: GoNoGoLevelConfig, target: SubjectId): DemoAction[]
     { do: 'enter', subject: target, kind: 'target' },
     ...(config.rule === 'owl-says' ? [SIGNAL] : []),
     { do: 'wait', ms: SHORT_WAIT_MS },
-    say(getRuleClipId(config), DEMO_SAY_MS),
+    { do: 'say', clips: getRuleClipPaths(config), minMs: DEMO_SAY_MS },
     { do: 'hand', hand: 'tap' },
     { do: 'wait', ms: HAND_WAIT_MS },
     { do: 'hand', hand: 'none' },

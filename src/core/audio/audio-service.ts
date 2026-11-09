@@ -191,6 +191,8 @@ export function createAudioService({
   /** Notes d'effet pas encore finies, certaines encore à venir. */
   const effectNotes = new Set<OscillatorNode>();
   const buffers = new Map<string, Promise<AudioBuffer | null>>();
+  /** Clips déjà décodés (le cache garde aussi les chargements en cours). */
+  const decoded = new Set<string>();
 
   function stopClips(): void {
     sequence += 1;
@@ -269,6 +271,7 @@ export function createAudioService({
         (buffer) => {
           // Y compris après le délai de `waitForBuffer`, qui l'avait retiré du cache.
           buffers.set(path, Promise.resolve(buffer));
+          decoded.add(path);
           return buffer;
         },
         () => {
@@ -366,10 +369,23 @@ export function createAudioService({
   return {
     setEnabled: (enabled) => {
       isEnabled = enabled;
-      if (enabled) return;
+      if (enabled) {
+        // L'écran précédent a libéré la sortie audio (« Étoile suivante ») : sans réveil, les effets
+        // du début du nouvel écran resteraient muets jusqu'à la première voix. Page masquée, elle
+        // se réveillera à son retour.
+        if (context && !isAwake(context) && !document.hidden) void wakeContext(context);
+        return;
+      }
       stopClips();
       // Rien ne joue : la sortie audio reste libérée jusqu'à la voix suivante.
       if (context) releaseContext(context);
+    },
+    releaseClips: (prefix) => {
+      for (const path of decoded) {
+        if (!path.startsWith(prefix)) continue;
+        decoded.delete(path);
+        buffers.delete(path);
+      }
     },
     preloadClips: async (paths) => {
       if (!isEnabled) return;

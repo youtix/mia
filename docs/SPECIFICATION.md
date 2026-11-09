@@ -896,7 +896,7 @@ L'architecture de **Mia** est pensée pour que l'ajout de contenu soit quasi ins
 2. Déclarer le nouveau plateau (soit via la liste des véhicules, soit via une grille ASCII `6x6` lisible).
 3. Lancer `npm run validate:levels` : le solveur BFS vérifie automatiquement que votre niveau est soluble et vous indique son nombre exact de coups optimaux (`optimalMoves`).
 
-### 7.3. Ajouter un 6e, 7e ou 8e jeu cérébral dans le futur
+### 7.3. Ajouter un nouveau jeu cérébral dans le futur
 Grâce au découpage modulaire :
 1. Créer un dossier `src/games/<nouveau-jeu>/`.
 2. Définir son catalogue de niveaux implémentant `BaseLevelDefinition<Config>`.

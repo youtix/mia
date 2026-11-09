@@ -569,6 +569,44 @@ describe('Réglage « Son »', () => {
     expect(context.resume).toHaveBeenCalledOnce();
   });
 
+  it('remis : réveille aussitôt la sortie que l’écran précédent avait libérée, les effets jouent', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    // « Étoile suivante » : l'ancien plateau coupe le son, le nouveau le remet.
+    service.setEnabled(false);
+    expect(context.state).toBe('suspended');
+    context.resume.mockClear();
+    service.setEnabled(true);
+    await flush();
+    expect(context.resume).toHaveBeenCalledOnce();
+    expect(context.state).toBe('running');
+    // Le premier effet du nouvel écran (le signal de la démo) n'attend pas une voix pour s'entendre.
+    service.playEffect('signal');
+    expect(context.oscillators.length).toBeGreaterThan(0);
+  });
+
+  it('remis page masquée : ne réveille rien, le retour au premier plan s’en charge', async () => {
+    const { context, service } = setup();
+    void service.playClips(['un.mp3']);
+    await flush();
+    service.setEnabled(false);
+    context.resume.mockClear();
+    setPageHidden(true);
+    service.setEnabled(true);
+    await flush();
+    expect(context.resume).not.toHaveBeenCalled();
+    setPageHidden(false);
+    await flush();
+    expect(context.resume).toHaveBeenCalledOnce();
+  });
+
+  it('remis sans contexte : n’en crée pas pour autant', () => {
+    const { createContext, service } = setup();
+    service.setEnabled(true);
+    expect(createContext).not.toHaveBeenCalled();
+  });
+
   it('coupé puis remis : oublie la séquence en attente du premier geste', async () => {
     const { context, service } = setupBlocked();
     await service.playClips(['un.mp3']);
@@ -1087,6 +1125,28 @@ describe('Clips illisibles', () => {
   });
 });
 
+describe('releaseClips', () => {
+  it('oublie les clips décodés d’un jeu : ils se rechargent, les autres restent', async () => {
+    const { fetchClip, service } = setup();
+    void service.preloadClips(['audio/go-no-go/a.mp3', 'audio/bear-sort/b.mp3']);
+    await flush();
+    expect(fetchClip).toHaveBeenCalledTimes(2);
+
+    service.releaseClips('audio/go-no-go/');
+    void service.preloadClips(['audio/go-no-go/a.mp3', 'audio/bear-sort/b.mp3']);
+    await flush();
+
+    expect(fetchClip).toHaveBeenCalledTimes(3);
+    expect(fetchClip).toHaveBeenLastCalledWith('/audio/go-no-go/a.mp3');
+  });
+
+  it('ne fait rien sans clip décodé', () => {
+    const { createContext, service } = setup();
+    service.releaseClips('audio/go-no-go/');
+    expect(createContext).not.toHaveBeenCalled();
+  });
+});
+
 describe('Réveil de la sortie audio', () => {
   it('laisse la sortie se rouvrir avant la première voix, puis enchaîne sans délai', async () => {
     const { context, service } = setup();
@@ -1572,10 +1632,23 @@ describe('Effets sonores', () => {
     context.suspend.mockImplementationOnce(() => Promise.resolve());
 
     service.setEnabled(false);
-    service.setEnabled(true);
     service.playEffect('bounce');
 
     expect(context.oscillators).toEqual([]);
+  });
+
+  it('remis juste après suspend() : la sortie est réveillée, l’effet suivant joue', () => {
+    const { context, service } = setup();
+    service.playEffect('success');
+    context.oscillators.length = 0;
+    context.suspend.mockImplementationOnce(() => Promise.resolve());
+
+    service.setEnabled(false);
+    service.setEnabled(true);
+    service.playEffect('bounce');
+
+    expect(context.resume).toHaveBeenCalled();
+    expect(context.oscillators.length).toBeGreaterThan(0);
   });
 
   it('perd un effet demandé juste après le masquage de la page, quand `state` dit encore `running`', () => {

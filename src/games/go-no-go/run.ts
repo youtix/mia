@@ -21,12 +21,14 @@ import type {
   GoNoGoOutcome,
   GoNoGoState,
   HelpStage,
+  OnStage,
   Presentation,
   SubjectId,
+  VoiceMood,
 } from './types';
 import {
   getLureClipId,
-  getRuleClipId,
+  getRuleClipPaths,
   getStarClipPaths,
   getVoiceClipPath,
   SHARED_CLIPS,
@@ -111,6 +113,11 @@ export type RunPhase = 'starting' | 'demo' | 'trial' | 'live' | 'paused' | 'won'
 
 export type MascotPose = 'idle' | 'happy' | 'flap';
 
+/**
+ * Instantané que le plateau affiche. L'état enfoncé du buzzer n'y est pas : il change à chaque appui
+ * et 160 ms plus tard, et vit à part (`isBuzzerPressed`, `subscribeBuzzer`) pour ne redessiner que le
+ * buzzer.
+ */
 export interface RunSnapshot {
   phase: RunPhase;
   /** État du moteur : la file, la cadence, les compteurs de l'étoile (perles allumées : `cleared`) */
@@ -118,7 +125,12 @@ export interface RunSnapshot {
   scene: Scene;
   /** Essai en cours (de 0 à 3) pendant `trial` */
   trial: number;
-  isBuzzerPressed: boolean;
+  /**
+   * Numéro de l'annonce de la phase pour les lecteurs d'écran : il change à chaque entrée dans une
+   * phase, rappel de départ compris ; 0 tant que rien n'est annoncé (le contenu initial d'une région
+   * `role="status"` n'est pas lu)
+   */
+  statusKey: number;
   /** Grisé pendant la pause d'un piège touché : rien n'y est compté */
   isBuzzerEnabled: boolean;
   /** Le buzzer pulse : il attend un appui (pause, cible qui l'appelle à l'échelon 2) */
@@ -145,22 +157,28 @@ export interface RunDeps {
   /** Horloge monotone (`performance.now`) ; injectable en test */
   now?: () => number;
   playEffect: (effect: SoundEffect) => void;
-  /** Dit des clips (chemins) ; résolue à la fin de la voix, aussitôt son coupé */
-  speak: (clips: readonly string[], mood?: 'talking' | 'flap') => Promise<void>;
-  /** Charge des clips à l'avance */
-  preload: (paths: readonly string[]) => void;
   /**
-   * Un clip existe-t-il ? Défaut : tous. Un clip absent n'est ni dit ni chargé (aucune requête vers
-   * un fichier qui n'existe pas) : la chouette est mimée, la voix s'active quand le clip existe.
+   * Dit des clips (chemins) ; résolue à la fin de la voix, aussitôt son coupé. La chouette mime la voix
+   * (`talking` par défaut) ; `null` : la voix seule, le déroulé anime lui-même la mascotte.
    */
-  isClipAvailable?: (path: string) => boolean;
-  /** Étoile gagnée : à enregistrer (une seule fois par partie) */
+  speak: (clips: readonly string[], mood?: VoiceMood | null) => Promise<void>;
+  /** Fait taire la voix en cours, et celle que le navigateur retient jusqu'au premier geste */
+  stopVoice: () => void;
+  /** Charge des clips à l'avance ; résolue quand ils sont prêts (ou qu'ils ont échoué) */
+  preload: (paths: readonly string[]) => Promise<void>;
+  /** Page masquée : un rappel de la règle ne s'y dépense pas, personne ne l'entendrait. Défaut : jamais */
+  isHidden?: () => boolean;
+  /** Étoile gagnée : à enregistrer (une seule fois par partie), dès la réussite qui la gagne */
   onWin: (result: RunResult) => void;
 }
 
 export interface Run {
   getSnapshot: () => RunSnapshot;
   subscribe: (listener: () => void) => () => void;
+  /** Le buzzer est enfoncé : un contact vient d'être posé (même quand rien n'est compté) */
+  isBuzzerPressed: () => boolean;
+  /** Abonnement au seul état enfoncé du buzzer */
+  subscribeBuzzer: (listener: () => void) => () => void;
   /** Lance la partie (rejouable après `dispose`, comme un effet sous StrictMode) */
   start: () => void;
   /** Arrête tous les minuteurs ; la voix en cours n'est plus attendue */
@@ -181,9 +199,7 @@ export interface Run {
 }
 
 /** Apparition sur scène, avec ce qui la fait finir. */
-interface OnStage {
-  appearance: Appearance;
-  presentation: Presentation;
+interface ActiveStage extends OnStage {
   source: 'trial' | 'live';
   isResolved: boolean;
 }
@@ -208,7 +224,7 @@ function createInitialSnapshot(config: GoNoGoLevelConfig, game: GoNoGoState): Ru
     game,
     scene: EMPTY_SCENE,
     trial: 0,
-    isBuzzerPressed: false,
+    statusKey: 0,
     isBuzzerEnabled: true,
     isBuzzerPulsing: false,
     hand: 'none',
@@ -223,50 +239,68 @@ function getTrappedClips(help: HelpStage): string[] {
   return help >= 2 ? [SHARED_CLIPS.trapped, SHARED_CLIPS.lookCarefully] : [SHARED_CLIPS.trapped];
 }
 
+/** Même valeur, ou même objet champ à champ (la scène, la mascotte) : rien à redessiner. */
+function isSameValue(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) {
+    return false;
+  }
+  const leftEntries = Object.entries(left);
+  return (
+    leftEntries.length === Object.keys(right).length &&
+    leftEntries.every(([key, value]) => Object.is(value, (right as Record<string, unknown>)[key]))
+  );
+}
+
 export function createRun(deps: RunDeps): Run {
   const { config } = deps;
   const rng = deps.rng ?? Math.random;
   const now = deps.now ?? (() => performance.now());
-  const isAvailable = deps.isClipAvailable ?? (() => true);
+  const isHidden = deps.isHidden ?? (() => false);
   const isOwlRule = config.rule === 'owl-says';
+  const ruleClips = getRuleClipPaths(config);
 
   let hasWon = deps.hasWon;
   let onWin = deps.onWin;
   let snapshot = createInitialSnapshot(config, createGoNoGoGame(config, rng));
   const listeners = new Set<() => void>();
+  let isPressed = false;
+  const pressListeners = new Set<() => void>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
   /** Change à chaque arrêt et à chaque nouvelle partie : une voix ou un film ancien ne reprend pas la main */
   let epoch = 0;
   let isStarted = false;
   let sceneKey = 0;
-  let onStage: OnStage | null = null;
+  let onStage: ActiveStage | null = null;
   let appearedAt = 0;
   let appearanceTimers: ReturnType<typeof setTimeout>[] = [];
   let trialPlan: Appearance[] = [];
   let idleTimer: ReturnType<typeof setTimeout> | undefined;
   let flashTimer: ReturnType<typeof setTimeout> | undefined;
   let mascotTimer: ReturnType<typeof setTimeout> | undefined;
-  let nudgeTimer: ReturnType<typeof setInterval> | undefined;
   let nudgeCount = 0;
   /** Où reprendre après une pause */
   let resumeTo: 'demo' | 'trial' | 'live' = 'live';
   /** Page masquée pendant le rappel de la règle : la pause part dès qu'il est fini (§6.5) */
   let isPausePending = false;
 
-  /** Dit les clips qui existent ; la voix est résolue aussitôt s'il n'en reste aucun, le mime dure quand même. */
-  function say(clips: readonly string[], mood?: 'talking' | 'flap'): Promise<void> {
-    return deps.speak(clips.filter(isAvailable), mood);
-  }
-
-  /** Charge à l'avance les clips qui existent. */
-  function load(paths: readonly string[]): void {
-    const available = paths.filter(isAvailable);
-    if (available.length > 0) deps.preload(available);
-  }
-
+  /** Un patch qui ne change rien ne redessine rien. */
   function update(patch: Partial<RunSnapshot>): void {
+    const keys = Object.keys(patch) as (keyof RunSnapshot)[];
+    if (keys.every((key) => isSameValue(snapshot[key], patch[key]))) return;
     snapshot = { ...snapshot, ...patch };
     for (const listener of listeners) listener();
+  }
+
+  /** Entre dans une phase, et l'annonce aux lecteurs d'écran (une annonce par entrée). */
+  function setPhase(phase: RunPhase, patch: Partial<RunSnapshot> = {}): void {
+    update({ ...patch, phase, statusKey: snapshot.statusKey + 1 });
+  }
+
+  function setPressed(value: boolean): void {
+    if (isPressed === value) return;
+    isPressed = value;
+    for (const listener of pressListeners) listener();
   }
 
   function after(ms: number, callback: () => void): ReturnType<typeof setTimeout> {
@@ -291,8 +325,6 @@ export function createRun(deps: RunDeps): Run {
     idleTimer = undefined;
     flashTimer = undefined;
     mascotTimer = undefined;
-    if (nudgeTimer !== undefined) clearInterval(nudgeTimer);
-    nudgeTimer = undefined;
   }
 
   /** Attend `ms`, ou une voix qui dure plus longtemps ; `false` si la partie a changé entre-temps. */
@@ -308,8 +340,9 @@ export function createRun(deps: RunDeps): Run {
     update({ mascot: { isVisible, pose } });
   }
 
-  /** La mascotte prend `pose` un moment, puis revient à l'attente. */
+  /** La mascotte prend `pose` un moment, puis revient à l'attente ; cachée, il n'y a rien à montrer. */
   function poseMascot(pose: MascotPose, ms: number): void {
+    if (!snapshot.mascot.isVisible) return;
     cancel(mascotTimer);
     setMascot(pose);
     mascotTimer = after(ms, () => {
@@ -341,11 +374,18 @@ export function createRun(deps: RunDeps): Run {
     });
   }
 
-  /** Rappelle la règle ; au plus `MAX_NUDGES` fois, puis silence jusqu'au prochain appui. */
+  /**
+   * Rappelle la règle, puis toutes les `IDLE_MS`, au plus `MAX_NUDGES` fois : silence ensuite jusqu'au
+   * prochain appui. Page masquée, le rappel n'est pas dépensé (personne ne l'entendrait) : l'enfant qui
+   * revient ne trouve pas une chouette muette.
+   */
   function nudge(): void {
-    if (nudgeCount >= MAX_NUDGES || snapshot.phase !== 'paused') return;
-    nudgeCount += 1;
-    void say([getVoiceClipPath(getRuleClipId(config))]);
+    if (snapshot.phase !== 'paused') return;
+    if (!isHidden()) {
+      nudgeCount += 1;
+      void deps.speak(ruleClips);
+    }
+    if (nudgeCount < MAX_NUDGES) after(IDLE_MS, nudge);
   }
 
   /**
@@ -373,39 +413,34 @@ export function createRun(deps: RunDeps): Run {
     onStage = null;
     nudgeCount = 0;
     // `clearAll` vient d'effacer le minuteur de relâchement du buzzer : il ne doit pas rester enfoncé.
-    update({
-      phase: 'paused',
+    setPressed(false);
+    setPhase('paused', {
       scene: { ...EMPTY_SCENE, key: sceneKey },
       hand: 'none',
       isBuzzerEnabled: true,
-      isBuzzerPressed: false,
       isBuzzerPulsing: true,
       mascot: { isVisible: true, pose: 'idle' },
     });
-    if (withVoice) {
-      nudge();
-      nudgeTimer = setInterval(nudge, IDLE_MS);
-    }
+    if (withVoice) nudge();
   }
 
   function resume(): void {
     if (snapshot.phase !== 'paused') return;
     epoch += 1;
     clearAll();
-    nudgeCount = 0;
-    // L'appui qui relance a enfoncé le buzzer, puis `clearAll` a effacé son minuteur de relâchement.
+    setPressed(false);
+    // Règle 1 : la chouette du coin se cache pour la partie et les essais, et la démo repart sans elle.
     update({
-      isBuzzerPressed: false,
       isBuzzerPulsing: false,
-      mascot: { isVisible: !isOwlRule || resumeTo === 'demo', pose: 'idle' },
+      mascot: { isVisible: !isOwlRule, pose: 'idle' },
     });
     if (resumeTo === 'demo') {
       startDemo();
     } else if (resumeTo === 'trial') {
-      update({ phase: 'trial' });
+      setPhase('trial');
       after(BREATH_MS, beginTrial);
     } else {
-      update({ phase: 'live' });
+      setPhase('live');
       armIdle();
       after(BREATH_MS, beginLive);
     }
@@ -416,7 +451,7 @@ export function createRun(deps: RunDeps): Run {
   function enterScene(
     appearance: Appearance,
     presentation: Presentation,
-    source: 'trial' | 'live',
+    source: ActiveStage['source'],
   ): void {
     sceneKey += 1;
     appearedAt = now();
@@ -438,9 +473,11 @@ export function createRun(deps: RunDeps): Run {
     });
     if (isOwlRule) deps.playEffect('signal');
     if (config.hasLure && isImageId(appearance.subject)) {
-      // La chouette bat des ailes à chaque image et la nomme : « Vache vole ! » (§4.2). Seule l'image décide.
+      // La chouette bat des ailes à chaque image et la nomme : « Vache vole ! » (§4.2). Seule l'image
+      // décide. Le battement dure `LURE_FLAP_MS`, la voix ne le prolonge pas : une cible attrapée doit
+      // encore pouvoir rendre la chouette contente.
       poseMascot('flap', LURE_FLAP_MS);
-      void say([getVoiceClipPath(getLureClipId(appearance.subject))], 'flap');
+      void deps.speak([getVoiceClipPath(getLureClipId(appearance.subject))], null);
     }
     appearanceTimers = [];
     if (presentation.windowMs !== null) {
@@ -474,6 +511,8 @@ export function createRun(deps: RunDeps): Run {
       outcome = next.lastResult.outcome;
       help = next.lastResult.help;
       update({ game: next });
+      // Enregistrée dès la réussite qui gagne : l'enfant qui quitte pendant l'animation garde son étoile.
+      if (next.status === 'won') recordWin(next);
     } else {
       outcome = judgeAppearance(stage.appearance.kind, pressedAtMs, stage.presentation.stopAtMs);
     }
@@ -483,7 +522,7 @@ export function createRun(deps: RunDeps): Run {
     showOutcome(stage, outcome, help);
   }
 
-  function showOutcome(stage: OnStage, outcome: GoNoGoOutcome, help: HelpStage): void {
+  function showOutcome(stage: ActiveStage, outcome: GoNoGoOutcome, help: HelpStage): void {
     setScene({ moment: outcome });
     update({ hand: 'none', isBuzzerPulsing: false });
     if (outcome === 'trapped') {
@@ -493,7 +532,7 @@ export function createRun(deps: RunDeps): Run {
         isBuzzerEnabled: false,
         mascot: { isVisible: true, pose: 'idle' },
       });
-      const voice = say(getTrappedClips(help));
+      const voice = deps.speak(getTrappedClips(help));
       void wait(TRAPPED_PAUSE_MS, voice).then((isCurrent) => {
         if (isCurrent) settle(stage);
       });
@@ -519,7 +558,7 @@ export function createRun(deps: RunDeps): Run {
   }
 
   /** Fin des animations d'une apparition : la scène se vide, puis la respiration, puis la suivante. */
-  function settle(stage: OnStage): void {
+  function settle(stage: ActiveStage): void {
     if (onStage !== stage) return;
     if (stage.source === 'live' && snapshot.game.status === 'won') {
       win();
@@ -540,10 +579,9 @@ export function createRun(deps: RunDeps): Run {
   function beginLive(): void {
     if (snapshot.phase !== 'live') return;
     const next = startAppearance(snapshot.game);
-    const { current, presentation } = next;
-    if (!current || !presentation) return;
+    if (!next.onStage) return;
     update({ game: next });
-    enterScene(current, presentation, 'live');
+    enterScene(next.onStage.appearance, next.onStage.presentation, 'live');
   }
 
   function beginTrial(): void {
@@ -558,31 +596,41 @@ export function createRun(deps: RunDeps): Run {
 
   // ---- Les phases ------------------------------------------------------------------------------
 
-  function win(): void {
-    const { game } = snapshot;
-    emptyStage();
-    update({ phase: 'won' });
-    cancel(idleTimer);
-    const isPerfect = isPerfectWin(game);
-    deps.playEffect('victory');
-    void say(isPerfect ? [SHARED_CLIPS.starWon, SHARED_CLIPS.crownWon] : [SHARED_CLIPS.starWon]);
-    onWin({ moves: game.trapped, timeSeconds: getHeldSpeedSeconds(game), isPerfect });
+  /** Enregistre la victoire : pièges touchés, vitesse tenue, couronne (§14.9). */
+  function recordWin(game: GoNoGoState): void {
+    onWin({
+      moves: game.trapped,
+      timeSeconds: getHeldSpeedSeconds(game),
+      isPerfect: isPerfectWin(game),
+    });
     hasWon = true;
+  }
+
+  /** Après l'animation de la dernière réussite : la fanfare, puis l'écran de fin. */
+  function win(): void {
+    emptyStage();
+    setPhase('won');
+    cancel(idleTimer);
+    deps.playEffect('victory');
+    void deps.speak(
+      isPerfectWin(snapshot.game)
+        ? [SHARED_CLIPS.starWon, SHARED_CLIPS.crownWon]
+        : [SHARED_CLIPS.starWon],
+    );
     after(END_SCREEN_DELAY_MS, () => {
       update({ isEndOpen: true });
     });
   }
 
   function startLive(): void {
-    update({ phase: 'live', trial: 0 });
+    setPhase('live', { trial: 0 });
     emptyStage();
-    nudgeCount = 0;
     armIdle();
     after(BREATH_MS, beginLive);
   }
 
   function startTrials(): void {
-    update({ phase: 'trial', trial: 0 });
+    setPhase('trial', { trial: 0 });
     emptyStage();
     // La démo laisse la chouette dans son coin ; au premier essai, une seconde chouette serait un signal.
     if (isOwlRule) setMascot('idle', false);
@@ -632,33 +680,38 @@ export function createRun(deps: RunDeps): Run {
         setMascot(action.mood, action.isVisible);
         break;
       case 'say':
-        return wait(action.minMs, say(action.clips, action.mood));
+        return wait(action.minMs, deps.speak(action.clips, action.mood));
       case 'wait':
         return wait(action.ms);
     }
     return Promise.resolve(true);
   }
 
-  /** Joue le film de la démo, étape après étape, puis les essais guidés. */
+  /**
+   * Joue le film de la démo, du premier plan (la mascotte à sa place de départ : cachée à la règle 1),
+   * étape après étape, puis les essais guidés. Une voix que le navigateur retenait faute de geste ne
+   * déborde pas sur les essais : la mise en garde partirait au premier appui, par-dessus eux.
+   */
   function startDemo(): void {
-    update({ phase: 'demo' });
+    setPhase('demo', { mascot: { isVisible: !isOwlRule, pose: 'idle' } });
     emptyStage();
     const mine = epoch;
     const script = getDemoScript(config);
-    load(getDemoClipPaths(config));
     void (async () => {
       for (const action of script) {
         if (mine !== epoch) return;
         if (!(await performDemo(action))) return;
       }
-      if (mine === epoch) startTrials();
+      if (mine !== epoch) return;
+      deps.stopVoice();
+      startTrials();
     })();
   }
 
   /** Phrase de rappel de la règle, puis la suite : au plus tôt `START_DELAY_MS` plus tard. */
   function startReminder(): void {
-    update({ phase: 'starting' });
-    const voice = say([getVoiceClipPath(getRuleClipId(config))]);
+    setPhase('starting');
+    const voice = deps.speak(ruleClips);
     void wait(START_DELAY_MS, voice).then((isCurrent) => {
       if (!isCurrent || snapshot.phase !== 'starting') return;
       goOn();
@@ -669,20 +722,34 @@ export function createRun(deps: RunDeps): Run {
     });
   }
 
+  /**
+   * Premier tour d'horloge : tire les essais guidés, charge les clips (la phrase de rappel d'abord,
+   * comme Attrape-Piège : sur un réseau lent, elle n'attend pas les autres), puis lance la démo ou le
+   * rappel. Une pause demandée avant (page déjà masquée au montage) part dès le début de la démo, ou à
+   * la fin du rappel.
+   */
   function boot(): void {
-    isPausePending = false;
     const { game } = snapshot;
+    const hasDemo = config.intro !== null && !hasWon;
     // Les essais guidés sont tirés ici, avec la file : leurs images sont chargées avec les autres.
     trialPlan = config.intro === null ? [] : createTrialPlan(config, rng);
-    load([getVoiceClipPath(getRuleClipId(config))]);
-    load(
-      getStarClipPaths(
+    const others = [
+      ...(hasDemo ? getDemoClipPaths(config) : []),
+      ...getStarClipPaths(
         config,
         [...game.queue, ...trialPlan].map((entry) => entry.subject),
       ),
-    );
-    if (config.intro !== null && !hasWon) startDemo();
-    else startReminder();
+    ].filter((path) => !ruleClips.includes(path));
+    void deps.preload(ruleClips).then(() => deps.preload([...new Set(others)]));
+    if (!hasDemo) {
+      startReminder();
+      return;
+    }
+    startDemo();
+    if (isPausePending) {
+      isPausePending = false;
+      enterPause(false);
+    }
   }
 
   // ---- Les gestes ------------------------------------------------------------------------------
@@ -690,18 +757,19 @@ export function createRun(deps: RunDeps): Run {
   /** Le buzzer s'enfonce visuellement, même quand rien n'est compté. */
   function flash(): void {
     cancel(flashTimer);
-    update({ isBuzzerPressed: true });
+    setPressed(true);
     flashTimer = after(PRESS_FLASH_MS, () => {
-      update({ isBuzzerPressed: false });
+      setPressed(false);
     });
   }
 
   function press(eventTime?: number): void {
     const { phase, isBuzzerEnabled } = snapshot;
     if (phase === 'paused') {
-      // L'appui qui relance ne compte pas.
-      flash();
+      // L'appui qui relance ne compte pas, mais le buzzer s'enfonce : la reprise efface d'abord tous
+      // les minuteurs, puis l'appui arme celui qui le relâche.
       resume();
+      flash();
       return;
     }
     // La démo conduit seule le buzzer ; une fois gagnée, l'étoile ne compte plus rien.
@@ -710,11 +778,14 @@ export function createRun(deps: RunDeps): Run {
     if (phase === 'live') armIdle();
     const stage = onStage;
     if (!stage || stage.isResolved || !isBuzzerEnabled) return;
-    const elapsed = Math.max(0, (eventTime ?? now()) - appearedAt);
+    const pressedAt = eventTime ?? now();
+    // Un contact posé avant l'entrée de l'image (pendant la respiration), mais traité après, ne compte
+    // pas pour elle : seul un contact posé pendant la fenêtre compte (§3.2).
+    if (pressedAt < appearedAt) return;
+    const elapsed = pressedAt - appearedAt;
     const { windowMs } = stage.presentation;
     // Hors de la fenêtre : un appui en retard sur la fin de la fenêtre ne compte pas.
     if (windowMs !== null && elapsed >= windowMs) return;
-    nudgeCount = 0;
     resolveStage(elapsed);
   }
 
@@ -726,6 +797,13 @@ export function createRun(deps: RunDeps): Run {
         listeners.delete(listener);
       };
     },
+    isBuzzerPressed: () => isPressed,
+    subscribeBuzzer: (listener) => {
+      pressListeners.add(listener);
+      return () => {
+        pressListeners.delete(listener);
+      };
+    },
     start: () => {
       if (isStarted) return;
       isStarted = true;
@@ -734,6 +812,7 @@ export function createRun(deps: RunDeps): Run {
     },
     dispose: () => {
       isStarted = false;
+      isPausePending = false;
       epoch += 1;
       clearAll();
     },
@@ -742,7 +821,7 @@ export function createRun(deps: RunDeps): Run {
       enterPause(false);
     },
     replayRule: () => {
-      if (snapshot.phase === 'paused') void say([getVoiceClipPath(getRuleClipId(config))]);
+      if (snapshot.phase === 'paused') void deps.speak(ruleClips);
     },
     setOnWin: (handler) => {
       onWin = handler;
@@ -751,8 +830,10 @@ export function createRun(deps: RunDeps): Run {
       epoch += 1;
       clearAll();
       onStage = null;
+      isPausePending = false;
       hasWon = true;
       isStarted = true;
+      setPressed(false);
       snapshot = createInitialSnapshot(config, createGoNoGoGame(config, rng));
       for (const listener of listeners) listener();
       after(0, boot);

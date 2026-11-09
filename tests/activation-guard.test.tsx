@@ -6,6 +6,7 @@ import {
   guardActivations,
   installActivationGuard,
   isActivationGuarded,
+  isSynthesizedActivation,
   NavigationProvider,
   useGridNavigation,
   useNavigation,
@@ -490,6 +491,29 @@ describe('Tap sans clic du navigateur', () => {
     render(<FocusableButton onClick={onClick}>Stop</FocusableButton>);
     return { onClick, button: getButton('Stop') };
   }
+
+  it('signale son propre clic pendant qu’il se joue, et lui seul', () => {
+    const seen: boolean[] = [];
+    render(
+      <FocusableButton
+        onClick={() => {
+          seen.push(isSynthesizedActivation());
+        }}
+      >
+        Stop
+      </FocusableButton>,
+    );
+    const button = getButton('Stop');
+    // Un appui long : aucun clic du navigateur, la garde clique à sa place.
+    touchDown(button, 1);
+    touchUp(button, 1);
+    vi.advanceTimersByTime(200);
+    // Un clic du navigateur, plus tard (un clic en retard sur le sien serait avalé), n'est pas le sien.
+    vi.advanceTimersByTime(500);
+    fireEvent.click(button);
+    expect(seen).toEqual([true, false]);
+    expect(isSynthesizedActivation()).toBe(false);
+  });
 
   it('une main posée : le tap du second doigt active le bouton', () => {
     const { onClick, button } = renderButton();

@@ -1,14 +1,9 @@
-import {
-  END_SCREEN_GUARD_MS as DEFAULT_GUARD_MS,
-  installActivationGuard,
-  NavigationProvider,
-} from '@/core/navigation';
+import { END_SCREEN_GUARD_MS, installActivationGuard, NavigationProvider } from '@/core/navigation';
 import { getGameProgressSummary, type BaseLevelDefinition } from '@/core/progression';
 import { GoNoGoBoard } from '@/games/go-no-go/components';
-import { END_SCREEN_GUARD_MS } from '@/games/go-no-go/components/GoNoGoEndScreen';
+import { GO_NO_GO_END_GUARD_MS } from '@/games/go-no-go/components/GoNoGoEndScreen';
 import { BREATH_MS, END_SCREEN_DELAY_MS, IDLE_MS, START_DELAY_MS } from '@/games/go-no-go/run';
 import type { GoNoGoLevelConfig } from '@/games/go-no-go/types';
-import type * as VoiceScript from '@/games/go-no-go/voice-script';
 import { getVoiceClipPath, SHARED_CLIPS } from '@/games/go-no-go/voice-script';
 import type { UserProfile } from '@/types/mia';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -20,17 +15,11 @@ const audio = vi.hoisted(() => ({
   preloadClips: vi.fn((_paths: readonly string[]) => Promise.resolve()),
   playClips: vi.fn((_paths: readonly string[]) => Promise.resolve()),
   stopClips: vi.fn(),
+  releaseClips: vi.fn(),
   playEffect: vi.fn(),
 }));
 
 vi.mock('@/core/audio', () => ({ useGameAudio: () => audio }));
-
-// Ici, toutes les phrases existent : ce que le plateau demande à la voix. Quelles phrases existent
-// vraiment, c'est tests/go-no-go-voice.test.ts.
-vi.mock('@/games/go-no-go/voice-script', async (importOriginal) => ({
-  ...(await importOriginal<typeof VoiceScript>()),
-  isClipAvailable: () => true,
-}));
 
 /** Règle 1, une cachette : 6 apparitions dont 1 piège (le renard, en fin de file avec `Math.random` à 0). */
 const OWL: GoNoGoLevelConfig = {
@@ -112,6 +101,8 @@ interface BoardOptions {
   config?: GoNoGoLevelConfig;
   profile?: UserProfile | null;
   strict?: boolean;
+  /** Laisser partir le premier tour d'horloge (le rappel de la règle) ; défaut : oui */
+  isBooted?: boolean;
 }
 
 function advance(ms: number): void {
@@ -128,7 +119,12 @@ async function advanceAsync(ms: number): Promise<void> {
 }
 
 /** Monte le plateau comme `GameScreen.renderLevel`, et laisse partir l'annonce de la règle. */
-function renderBoard({ config = OWL, profile = null, strict = false }: BoardOptions = {}) {
+function renderBoard({
+  config = OWL,
+  profile = null,
+  strict = false,
+  isBooted = true,
+}: BoardOptions = {}) {
   const catalog = [definition('gn-001', 10, config), definition('gn-002', 20, OWL)];
   const summary = getGameProgressSummary('go-no-go', catalog, profile);
   const level = summary.allLevels[0];
@@ -141,8 +137,25 @@ function renderBoard({ config = OWL, profile = null, strict = false }: BoardOpti
   };
   const board = <GoNoGoBoard level={level} controls={controls} />;
   render(strict ? <StrictMode>{board}</StrictMode> : board, { wrapper: NavigationProvider });
-  advance(0);
+  if (isBooted) advance(0);
   return controls;
+}
+
+/**
+ * Un contact posé sur `target`, daté de `timeStamp` dans l'horloge de la page (`performance.now`),
+ * comme le fait le navigateur : React le transmet tel quel au plateau.
+ */
+function touchAt(target: Element, timeStamp: number): void {
+  const event = new PointerEvent('pointerdown', {
+    bubbles: true,
+    cancelable: true,
+    pointerType: 'touch',
+    button: 0,
+  });
+  Object.defineProperty(event, 'timeStamp', { value: timeStamp });
+  act(() => {
+    target.dispatchEvent(event);
+  });
 }
 
 /** Attend la première apparition : le rappel de la règle, puis la respiration. */
@@ -232,13 +245,26 @@ describe('Plateau de Pas si vite !', () => {
   });
 
   it('annonce la consigne de la règle aux lecteurs d’écran, sans une annonce par apparition', async () => {
-    renderBoard();
+    renderBoard({ isBooted: false });
+    // Vide au montage : le contenu initial d'une région `role="status"` n'est pas lu.
+    expect(getStatus()).toBeEmptyDOMElement();
+    advance(0);
     expect(getStatus()).toHaveTextContent('Tape quand c’est la chouette.');
     await toFirstAppearance();
-    expect(getStatus()).toHaveTextContent('C’est parti !');
+    expect(getStatus()).toHaveTextContent('C’est parti ! Tape quand c’est la chouette.');
+    const announcement = getStatus().firstElementChild;
     touch(getPlayArea());
     await advanceAsync(600);
-    expect(getStatus()).toHaveTextContent('C’est parti !');
+    expect(getStatus().firstElementChild).toBe(announcement);
+  });
+
+  it('redit la consigne à chaque reprise après une pause', async () => {
+    renderBoard();
+    await toFirstAppearance();
+    await advanceAsync(IDLE_MS);
+    expect(getStatus()).toHaveTextContent('Pause.');
+    touch(getStage());
+    expect(getStatus()).toHaveTextContent('C’est parti ! Tape quand c’est la chouette.');
   });
 
   it('dit la phrase de rappel au départ, une seule fois sous StrictMode, après l’avoir chargée', async () => {
@@ -345,17 +371,48 @@ describe('au doigt : un nouveau contact n’importe où dans l’aire de jeu', (
     expect(getFigure()).toHaveAttribute('data-moment', 'caught');
   });
 
-  it('un clic qui suit un contact déjà compté n’en fait pas un second, ni un clic au doigt', async () => {
+  it('le clic du navigateur qui suit un contact n’en fait pas un second appui', async () => {
     renderBoard();
     await toFirstAppearance();
     fireEvent.click(getBuzzer(), { detail: 1 });
     expect(getFigure()).toHaveAttribute('data-moment', 'entering');
     touch(getBuzzer());
-    await advanceAsync(CAUGHT_AND_BREATH);
-    // Le clic synthétique de la garde d'activation arrive juste après le contact.
-    touch(getBuzzer());
-    fireEvent.click(getBuzzer(), { detail: 0 });
+    fireEvent.click(getBuzzer(), { detail: 1 });
     expect(getLitPearls()).toBe(1);
+  });
+
+  it('un clic de lecteur d’écran juste après un contact sur l’image précédente compte encore', async () => {
+    renderBoard();
+    await toFirstAppearance();
+    touch(getStage());
+    await advanceAsync(CAUGHT_AND_BREATH + 150);
+    expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+    // Moins d'une seconde après le contact : TalkBack tape le buzzer pour la nouvelle image.
+    fireEvent.click(getBuzzer(), { detail: 0 });
+    expect(getFigure()).toHaveAttribute('data-moment', 'caught');
+    expect(getLitPearls()).toBe(2);
+  });
+
+  it('date l’appui par l’horodatage du contact : posé dans la fenêtre, traité après sa fin, il compte', async () => {
+    renderBoard();
+    await toFirstAppearance();
+    expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+    await advanceAsync(2500 + 20);
+    // L'évènement est arrivé 60 ms plus tôt : 40 ms avant la fin de la fenêtre.
+    touchAt(getStage(), performance.now() - 60);
+    expect(getFigure()).toHaveAttribute('data-moment', 'caught');
+  });
+
+  it('un contact daté d’avant l’entrée de l’image ne compte pas pour elle', async () => {
+    renderBoard();
+    await advanceAsync(START_DELAY_MS + BREATH_MS - 10);
+    expect(getFigure()).toBeNull();
+    const posedAt = performance.now();
+    await advanceAsync(10);
+    expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+    touchAt(getStage(), posedAt);
+    expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+    expect(getBuzzer()).toHaveAttribute('data-pressed');
   });
 
   describe('avec la garde d’activation', () => {
@@ -391,6 +448,26 @@ describe('au doigt : un nouveau contact n’importe où dans l’aire de jeu', (
         removeGuard();
       }
     });
+
+    it('le clic que la garde donne au buzzer après un tap sans clic du navigateur ne compte pas', async () => {
+      const removeGuard = installActivationGuard();
+      try {
+        renderBoard();
+        await toFirstAppearance();
+        const buzzer = getBuzzer();
+        vi.spyOn(document, 'elementFromPoint').mockReturnValue(buzzer);
+        fireEvent.pointerDown(buzzer, FINGER);
+        expect(getFigure()).toHaveAttribute('data-moment', 'caught');
+        fireEvent.pointerUp(buzzer, FINGER);
+        // Le navigateur n'a pas cliqué : la garde clique le buzzer 120 ms plus tard, juste avant
+        // l'image suivante. Ce clic suit un contact déjà compté.
+        await advanceAsync(CAUGHT_AND_BREATH + 150);
+        expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+        expect(getLitPearls()).toBe(1);
+      } finally {
+        removeGuard();
+      }
+    });
   });
 });
 
@@ -411,6 +488,20 @@ describe('à la télécommande : OK est le buzzer', () => {
     renderBoard();
     await toFirstAppearance();
     expect(document.querySelector('[data-remote-icon]')).toBeNull();
+  });
+
+  it('date OK par l’horodatage de la touche, pas par l’instant de son traitement', async () => {
+    forceTvMode();
+    renderBoard();
+    await toFirstAppearance();
+    await advanceAsync(2500 + 20);
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'timeStamp', { value: performance.now() - 60 });
+    act(() => {
+      (document.activeElement ?? document.body).dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+    expect(getFigure()).toHaveAttribute('data-moment', 'caught');
   });
 
   it.each(['Enter', ' '])('« %s » au keydown est un appui', async (key) => {
@@ -503,6 +594,17 @@ describe('la scène de chaque règle', () => {
     await toFirstAppearance();
     expect(getMascot()).toHaveAttribute('data-mood', 'flap');
     expect(audio.playClips.mock.lastCall?.[0]).toEqual([getVoiceClipPath('lure-pigeon')]);
+  });
+
+  it('règle 2 avec leurre : contente après une cible attrapée, les ailes ne battent que le temps du leurre', async () => {
+    renderBoard({ config: FLIES });
+    await toFirstAppearance();
+    await advanceAsync(800);
+    expect(getMascot()).toHaveAttribute('data-mood', 'flap');
+    touch(getStage());
+    expect(getMascot()).toHaveAttribute('data-mood', 'happy');
+    await advanceAsync(700);
+    expect(getMascot()).toHaveAttribute('data-mood', 'idle');
   });
 
   it('règle 3 : le panneau STOP surgit sur l’image, avec son effet', async () => {
@@ -605,6 +707,20 @@ describe('pause : inaction et page masquée', () => {
     Reflect.deleteProperty(document, 'hidden');
   });
 
+  it('une page déjà masquée au montage ne joue pas l’étoile sans personne', async () => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    try {
+      renderBoard();
+      await advanceAsync(START_DELAY_MS + BREATH_MS + 5000);
+      expect(getPlayArea()).toHaveAttribute('data-phase', 'paused');
+      expect(getFigure()).toBeNull();
+    } finally {
+      Reflect.deleteProperty(document, 'hidden');
+    }
+    touch(getStage());
+    expect(getPlayArea()).toHaveAttribute('data-phase', 'live');
+  });
+
   it('retire son écouteur de visibilité au démontage', async () => {
     const remove = vi.spyOn(document, 'removeEventListener');
     renderBoard();
@@ -657,8 +773,8 @@ describe('l’écran de fin', () => {
   });
 
   it('résiste à une enfant qui tape encore : ses boutons n’agissent qu’après 1,5 s', async () => {
-    expect(END_SCREEN_GUARD_MS).toBe(1500);
-    expect(END_SCREEN_GUARD_MS).toBeGreaterThan(DEFAULT_GUARD_MS);
+    expect(GO_NO_GO_END_GUARD_MS).toBe(1500);
+    expect(GO_NO_GO_END_GUARD_MS).toBeGreaterThan(END_SCREEN_GUARD_MS);
     const uninstall = installActivationGuard();
     try {
       const controls = renderBoard();
@@ -668,7 +784,7 @@ describe('l’écran de fin', () => {
         await advanceAsync(50);
       }
       expect(screen.getByRole('dialog')).toBeInTheDocument();
-      await advanceAsync(END_SCREEN_GUARD_MS - 300);
+      await advanceAsync(GO_NO_GO_END_GUARD_MS - 300);
       fireEvent.click(screen.getByRole('button', { name: 'Carte des étoiles' }));
       expect(controls.exitToMap).not.toHaveBeenCalled();
       await advanceAsync(400);
@@ -689,7 +805,7 @@ describe('l’écran de fin', () => {
   it('Rejouer repart de zéro : nouvelle partie, rappel dit de nouveau, perles éteintes', async () => {
     renderBoard();
     await playToTheEnd();
-    await advanceAsync(END_SCREEN_DELAY_MS + END_SCREEN_GUARD_MS + 100);
+    await advanceAsync(END_SCREEN_DELAY_MS + GO_NO_GO_END_GUARD_MS + 100);
     audio.playClips.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'Rejouer' }));
     await advanceAsync(400);
@@ -701,7 +817,7 @@ describe('l’écran de fin', () => {
   it('Étoile suivante lance l’étoile suivante du catalogue ; Carte des étoiles revient à la carte', async () => {
     const controls = renderBoard();
     await playToTheEnd();
-    await advanceAsync(END_SCREEN_DELAY_MS + END_SCREEN_GUARD_MS + 100);
+    await advanceAsync(END_SCREEN_DELAY_MS + GO_NO_GO_END_GUARD_MS + 100);
     fireEvent.click(screen.getByRole('button', { name: 'Étoile suivante' }));
     expect(controls.playLevel).toHaveBeenCalledWith('gn-002');
     fireEvent.click(screen.getByRole('button', { name: 'Carte des étoiles' }));

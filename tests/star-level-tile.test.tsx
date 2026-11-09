@@ -1,5 +1,7 @@
 import { StarLevelTile, formatMoves, formatSpeed, getBestScore } from '@/components/progression';
+import { BEST_SCORE_KINDS } from '@/components/progression/labels';
 import type { EnrichedLevelItem } from '@/core/progression';
+import { GAME_REGISTRY } from '@/core/progression';
 import type { GameId, LevelCompletion } from '@/types/mia';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -59,6 +61,13 @@ describe('getBestScore', () => {
       announcement: ', vitesse tenue :',
       text: '1,3 s',
     });
+  });
+
+  it('chaque jeu du registre déclare ce que montre son étoile : seul Pas si vite ! montre une vitesse', () => {
+    expect(Object.keys(BEST_SCORE_KINDS).sort()).toEqual(Object.keys(GAME_REGISTRY).sort());
+    expect(Object.entries(BEST_SCORE_KINDS).filter(([, kind]) => kind === 'heldSpeed')).toEqual([
+      ['go-no-go', 'heldSpeed'],
+    ]);
   });
 
   it('ne donne rien tant que l’étoile n’est pas réussie', () => {

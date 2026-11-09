@@ -20,7 +20,6 @@ export const HILL_OUTLINE = '#166534';
 /** Castelet (règle 1) : bois brun, auvent rayé bleu et crème. */
 export const WOOD = '#b45309';
 export const WOOD_DARK = '#78350f';
-export const WOOD_LIGHT = '#d97706';
 export const AWNING_BLUE = '#38bdf8';
 export const AWNING_CREAM = '#fef3c7';
 /** Fond des fenêtres : un bleu-vert profond, que ni les contours sombres du renard et du chat, ni le violet de la chouette ne confondent avec lui. */
@@ -40,10 +39,27 @@ export const BUZZER_GREY_EDGE = '#334155';
 export const PEARL_LIT = '#fbbf24';
 
 /**
- * Images clés du jeu. Durées en variables CSS (`--gng-entry`) : l'entrée est identique pour toutes les
- * apparitions, et plus lente sous l'aide ou en démo. `transform` et `opacity` seulement : les
- * animations doivent tenir 60 images par seconde sur un boîtier Android TV modeste. Animations
- * réduites : tout devient un fondu, et le gag une pose fixe qui s'efface (§8.3).
+ * Contour de tous les dessins, cibles comme pièges, personnages comme images : un seul trait, pour
+ * qu'aucun contour ne trahisse la réponse (seule l'image décide, §3.1). Chaque dessin l'hérite de son
+ * groupe racine.
+ */
+export const ART_INK = '#1e293b';
+export const ART_STROKE_WIDTH = 3;
+export const ART_STROKE = {
+  stroke: ART_INK,
+  strokeWidth: ART_STROKE_WIDTH,
+  strokeLinejoin: 'round',
+  strokeLinecap: 'round',
+} as const;
+
+/**
+ * Images clés du jeu. Chaque élément animé porte la classe du nom de son animation (la durée, qui
+ * varie, reste dans son style en ligne) : c'est elle que visent les animations réduites. L'entrée est
+ * identique pour toutes les apparitions, et plus lente sous l'aide ou en démo. `transform` et
+ * `opacity` seulement : les animations doivent tenir 60 images par seconde sur un boîtier Android TV
+ * modeste. Animations réduites : tout devient un fondu, et le gag une pose fixe qui s'efface (§8.3) ;
+ * ce qui ne fait que bouger (le buzzer qui pulse, la perle qui gonfle) reste immobile, et les
+ * étincelles disparaissent.
  */
 export const GO_NO_GO_KEYFRAMES = [
   // Entrée : la même pour toutes (derrière une colline, ou au fond d'une cachette).
@@ -66,7 +82,6 @@ export const GO_NO_GO_KEYFRAMES = [
   // Le signal : les bras se lèvent et battent, identiques pour tous les personnages.
   '@keyframes gng-wave-left{0%,100%{transform:rotate(0)}50%{transform:rotate(70deg)}}',
   '@keyframes gng-wave-right{0%,100%{transform:rotate(0)}50%{transform:rotate(-70deg)}}',
-  '@keyframes gng-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3%)}}',
   // Étincelles de la chouette qui replonge.
   '@keyframes gng-spark{0%{transform:translate(0,0) scale(.3);opacity:0}25%{opacity:1}100%{transform:translate(var(--gng-dx),var(--gng-dy)) scale(1);opacity:0}}',
   // Panneau STOP qui surgit, buzzer qui attend, main qui tape ou se fige en l'air, perle qui s'allume.
@@ -75,11 +90,11 @@ export const GO_NO_GO_KEYFRAMES = [
   '@keyframes gng-hand-tap{0%{transform:translate(0,95%);opacity:0}20%{transform:translate(0,45%);opacity:1}38%{transform:translate(0,32%) scale(.92)}52%{transform:translate(0,45%) scale(1)}100%{transform:translate(0,45%);opacity:0}}',
   '@keyframes gng-hand-freeze{0%{transform:translate(0,95%);opacity:0}30%{transform:translate(0,50%);opacity:1}100%{transform:translate(0,38%);opacity:1}}',
   '@keyframes gng-pearl{0%{transform:scale(.4)}60%{transform:scale(1.35)}100%{transform:scale(1)}}',
-  '@keyframes gng-pause-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}',
   // Le signal des personnages du castelet : les bras battent pendant que le personnage attend.
   '.gng-signal .go-no-go-arm-left{animation:gng-wave-left .55s ease-in-out infinite}.gng-signal .go-no-go-arm-right{animation:gng-wave-right .55s ease-in-out infinite}',
   // Animations réduites : plus de déplacement, des fondus (l'entrée en fondu, chaque sortie en fondu : un
   // même nom d'animation pour l'entrée et la sortie ne la relancerait pas) ; le signal et le gag
-  // deviennent des poses fixes (bras levés), et la main fantôme s'affiche sans bouger.
-  '@media (prefers-reduced-motion:reduce){.gng-rise{animation-name:gng-fade-in !important;animation-duration:.25s !important}.gng-hoot,.gng-fly-away,.gng-sink,.gng-sulk,.gng-try-fly,.gng-statue{animation-name:gng-fade-out !important;animation-duration:.4s !important}.gng-spark,.gng-bob,.gng-pause-bob,.gng-buzzer-pulse,.gng-pearl{animation:none !important}.gng-signal .go-no-go-arm-left{animation:none !important;transform:rotate(70deg)}.gng-signal .go-no-go-arm-right{animation:none !important;transform:rotate(-70deg)}.gng-stop-pop{animation-name:gng-fade-in !important;animation-duration:.2s !important}.gng-hand-tap,.gng-hand-freeze{animation-name:gng-fade-in !important;animation-duration:.4s !important;animation-iteration-count:1 !important}}',
+  // deviennent des poses fixes (bras levés), et la main fantôme s'affiche sans bouger. Les étincelles,
+  // qui ne sont qu'un mouvement, ne s'affichent pas : immobiles, elles se superposeraient en un disque.
+  '@media (prefers-reduced-motion:reduce){.gng-rise{animation-name:gng-fade-in !important;animation-duration:.25s !important}.gng-hoot,.gng-fly-away,.gng-sink,.gng-sulk,.gng-try-fly,.gng-statue{animation-name:gng-fade-out !important;animation-duration:.4s !important}.gng-spark{animation:none !important;display:none}.gng-buzzer-pulse,.gng-pearl{animation:none !important}.gng-signal .go-no-go-arm-left{animation:none !important;transform:rotate(70deg)}.gng-signal .go-no-go-arm-right{animation:none !important;transform:rotate(-70deg)}.gng-stop-pop{animation-name:gng-fade-in !important;animation-duration:.2s !important}.gng-hand-tap,.gng-hand-freeze{animation-name:gng-fade-in !important;animation-duration:.4s !important;animation-iteration-count:1 !important}}',
 ].join('');

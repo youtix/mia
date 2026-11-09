@@ -36,6 +36,11 @@ export interface AudioService {
   ) => Promise<void>;
   /** Interrompt la voix en cours ou en attente du premier geste */
   stopClips: () => void;
+  /**
+   * Oublie les clips décodés dont le chemin commence par `prefix` (ceux d'un jeu qu'on quitte) : décodé,
+   * un clip pèse dix fois son MP3. Ils se rechargent au besoin (hors-ligne, depuis le service worker).
+   */
+  releaseClips: (prefix: string) => void;
   /** Joue un effet par-dessus la voix ; sans effet si le son est coupé ou encore bloqué, ou la page masquée */
   playEffect: (effect: SoundEffect) => void;
 }

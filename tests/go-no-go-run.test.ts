@@ -23,7 +23,7 @@ import {
   type RunResult,
   type RunSnapshot,
 } from '@/games/go-no-go/run';
-import type { GoNoGoLevelConfig } from '@/games/go-no-go/types';
+import type { GoNoGoLevelConfig, VoiceMood } from '@/games/go-no-go/types';
 import { getLureClipId, getVoiceClipPath, SHARED_CLIPS } from '@/games/go-no-go/voice-script';
 import type { Rng } from '@/games/memory/random';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -75,9 +75,13 @@ interface Harness {
   run: Run;
   deps: RunDeps;
   effects: SoundEffect[];
-  spoken: { clips: readonly string[]; mood: 'talking' | 'flap' | undefined }[];
+  spoken: { clips: readonly string[]; mood: VoiceMood | null | undefined }[];
   results: RunResult[];
   preloaded: string[];
+  /** Chaque demande de chargement, dans l'ordre */
+  preloads: (readonly string[])[];
+  /** Nombre de fois où la voix a été coupée (`stopVoice`) */
+  voiceStops: () => number;
   snap: () => RunSnapshot;
 }
 
@@ -87,6 +91,8 @@ function setup(config: GoNoGoLevelConfig, overrides: Partial<RunDeps> = {}): Har
   const spoken: Harness['spoken'] = [];
   const results: RunResult[] = [];
   const preloaded: string[] = [];
+  const preloads: (readonly string[])[] = [];
+  let stops = 0;
   const deps: RunDeps = {
     config,
     hasWon: false,
@@ -99,8 +105,13 @@ function setup(config: GoNoGoLevelConfig, overrides: Partial<RunDeps> = {}): Har
       spoken.push({ clips, mood });
       return Promise.resolve();
     },
+    stopVoice: () => {
+      stops += 1;
+    },
     preload: (paths) => {
       preloaded.push(...paths);
+      preloads.push(paths);
+      return Promise.resolve();
     },
     onWin: (result) => {
       results.push(result);
@@ -108,7 +119,17 @@ function setup(config: GoNoGoLevelConfig, overrides: Partial<RunDeps> = {}): Har
     ...overrides,
   };
   const run = createRun(deps);
-  return { run, deps, effects, spoken, results, preloaded, snap: () => run.getSnapshot() };
+  return {
+    run,
+    deps,
+    effects,
+    spoken,
+    results,
+    preloaded,
+    preloads,
+    voiceStops: () => stops,
+    snap: () => run.getSnapshot(),
+  };
 }
 
 const advance = (ms: number) => vi.advanceTimersByTimeAsync(ms);
@@ -130,7 +151,7 @@ async function startLive(h: Harness): Promise<void> {
 
 /** Laisse la fenêtre de l'apparition sur scène s'écouler sans appui. */
 async function letItExpire(h: Harness): Promise<void> {
-  await advance((h.snap().game.presentation?.windowMs ?? 0) + WINDOW_GRACE_MS);
+  await advance((h.snap().game.onStage?.presentation.windowMs ?? 0) + WINDOW_GRACE_MS);
 }
 
 /** Attend la prochaine apparition sur scène, ou la victoire. */
@@ -184,18 +205,34 @@ describe('départ de l’étoile', () => {
     expect(h.snap().scene).toMatchObject({ subject: 'owl', kind: 'target', moment: 'entering' });
   });
 
-  it('charge la phrase de rappel d’abord, puis toutes celles que l’étoile peut dire', async () => {
-    const h = setup(OWL);
+  it('charge la phrase de rappel d’abord, seule, puis toutes celles que l’étoile peut dire', async () => {
+    let finishRule: () => void = () => undefined;
+    const preloads: (readonly string[])[] = [];
+    const h = setup(OWL, {
+      preload: (paths) => {
+        preloads.push(paths);
+        return preloads.length === 1
+          ? new Promise<void>((resolve) => {
+              finishRule = resolve;
+            })
+          : Promise.resolve();
+      },
+    });
     h.run.start();
     await advance(0);
-    expect(h.preloaded[0]).toBe(getVoiceClipPath('rule-owl-says'));
-    expect(h.preloaded).toEqual(
+    // Sur un réseau lent, la phrase de rappel ne partage pas la bande passante avec les autres.
+    expect(preloads).toEqual([[getVoiceClipPath('rule-owl-says')]]);
+    finishRule();
+    await advance(0);
+    expect(preloads).toHaveLength(2);
+    expect(preloads[1]).toEqual(
       expect.arrayContaining([
         SHARED_CLIPS.trapped,
         SHARED_CLIPS.lookCarefully,
         SHARED_CLIPS.starWon,
       ]),
     );
+    expect(preloads[1]).not.toContain(getVoiceClipPath('rule-owl-says'));
   });
 
   it('ne démarre qu’une fois, même si start est appelée deux fois', async () => {
@@ -263,9 +300,9 @@ describe('une apparition : les quatre issues', () => {
     // Respiration : la scène est vide.
     h.run.press();
     expect(h.snap().game.cleared).toBe(cleared);
-    expect(h.snap().isBuzzerPressed).toBe(true);
+    expect(h.run.isBuzzerPressed()).toBe(true);
     await advance(PRESS_FLASH_MS);
-    expect(h.snap().isBuzzerPressed).toBe(false);
+    expect(h.run.isBuzzerPressed()).toBe(false);
     expect(h.snap().game.shown).toBe(1);
   });
 
@@ -303,7 +340,7 @@ describe('une apparition : les quatre issues', () => {
     // Pendant la pause, un nouvel appui n'est pas compté, et le buzzer ne s'enfonce pas.
     await advance(PRESS_FLASH_MS);
     h.run.press();
-    expect(h.snap().isBuzzerPressed).toBe(false);
+    expect(h.run.isBuzzerPressed()).toBe(false);
     await advance(TRAPPED_PAUSE_MS - PRESS_FLASH_MS - 1);
     expect(h.snap().scene.moment).toBe('trapped');
     await advance(1);
@@ -381,11 +418,31 @@ describe('dater l’appui : l’horodatage de l’évènement', () => {
     expect(h.snap().scene.moment).toBe('missed');
   });
 
-  it('ramène à zéro un horodatage antérieur à l’entrée', async () => {
+  it('ne compte pas pour l’image un contact daté d’avant son entrée, traité après (§3.2)', async () => {
     const h = setup(OWL);
     await startLive(h);
-    h.run.press(Date.now() - 10_000);
+    // L'image est entrée il y a moins de 25 ms : ce contact a été posé pendant la respiration.
+    h.run.press(Date.now() - 30);
+    expect(h.snap().scene.moment).toBe('entering');
+    expect(h.snap().game.cleared).toBe(0);
+    // Le buzzer s'est enfoncé, comme pour tout contact entre deux apparitions.
+    expect(h.run.isBuzzerPressed()).toBe(true);
+    h.run.press(Date.now());
     expect(h.snap().scene.moment).toBe('caught');
+  });
+
+  it('un contact d’avant l’entrée ne déclenche pas non plus un piège', async () => {
+    const h = setup(OWL);
+    await startLive(h);
+    for (let index = 0; index < 5; index += 1) {
+      await advance(500);
+      h.run.press();
+      await nextAppearance(h);
+    }
+    expect(h.snap().scene.kind).toBe('trap');
+    h.run.press(Date.now() - 30);
+    expect(h.snap().scene.moment).toBe('entering');
+    expect(h.snap().game.trapped).toBe(0);
   });
 });
 
@@ -488,12 +545,39 @@ describe('fin de l’étoile', () => {
   it('enregistre la victoire une seule fois : pièges touchés, vitesse tenue, couronne', async () => {
     const h = setup({ ...OWL, intro: null });
     await playPerfectly(h);
-    // Six réussites seulement : pas de série de 8, la vitesse tenue est la fenêtre de fin de partie.
-    expect(h.results).toEqual([{ moves: 0, timeSeconds: 2.03, isPerfect: true }]);
+    // Six réussites seulement : pas de série de 8, la vitesse tenue est la fenêtre de fin de partie,
+    // celle des trois dernières (2,5 s puis 2,25 s ; la réussite qui gagne n'accélère rien).
+    expect(h.results).toEqual([{ moves: 0, timeSeconds: 2.25, isPerfect: true }]);
     expect(h.effects.at(-1)).toBe('victory');
     expect(h.spoken.at(-1)?.clips).toEqual([SHARED_CLIPS.starWon, SHARED_CLIPS.crownWon]);
     await advance(60_000);
     expect(h.results).toHaveLength(1);
+  });
+
+  it('enregistre la victoire dès la réussite qui la gagne : quitter pendant l’animation la garde', async () => {
+    const h = setup({ ...OWL, intro: null });
+    h.run.start();
+    await nextAppearance(h);
+    while (h.snap().game.queue.length > 0) {
+      if (h.snap().scene.kind === 'target') {
+        await advance(400);
+        h.run.press();
+      } else {
+        await letItExpire(h);
+      }
+      await nextAppearance(h);
+    }
+    // La dernière : le renard (tirage le plus bas : le piège est en fin de file), laissé passer.
+    expect(h.snap().scene.kind).toBe('trap');
+    await letItExpire(h);
+    expect(h.snap().scene.moment).toBe('passed');
+    expect(h.results).toEqual([{ moves: 0, timeSeconds: 2.25, isPerfect: true }]);
+    expect(h.snap().phase).toBe('live');
+    // Retour à la Carte des Étoiles pendant le gag : l'étoile est déjà enregistrée.
+    h.run.dispose();
+    await advance(60_000);
+    expect(h.results).toHaveLength(1);
+    expect(h.effects).not.toContain('victory');
   });
 
   it('ouvre l’écran de fin un instant après la victoire', async () => {
@@ -552,7 +636,17 @@ describe('fin de l’étoile', () => {
     await advance(START_DELAY_MS + BREATH_MS);
     expect(h.snap().game.status).toBe('window');
     // La victoire suivante s'enregistre aussi.
-    expect(h.results).toHaveLength(1);
+    while (h.snap().phase !== 'won') {
+      if (h.snap().scene.kind === 'target') {
+        await advance(400);
+        h.run.press();
+      } else {
+        await letItExpire(h);
+      }
+      await advance(1);
+      await nextOrWon(h);
+    }
+    expect(h.results).toHaveLength(2);
   });
 });
 
@@ -566,12 +660,12 @@ describe('inaction et page masquée (§6.5)', () => {
     expect(h.snap().mascot).toEqual({ isVisible: true, pose: 'idle' });
     // L'apparition qui était sur scène revient en tête, non comptée : seules les ratées l'ont été.
     expect(h.snap().game.status).toBe('between');
-    expect(h.snap().game.current).toBeNull();
+    expect(h.snap().game.onStage).toBeNull();
     expect(h.snap().game.shown).toBe(h.snap().game.missed);
     expect(h.snap().game.queue).toHaveLength(6);
   });
 
-  it('la chouette rappelle la règle, au plus 3 fois, puis se tait', async () => {
+  it('la chouette rappelle la règle, au plus 3 fois, puis se tait sans plus rien attendre', async () => {
     const h = setup(OWL);
     await startLive(h);
     h.spoken.length = 0;
@@ -580,12 +674,34 @@ describe('inaction et page masquée (§6.5)', () => {
     await advance(IDLE_MS * 5);
     expect(h.spoken).toHaveLength(MAX_NUDGES);
     for (const { clips } of h.spoken) expect(clips).toEqual([getVoiceClipPath('rule-owl-says')]);
+    // Les relances sont des minuteurs de la partie : après la dernière, plus aucun n'est armé.
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('page masquée pendant une pause d’inaction : les rappels ne s’y dépensent pas', async () => {
+    let isHidden = false;
+    const h = setup(OWL, { isHidden: () => isHidden });
+    await startLive(h);
+    h.spoken.length = 0;
+    await advance(IDLE_MS);
+    expect(h.spoken).toHaveLength(1);
+    // Écran éteint : la page se masque, la pause continue, personne n'entend la chouette.
+    isHidden = true;
+    h.run.pause();
+    await advance(IDLE_MS * 4);
+    expect(h.spoken).toHaveLength(1);
+    // L'enfant revient : les deux rappels qui restent sont encore là.
+    isHidden = false;
+    await advance(IDLE_MS);
+    expect(h.spoken).toHaveLength(2);
+    await advance(IDLE_MS * 4);
+    expect(h.spoken).toHaveLength(MAX_NUDGES);
   });
 
   it('un appui relance le défilement sans compter, la même apparition revient', async () => {
     const h = setup(OWL);
     await startLive(h);
-    const first = h.snap().game.current;
+    const first = h.snap().game.onStage?.appearance;
     h.run.pause();
     expect(h.snap().game.queue[0]).toBe(first);
     await advance(IDLE_MS);
@@ -595,33 +711,31 @@ describe('inaction et page masquée (§6.5)', () => {
     expect(h.snap().game.cleared).toBe(0);
     await advance(BREATH_MS);
     expect(h.snap().game.status).toBe('window');
-    expect(h.snap().game.current).toBe(first);
+    expect(h.snap().game.onStage?.appearance).toBe(first);
     // La mascotte de la règle 1 se cache de nouveau.
     expect(h.snap().mascot.isVisible).toBe(false);
   });
 
-  it('l’appui qui relance ne laisse pas le buzzer enfoncé : son relâchement était un minuteur effacé', async () => {
+  it('l’appui qui relance enfonce le buzzer, puis le relâche : la reprise n’efface pas son minuteur', async () => {
     const h = setup(OWL);
     await startLive(h);
     h.run.pause();
     h.run.press();
     expect(h.snap().phase).toBe('live');
-    expect(h.snap().isBuzzerPressed).toBe(false);
-    await advance(PRESS_FLASH_MS * 2);
-    expect(h.snap().isBuzzerPressed).toBe(false);
+    // Il s'enfonce et s'illumine à l'appui, même quand rien n'est compté (§14.6).
+    expect(h.run.isBuzzerPressed()).toBe(true);
+    await advance(PRESS_FLASH_MS);
+    expect(h.run.isBuzzerPressed()).toBe(false);
   });
 
   it('une pause qui tombe pendant l’enfoncement relâche le buzzer, qui pulse alors', async () => {
     const h = setup(OWL);
     await startLive(h);
     h.run.press();
-    expect(h.snap().isBuzzerPressed).toBe(true);
+    expect(h.run.isBuzzerPressed()).toBe(true);
     h.run.pause();
-    expect(h.snap()).toMatchObject({
-      phase: 'paused',
-      isBuzzerPressed: false,
-      isBuzzerPulsing: true,
-    });
+    expect(h.snap()).toMatchObject({ phase: 'paused', isBuzzerPulsing: true });
+    expect(h.run.isBuzzerPressed()).toBe(false);
   });
 
   it('chaque appui repousse l’inaction', async () => {
@@ -677,6 +791,28 @@ describe('inaction et page masquée (§6.5)', () => {
     expect(h.snap().game.status).toBe('window');
   });
 
+  it('une pause demandée avant le premier tour d’horloge n’est pas perdue', async () => {
+    const h = setup(OWL);
+    // La page était déjà masquée au montage : le plateau demande la pause aussitôt après start.
+    h.run.start();
+    h.run.pause();
+    await advance(START_DELAY_MS + IDLE_MS);
+    expect(h.snap().phase).toBe('paused');
+    expect(h.snap().game.shown).toBe(0);
+  });
+
+  it('une démo dont la pause a été demandée avant son départ attend un appui', async () => {
+    const h = setup({ ...OWL, intro: 'full' });
+    h.run.start();
+    h.run.pause();
+    await advance(0);
+    expect(h.snap().phase).toBe('paused');
+    await advance(30_000);
+    expect(h.snap().phase).toBe('paused');
+    h.run.press();
+    expect(h.snap().phase).toBe('demo');
+  });
+
   it('une pause demandée pendant le rappel ne survit pas à Rejouer', async () => {
     const h = setup(OWL);
     h.run.start();
@@ -720,12 +856,21 @@ describe('inaction et page masquée (§6.5)', () => {
     expect(h.results).toHaveLength(1);
   });
 
-  it('l’inaction n’interrompt pas une pause « oups » en cours de victoire', async () => {
-    const h = setup(OWL);
-    await startLive(h);
-    h.run.pause();
-    h.run.press();
-    expect(h.snap().phase).toBe('live');
+  it('l’inaction n’interrompt pas une victoire acquise : l’écran de fin s’ouvre quand même', async () => {
+    const h = setup({ ...OWL, intro: null, appearances: 4, traps: 1 });
+    h.run.start();
+    for (let index = 0; index < 3; index += 1) {
+      await nextAppearance(h);
+      await advance(300);
+      h.run.press();
+    }
+    // Le piège laissé passer gagne l'étoile ; l'enfant ne touche plus à rien.
+    await nextAppearance(h);
+    await advance(2500 + WINDOW_GRACE_MS);
+    expect(h.snap().game.status).toBe('won');
+    await advance(IDLE_MS * 2);
+    expect(h.snap()).toMatchObject({ phase: 'won', isEndOpen: true });
+    expect(h.results).toHaveLength(1);
   });
 });
 
@@ -737,9 +882,10 @@ describe('le leurre de la chouette (palier 4)', () => {
     await startLive(h);
     const subject = h.snap().scene.subject;
     if (!subject) throw new Error('aucune image');
+    // La voix seule : c'est le déroulé qui fait battre les ailes, `LURE_FLAP_MS` et pas plus.
     expect(h.spoken.at(-1)).toEqual({
       clips: [getVoiceClipPath(getLureClipId(subject as 'pigeon'))],
-      mood: 'flap',
+      mood: null,
     });
     expect(h.snap().mascot.pose).toBe('flap');
     await advance(LURE_FLAP_MS);
@@ -814,11 +960,38 @@ describe('introduction : la démo et les essais guidés (§9)', () => {
     expect(h.snap().mascot.isVisible).toBe(false);
   });
 
-  it('charge les phrases de la démo avant de la jouer', async () => {
+  it('charge les phrases de la démo avant de la jouer, après la phrase de rappel', async () => {
     const h = setup(OWL_INTRO);
     h.run.start();
     await advance(0);
+    expect(h.preloads[0]).toEqual([getVoiceClipPath('rule-owl-says')]);
     expect(h.preloaded).toEqual(expect.arrayContaining(getDemoClipPaths(OWL_INTRO)));
+  });
+
+  it('coupe, à la fin de la démo, une voix que le navigateur retenait faute de geste', async () => {
+    const h = setup(OWL_INTRO);
+    h.run.start();
+    await until(h, (snapshot) => snapshot.phase === 'demo');
+    expect(h.voiceStops()).toBe(0);
+    await until(h, (snapshot) => snapshot.phase === 'trial');
+    // La mise en garde, retenue, partirait au premier appui des essais, par-dessus eux.
+    expect(h.voiceStops()).toBe(1);
+  });
+
+  it('reprise après une pause, la démo de la règle 1 repart sans la chouette du coin', async () => {
+    const h = setup(OWL_INTRO);
+    h.run.start();
+    await advance(3000);
+    expect(h.snap().phase).toBe('demo');
+    h.run.pause();
+    expect(h.snap().mascot.isVisible).toBe(true);
+    h.run.press();
+    expect(h.snap().phase).toBe('demo');
+    // Le film repart du premier plan : la chouette du castelet, seule (§4.1).
+    expect(h.snap().mascot.isVisible).toBe(false);
+    await advance(1000);
+    expect(h.snap().scene.subject).toBe('owl');
+    expect(h.snap().mascot.isVisible).toBe(false);
   });
 
   it('tout appui pendant la démo est ignoré : rien n’est compté, le buzzer reste à elle', async () => {
@@ -826,7 +999,7 @@ describe('introduction : la démo et les essais guidés (§9)', () => {
     h.run.start();
     await advance(0);
     h.run.press();
-    expect(h.snap().isBuzzerPressed).toBe(false);
+    expect(h.run.isBuzzerPressed()).toBe(false);
     expect(h.snap().game.shown).toBe(0);
   });
 
@@ -1028,63 +1201,49 @@ describe('voix lente : la pause d’un piège dure autant que la voix', () => {
   });
 });
 
-describe('phrases qui n’existent pas encore', () => {
-  /** Seules les phrases reprises d'Attrape-Piège existent : aucune requête vers un fichier absent. */
-  const ONLY_SHARED = (path: string) => Object.values<string>(SHARED_CLIPS).includes(path);
-
-  it('ne dit ni ne charge un clip absent : la voix est vide, la chouette est mimée', async () => {
-    const h = setup(OWL, { isClipAvailable: ONLY_SHARED });
+describe('phrases de la règle', () => {
+  it('aux étoiles 19 et 20, la chouette dit les deux règles mêlées', async () => {
+    const mixed: GoNoGoLevelConfig = { ...LATE_STOP, traps: 1, intro: null };
+    const h = setup(mixed);
     h.run.start();
     await advance(0);
-    expect(h.spoken).toEqual([{ clips: [], mood: undefined }]);
-    // Les phrases reprises sont chargées, jamais la phrase de rappel absente.
-    expect(h.preloaded).not.toContain(getVoiceClipPath('rule-owl-says'));
-    expect(h.preloaded).toEqual(
-      expect.arrayContaining([
-        SHARED_CLIPS.trapped,
-        SHARED_CLIPS.lookCarefully,
-        SHARED_CLIPS.starWon,
-      ]),
-    );
-    // Le jeu ne s'arrête pas pour autant : la première apparition entre.
-    await advance(START_DELAY_MS + BREATH_MS);
-    expect(h.snap().game.status).toBe('window');
+    const rules = [getVoiceClipPath('rule-flies'), getVoiceClipPath('rule-late-stop')];
+    expect(h.spoken).toEqual([{ clips: rules, mood: undefined }]);
+    expect(h.preloads[0]).toEqual(rules);
+    // Et de même à chaque rappel d'une pause.
+    await advance(START_DELAY_MS + BREATH_MS + IDLE_MS);
+    expect(h.snap().phase).toBe('paused');
+    expect(h.spoken.at(-1)?.clips).toEqual(rules);
   });
+});
 
-  it('dit les phrases reprises d’Attrape-Piège : l’erreur, la victoire, la couronne', async () => {
-    const h = setup({ ...OWL, appearances: 4, traps: 1 }, { isClipAvailable: ONLY_SHARED });
-    h.run.start();
-    for (let index = 0; index < 3; index += 1) {
-      await nextAppearance(h);
-      await advance(300);
-      h.run.press();
-    }
-    await nextAppearance(h);
-    await advance(300);
-    h.run.press();
-    expect(h.spoken.at(-1)?.clips).toEqual([SHARED_CLIPS.trapped]);
-    await until(h, (snapshot) => snapshot.phase === 'won');
-    expect(h.spoken.at(-1)?.clips).toEqual([SHARED_CLIPS.starWon]);
-  });
-
-  it('le « … vole ! » absent n’est pas demandé, mais les ailes battent', async () => {
-    const h = setup({ ...FLIES_LURE, intro: null }, { isClipAvailable: ONLY_SHARED });
-    await startLive(h);
-    expect(h.spoken.at(-1)).toEqual({ clips: [], mood: 'flap' });
-    expect(h.snap().mascot.pose).toBe('flap');
-  });
-
-  it('charge tout, comme avant, quand tous les clips existent (défaut)', async () => {
+describe('ce qui se redessine', () => {
+  it('un appui entre deux apparitions ne prévient que les abonnés du buzzer', async () => {
     const h = setup(OWL);
-    h.run.start();
-    await advance(0);
-    expect(h.preloaded).toContain(getVoiceClipPath('rule-owl-says'));
+    await startLive(h);
+    await advance(500);
+    h.run.press();
+    await advance(CAUGHT_MS);
+    const listener = vi.fn();
+    const buzzerListener = vi.fn();
+    h.run.subscribe(listener);
+    h.run.subscribeBuzzer(buzzerListener);
+    h.run.press();
+    await advance(PRESS_FLASH_MS);
+    // Enfoncé, puis relâché : deux changements du buzzer, aucun du reste du plateau.
+    expect(buzzerListener).toHaveBeenCalledTimes(2);
+    expect(listener).not.toHaveBeenCalled();
   });
 
-  it('ne charge rien quand aucun clip n’existe', async () => {
-    const h = setup(OWL, { isClipAvailable: () => false });
-    h.run.start();
-    await advance(0);
-    expect(h.preloaded).toEqual([]);
+  it('un changement qui ne change rien ne redessine rien : la chouette cachée n’est pas posée', async () => {
+    const h = setup(OWL);
+    await startLive(h);
+    const { mascot } = h.snap();
+    await advance(500);
+    h.run.press();
+    expect(h.snap().scene.moment).toBe('caught');
+    await advance(HAPPY_MS);
+    // Règle 1 : la mascotte est cachée pendant la partie, elle n'a pas été contente pour personne.
+    expect(h.snap().mascot).toBe(mascot);
   });
 });

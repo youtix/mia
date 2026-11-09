@@ -1,28 +1,31 @@
 import type { ReactNode } from 'react';
 import type { FlyingImageId } from '../../types';
+import { ART_STROKE, ART_STROKE_WIDTH, ART_INK as OUTLINE } from '../art-tokens';
 
 /**
  * Ce qui vole vraiment (règles 2 et 3). Aplats sans dégradé ni filtre, contour ardoise arrondi,
  * viewBox 100 × 100. Aucun rouge : cette teinte est réservée au panneau STOP.
  */
 
-const OUTLINE = '#1e293b';
 const WHITE = '#ffffff';
 
+/** Réduction de 5 % qui laisse de l'air autour de l'image. */
+const FRAME_SCALE = 0.95;
+
 /**
- * Style commun : contour arrondi de 3, chaque forme porte son propre aplat. Le dessin est cadré :
- * `center` est le centre de sa boîte visible (contour compris), ramené au centre de la boîte, puis le
- * tout est réduit de 5 % pour laisser un peu d'air (les images qui volent restent centrées).
+ * Style commun : le contour de tous les dessins (`ART_STROKE`), chaque forme porte son propre aplat. Le
+ * dessin est cadré : `center` est le centre de sa boîte visible (contour compris), ramené au centre de
+ * la boîte, puis le tout est réduit de 5 % pour laisser un peu d'air (les images qui volent restent
+ * centrées). Le trait est grossi d'autant : à l'écran, il est exactement celui des images qui ne volent
+ * pas, rien ne les distingue que l'image.
  */
 function Ink({ center, children }: { center: readonly [number, number]; children: ReactNode }) {
   const [cx, cy] = center;
   return (
     <g
-      transform={`translate(50 50) scale(0.95) translate(${String(-cx)} ${String(-cy)})`}
-      stroke={OUTLINE}
-      strokeWidth={3}
-      strokeLinejoin="round"
-      strokeLinecap="round"
+      transform={`translate(50 50) scale(${String(FRAME_SCALE)}) translate(${String(-cx)} ${String(-cy)})`}
+      {...ART_STROKE}
+      strokeWidth={ART_STROKE_WIDTH / FRAME_SCALE}
     >
       {children}
     </g>

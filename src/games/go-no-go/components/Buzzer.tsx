@@ -108,7 +108,11 @@ export function Buzzer({
       onFocus={onFocus}
     >
       <span
-        className="relative block h-[min(94cqh,78cqw)] w-[min(94cqh,78cqw)] rounded-full landscape:w-[min(calc(94cqh*2.1),82cqw)]"
+        className={cn(
+          'relative block h-[min(94cqh,78cqw)] w-[min(94cqh,78cqw)] rounded-full landscape:w-[min(calc(94cqh*2.1),82cqw)]',
+          // La classe porte le nom de l'animation : les animations réduites l'arrêtent (art-tokens).
+          isPulsing && !isPressed && 'gng-buzzer-pulse',
+        )}
         style={{
           animation:
             isPulsing && !isPressed ? 'gng-buzzer-pulse 1.4s ease-in-out infinite' : 'none',
@@ -131,11 +135,19 @@ export function Buzzer({
             backgroundColor: body,
             // Reflet et relief en dégradés radiaux : le dôme se lit comme un bouton, pas comme un disque plat.
             backgroundImage: `radial-gradient(circle at 34% 28%, ${light} 0, ${light} 12%, transparent 46%), radial-gradient(circle at 50% 120%, ${shade} 0, transparent 58%)`,
-            boxShadow: isPressed
-              ? `0 0 0 0.6rem rgb(255 255 255 / 0.7), 0 0 2.5rem 0.8rem ${light}`
-              : 'none',
           }}
         >
+          {/* La lumière de l'appui : un halo toujours dessiné, dont seule l'opacité change (une ombre
+              floue redessinée à chaque appui coûterait deux repeints du plus grand élément). */}
+          <span
+            aria-hidden="true"
+            data-press-glow="true"
+            className="pointer-events-none absolute -inset-[0.35rem] rounded-full will-change-[opacity]"
+            style={{
+              boxShadow: `0 0 0 0.6rem rgb(255 255 255 / 0.7), 0 0 2.5rem 0.8rem ${light}`,
+              opacity: isPressed ? 1 : 0,
+            }}
+          />
           {isRemote ? <RemoteOkIcon /> : null}
         </span>
       </span>

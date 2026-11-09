@@ -35,7 +35,8 @@ export function Garland({ total, cleared, className }: GarlandProps) {
             data-pearl={isLit ? 'lit' : 'dark'}
             className={cn(
               'size-[clamp(0.6rem,2.3vmin,1.15rem)] shrink-0 rounded-full border-2',
-              isLit ? 'border-amber-600' : 'border-slate-500 bg-transparent',
+              // La classe porte le nom de l'animation : les animations réduites l'arrêtent (art-tokens).
+              isLit ? 'gng-pearl border-amber-600' : 'border-slate-500 bg-transparent',
             )}
             style={
               isLit

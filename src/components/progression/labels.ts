@@ -3,6 +3,7 @@ import type {
   GameProgressSummary,
   ProfileProgressSummary,
 } from '@/core/progression';
+import type { GameId } from '@/types/mia';
 import type { NextGoal } from './next-goal';
 
 const frenchPlural = new Intl.PluralRules('fr-FR');
@@ -29,21 +30,39 @@ export function describeCrowns(count: number): string {
   return pluralize(count, 'couronne', 'couronnes');
 }
 
+/** Ce que la Carte des Étoiles montre d'une étoile réussie : les coups, ou la vitesse tenue. */
+export type BestScoreKind = 'moves' | 'heldSpeed';
+
 /**
- * Meilleur score d'une étoile réussie, sous son numéro sur la Carte des Étoiles : les coups, ou, pour
- * Pas si vite !, la vitesse tenue (FEAT-28 §11.2, qui enregistre le nombre de pièges touchés dans
- * `bestMoves` et la vitesse dans `bestTimeSeconds` sans nouvelle donnée). `null` tant que l'étoile n'est
- * pas réussie.
+ * Meilleur score de chaque jeu : table exhaustive sur `GameId`, comme `GAME_ICONS`, pour qu'un jeu
+ * nouveau déclare ce qu'il montre au lieu d'hériter des coups. Pas si vite ! enregistre la vitesse
+ * tenue dans `bestTimeSeconds` et les pièges touchés dans `bestMoves` (FEAT-28 §11.2, sans nouvelle
+ * donnée) : c'est la vitesse qui se lit.
+ */
+export const BEST_SCORE_KINDS: Readonly<Record<GameId, BestScoreKind>> = {
+  memory: 'moves',
+  'traffic-jam': 'moves',
+  patterns: 'moves',
+  'bear-sort': 'moves',
+  'logic-grid': 'moves',
+  'go-no-go': 'heldSpeed',
+};
+
+/**
+ * Meilleur score d'une étoile réussie, sous son numéro sur la Carte des Étoiles, selon son jeu
+ * (`BEST_SCORE_KINDS`). `null` tant que l'étoile n'est pas réussie.
  */
 export function getBestScore(
   level: Pick<EnrichedLevelItem, 'definition' | 'isCompleted' | 'completion'>,
 ): { announcement: string; text: string } | null {
   const { completion } = level;
   if (!level.isCompleted || !completion) return null;
-  if (level.definition.gameId === 'go-no-go') {
-    return { announcement: ', vitesse tenue :', text: formatSpeed(completion.bestTimeSeconds) };
+  switch (BEST_SCORE_KINDS[level.definition.gameId]) {
+    case 'heldSpeed':
+      return { announcement: ', vitesse tenue :', text: formatSpeed(completion.bestTimeSeconds) };
+    case 'moves':
+      return { announcement: ', meilleur score :', text: formatMoves(completion.bestMoves) };
   }
-  return { announcement: ', meilleur score :', text: formatMoves(completion.bestMoves) };
 }
 
 /** Libellé du bouton du Hub qui lance l'objectif d'un jeu, `null` sans niveau à lancer. */

@@ -1,11 +1,4 @@
-import type {
-  DecoyId,
-  FlyingImageId,
-  GroundedImageId,
-  ImageId,
-  PuppetId,
-  SubjectId,
-} from './types';
+import type { DecoyId, FlyingImageId, GroundedImageId, ImageId, SubjectId } from './types';
 
 /**
  * Ce qui entre sur la scène (FEAT-28 §4). Une image n'entre au catalogue que si une enfant de 3 ans y
@@ -41,15 +34,8 @@ export const GROUNDED_IMAGES: readonly [GroundedImageId, ...GroundedImageId[]] =
 
 export const IMAGE_IDS: readonly ImageId[] = [...FLYING_IMAGES, ...GROUNDED_IMAGES];
 
-/** Les trois personnages du castelet, la cible d'abord. */
-export const PUPPET_IDS: readonly PuppetId[] = ['owl', 'fox', 'cat'];
-
 /** Imposteurs de la règle 1, dans l'ordre où le catalogue les introduit. */
 export const DECOY_IDS: readonly DecoyId[] = ['fox', 'cat'];
-
-export function isPuppetId(subject: string): subject is PuppetId {
-  return (PUPPET_IDS as readonly string[]).includes(subject);
-}
 
 export function isImageId(subject: string): subject is ImageId {
   return (IMAGE_IDS as readonly string[]).includes(subject);

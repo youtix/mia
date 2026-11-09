@@ -283,7 +283,7 @@ function createInputListeners(store: NavigationStore) {
     // Sans preventDefault(), un bouton focalisé recevrait aussi un clic natif (double activation).
     event.preventDefault();
     if (event.key === ' ') suppressSpaceKeyUp = true;
-    if (!event.repeat && !isWakeUp && !isActivationGuarded()) scope.onSelect();
+    if (!event.repeat && !isWakeUp && !isActivationGuarded()) scope.onSelect(event);
   }
 
   function onKeyUp(event: KeyboardEvent): void {

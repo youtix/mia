@@ -150,7 +150,7 @@ function Figure({ scene, subject }: { scene: Scene; subject: SubjectId }) {
         <span
           aria-hidden="true"
           data-ice="true"
-          className="pointer-events-none absolute inset-[8%] rounded-[40%] bg-sky-100"
+          className="gng-ice pointer-events-none absolute inset-[8%] rounded-[40%] bg-sky-100"
           style={{ animation: 'gng-ice 900ms ease-in-out both' }}
         />
       ) : null}

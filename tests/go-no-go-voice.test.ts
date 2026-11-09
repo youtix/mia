@@ -7,7 +7,6 @@ import {
   formatGarlandLabel,
   getRuleSentence,
   getRuleTitle,
-  getSubjectLabel,
 } from '@/games/go-no-go/labels';
 import {
   DECOY_IDS,
@@ -16,17 +15,14 @@ import {
   IMAGE_IDS,
   isFlyingImage,
   isImageId,
-  isPuppetId,
-  PUPPET_IDS,
 } from '@/games/go-no-go/subjects';
-import type { SubjectId } from '@/games/go-no-go/types';
 import {
   getLureClipId,
-  getRuleClipId,
+  getRuleClipIds,
+  getRuleClipPaths,
   getStarClipPaths,
   getVoiceClipPath,
   GO_NO_GO_CLIP_IDS,
-  isClipAvailable,
   SHARED_CLIPS,
   VOICE_SCRIPT,
   type GoNoGoClipId,
@@ -86,28 +82,14 @@ describe('Images et personnages (FEAT-28 §4)', () => {
   });
 
   it('la chouette est la cible du castelet, le renard puis le chat gris ses imposteurs', () => {
-    expect(PUPPET_IDS).toEqual(['owl', 'fox', 'cat']);
     expect(DECOY_IDS).toEqual(['fox', 'cat']);
-    expect(isPuppetId('fox')).toBe(true);
-    expect(isPuppetId('cow')).toBe(false);
+    expect(isImageId('fox')).toBe(false);
     expect(isImageId('cow')).toBe(true);
     expect(isImageId('owl')).toBe(false);
   });
 });
 
 describe('Libellés pour les lecteurs d’écran', () => {
-  const SUBJECTS: SubjectId[] = [...PUPPET_IDS, ...IMAGE_IDS];
-
-  it('nomme chaque personnage et chaque image, avec son article, sans doublon', () => {
-    const labels = SUBJECTS.map((subject) => getSubjectLabel(subject));
-    expect(labels.every((label) => /^(Un|Une|Le|La) /.test(label))).toBe(true);
-    expect(new Set(labels).size).toBe(SUBJECTS.length);
-    expect(getSubjectLabel('owl')).toBe('La chouette');
-    expect(getSubjectLabel('cat')).toBe('Le chat gris');
-    expect(getSubjectLabel('cow')).toBe('Une vache');
-    expect(getSubjectLabel('helicopter')).toBe('Un hélicoptère');
-  });
-
   it('résume la règle de chaque étoile, avec et sans leurre ni STOP tardif', () => {
     const titles = new Set(GO_NO_GO_CATALOG.map((entry) => getRuleTitle(entry.config)));
     expect(titles).toEqual(
@@ -191,13 +173,16 @@ describe('Phrases de la mascotte (FEAT-28 §9, §11.2)', () => {
     }
   });
 
-  it('choisit la phrase de rappel de chaque règle, et celle du leurre au palier 4', () => {
-    const ids = GO_NO_GO_CATALOG.map((entry) => getRuleClipId(entry.config));
+  it('choisit la phrase de rappel de chaque règle, celle du leurre au palier 4, les deux règles mêlées aux étoiles 19 et 20', () => {
+    const ids = GO_NO_GO_CATALOG.map((entry) => getRuleClipIds(entry.config).join('+'));
     expect(ids.slice(0, 8).every((id) => id === 'rule-owl-says')).toBe(true);
     expect(ids.slice(8, 12).every((id) => id === 'rule-flies')).toBe(true);
     expect(ids.slice(12, 16).every((id) => id === 'rule-lure')).toBe(true);
-    expect(ids.slice(16).every((id) => id === 'rule-late-stop')).toBe(true);
-    expect(getRuleClipId(OWL)).toBe('rule-owl-says');
+    expect(ids.slice(16, 18).every((id) => id === 'rule-late-stop')).toBe(true);
+    // « Ça vole ? » et le STOP tardif mêlés : la voix seule dit les deux règles, comme la phrase des
+    // lecteurs d'écran.
+    expect(ids.slice(18)).toEqual(['rule-flies+rule-late-stop', 'rule-flies+rule-late-stop']);
+    expect(getRuleClipPaths(OWL)).toEqual([getVoiceClipPath('rule-owl-says')]);
   });
 
   it('donne les clips qu’une étoile peut jouer : la phrase de rappel d’abord, puis l’erreur, l’indice, la victoire', () => {
@@ -272,15 +257,6 @@ describe('Clips générés', () => {
     const dir = join(PUBLIC_DIR, 'audio/go-no-go');
     const files = existsSync(dir) ? readdirSync(dir).sort() : [];
     expect(files).toEqual(generated.map((id) => `${id}.mp3`).sort());
-  });
-
-  it('ne demande que les clips qui existent : ceux du manifeste, et les phrases d’Attrape-Piège', () => {
-    for (const id of GO_NO_GO_CLIP_IDS) {
-      expect(isClipAvailable(getVoiceClipPath(id))).toBe(generated.includes(id));
-    }
-    for (const path of Object.values(SHARED_CLIPS)) expect(isClipAvailable(path)).toBe(true);
-    expect(isClipAvailable('audio/go-no-go/inconnue.mp3')).toBe(false);
-    expect(isClipAvailable('audio/bear-sort/rule-color.mp3')).toBe(false);
   });
 
   it('tient la mise en garde dans une durée raisonnable une fois générée, et chaque « … vole ! » dans la fenêtre du palier 4', () => {

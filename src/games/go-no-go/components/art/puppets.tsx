@@ -1,16 +1,16 @@
 import { cn } from '@/lib/cn';
+import { ART_STROKE, ART_INK as OUTLINE } from '../art-tokens';
 
 /**
  * Les deux imposteurs du castelet (règle « La chouette a dit ») : un renard orange et un chat gris,
  * de face, en buste. Aplats sans dégradé ni filtre, contour ardoise arrondi, viewBox 100 × 100. Le
  * bas du buste file jusqu'au bord de la boîte. Aucun rouge : cette teinte est réservée au STOP.
  *
- * Trois groupes bougent : la tête (`go-no-go-head`, pivot au cou) et les deux bras
- * (`go-no-go-arm-left` / `go-no-go-arm-right`, pivot à l'épaule, en unités du viewBox). Les bras
- * pendent le long du corps : +70° lève le gauche vers l'extérieur, -70° le droit.
+ * Seuls les deux bras bougent (`go-no-go-arm-left` / `go-no-go-arm-right`, pivot à l'épaule, en unités
+ * du viewBox) : ils pendent le long du corps, +70° lève le gauche vers l'extérieur, -70° le droit. La
+ * tête est un groupe à part, qui garde son pivot au cou pour une animation future.
  */
 
-const OUTLINE = '#1e293b';
 const WHITE = '#ffffff';
 
 type Expression = 'neutral' | 'wink' | 'sulk';
@@ -110,7 +110,7 @@ export function FoxPuppet({ expression = 'neutral', className }: PuppetProps) {
       aria-hidden="true"
       className={cn('size-full overflow-visible', className)}
     >
-      <g stroke={OUTLINE} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round">
+      <g {...ART_STROKE}>
         {/* Torse, ventre blanc ; le bas file jusqu'au bord de la boîte */}
         <path d="M31 68C26 76 22 86 20 100L80 100C78 86 74 76 69 68Z" fill={fur} stroke="none" />
         <path d="M36 100C36 86 42 80 50 80C58 80 64 86 64 100Z" fill={WHITE} stroke="none" />
@@ -120,10 +120,7 @@ export function FoxPuppet({ expression = 'neutral', className }: PuppetProps) {
         <Arm side="right" fur={fur} paw={WHITE} />
 
         {/* Tête : un seul groupe, pour pouvoir l'incliner autour du cou */}
-        <g
-          className="go-no-go-head"
-          style={{ transformOrigin: '50px 72px', transformBox: 'view-box' }}
-        >
+        <g style={{ transformOrigin: '50px 72px', transformBox: 'view-box' }}>
           {/* Oreilles : orange, creux clair, bout sombre */}
           <path d="M11 40L10 7L42 19Z" fill={fur} stroke="none" />
           <path d="M89 40L90 7L58 19Z" fill={fur} stroke="none" />
@@ -225,7 +222,7 @@ export function CatPuppet({ expression = 'neutral', className }: PuppetProps) {
       aria-hidden="true"
       className={cn('size-full overflow-visible', className)}
     >
-      <g stroke={OUTLINE} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round">
+      <g {...ART_STROKE}>
         {/* Torse, ventre clair ; le bas file jusqu'au bord de la boîte */}
         <path d="M31 68C26 76 22 86 20 100L80 100C78 86 74 76 69 68Z" fill={fur} stroke="none" />
         <path d="M36 100C36 86 42 80 50 80C58 80 64 86 64 100Z" fill={light} stroke="none" />
@@ -235,10 +232,7 @@ export function CatPuppet({ expression = 'neutral', className }: PuppetProps) {
         <Arm side="right" fur={fur} paw={light} />
 
         {/* Tête : un seul groupe, pour pouvoir l'incliner autour du cou */}
-        <g
-          className="go-no-go-head"
-          style={{ transformOrigin: '50px 72px', transformBox: 'view-box' }}
-        >
+        <g style={{ transformOrigin: '50px 72px', transformBox: 'view-box' }}>
           {/* Oreilles */}
           <path d="M12 40L15 6L40 19Z" fill={fur} />
           <path d="M88 40L85 6L60 19Z" fill={fur} />

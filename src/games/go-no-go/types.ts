@@ -44,6 +44,9 @@ export interface Appearance {
   hideout: number;
 }
 
+/** Humeur de la chouette qui parle : le bec s'anime (`talking`), ou les ailes battent pour le leurre (`flap`). */
+export type VoiceMood = 'talking' | 'flap';
+
 /** Introduction de la première étoile de chaque règle : démo complète, ou courte (leurre, ⭐ 13). */
 export type GoNoGoIntro = 'full' | 'lure';
 
@@ -98,6 +101,12 @@ export interface Presentation {
   showsHand: boolean;
 }
 
+/** L'apparition sur scène et ses paramètres, figés à son entrée : présents ensemble, ou absents ensemble. */
+export interface OnStage {
+  appearance: Appearance;
+  presentation: Presentation;
+}
+
 /** Dernière apparition résolue : ce que l'écran doit montrer, et ce que la voix doit dire. */
 export interface AppearanceResult {
   appearance: Appearance;
@@ -111,19 +120,22 @@ export interface GoNoGoState {
   status: GoNoGoStatus;
   /** Apparitions à venir, dans l'ordre ; les remises y sont insérées */
   queue: readonly Appearance[];
-  /** Apparition sur scène (`window`) ; `null` entre deux apparitions */
-  current: Appearance | null;
-  /** Paramètres de l'apparition sur scène, `null` hors `window` */
-  presentation: Presentation | null;
-  /** Fenêtre de la cadence, en ms : accélère après 3 réussites, ralentit à chaque erreur */
+  /** Apparition sur scène et ses paramètres (`window`) ; `null` entre deux apparitions et après la victoire */
+  onStage: OnStage | null;
+  /**
+   * Fenêtre de la cadence, en ms : accélère toutes les 3 réussites d'affilée, ralentit à chaque erreur.
+   * Après la victoire, celle de la dernière apparition (la réussite qui gagne n'accélère rien).
+   */
   windowMs: number;
   /** Délai du STOP tardif, en ms (règle 3) */
   stopDelayMs: number;
-  /** Réussites depuis la dernière accélération ou erreur : à 3, la fenêtre raccourcit */
-  paceStreak: number;
-  /** Réussites d'affilée : à 8, la fenêtre en cours devient la vitesse tenue */
+  /**
+   * Réussites d'affilée dans le temps imparti : la fenêtre raccourcit à chaque multiple de 3, et à 8 la
+   * fenêtre en cours devient la vitesse tenue. Une cible qui attendait sans limite (échelon 3) n'est
+   * pas une réussite dans le temps : elle remet la série à zéro, sans toucher à la fenêtre.
+   */
   runLength: number;
-  /** Fenêtre la plus courte sur laquelle 8 réussites ont été enchaînées, `null` sans telle série */
+  /** Fenêtre la plus courte sur laquelle 8 réussites dans le temps ont été enchaînées, `null` sans telle série */
   heldWindowMs: number | null;
   /** Pièges touchés d'affilée (échelle d'aide), remis à zéro par un piège laissé passer */
   trapStreak: number;

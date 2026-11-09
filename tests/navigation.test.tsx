@@ -500,6 +500,22 @@ describe('useGridNavigation', () => {
     expect(fireEvent.keyUp(document.body, { key: ' ' })).toBe(true);
   });
 
+  it('OK transmet son évènement à la zone : un jeu de vitesse le date par son horodatage', () => {
+    forceTvMode();
+    const onSelect = vi.fn();
+    function Zone() {
+      useNavigationScope({ scopeId: 'timed-zone', onSelect });
+      return null;
+    }
+    render(<Zone />, { wrapper: NavigationProvider });
+    press('Enter');
+    expect(onSelect).toHaveBeenCalledOnce();
+    const [event] = onSelect.mock.calls[0] as [KeyboardEvent];
+    expect(event).toBeInstanceOf(KeyboardEvent);
+    expect(event.key).toBe('Enter');
+    expect(typeof event.timeStamp).toBe('number');
+  });
+
   it('Retour appelle onBack ; sans onBack, la touche reste au navigateur', () => {
     forceTvMode();
     const onBack = vi.fn();
