@@ -600,6 +600,30 @@ describe('inaction et page masquée (§6.5)', () => {
     expect(h.snap().mascot.isVisible).toBe(false);
   });
 
+  it('l’appui qui relance ne laisse pas le buzzer enfoncé : son relâchement était un minuteur effacé', async () => {
+    const h = setup(OWL);
+    await startLive(h);
+    h.run.pause();
+    h.run.press();
+    expect(h.snap().phase).toBe('live');
+    expect(h.snap().isBuzzerPressed).toBe(false);
+    await advance(PRESS_FLASH_MS * 2);
+    expect(h.snap().isBuzzerPressed).toBe(false);
+  });
+
+  it('une pause qui tombe pendant l’enfoncement relâche le buzzer, qui pulse alors', async () => {
+    const h = setup(OWL);
+    await startLive(h);
+    h.run.press();
+    expect(h.snap().isBuzzerPressed).toBe(true);
+    h.run.pause();
+    expect(h.snap()).toMatchObject({
+      phase: 'paused',
+      isBuzzerPressed: false,
+      isBuzzerPulsing: true,
+    });
+  });
+
   it('chaque appui repousse l’inaction', async () => {
     const h = setup(OWL);
     await startLive(h);
@@ -631,6 +655,36 @@ describe('inaction et page masquée (§6.5)', () => {
     const paused = h.snap();
     h.run.pause();
     expect(h.snap()).toBe(paused);
+  });
+
+  it('page masquée pendant le rappel de la règle : le rappel va au bout, puis la partie attend un appui', async () => {
+    const h = setup(OWL);
+    h.run.start();
+    await advance(0);
+    expect(h.snap().phase).toBe('starting');
+    h.run.pause();
+    expect(h.snap().phase).toBe('starting');
+    await advance(START_DELAY_MS);
+    expect(h.snap()).toMatchObject({ phase: 'paused', isBuzzerPulsing: true });
+    h.spoken.length = 0;
+    await advance(IDLE_MS * 2);
+    // Rien ne se joue sans personne : ni apparition, ni rappel de la chouette.
+    expect(h.snap().game.shown).toBe(0);
+    expect(h.spoken).toEqual([]);
+    h.run.press();
+    expect(h.snap().phase).toBe('live');
+    await advance(BREATH_MS);
+    expect(h.snap().game.status).toBe('window');
+  });
+
+  it('une pause demandée pendant le rappel ne survit pas à Rejouer', async () => {
+    const h = setup(OWL);
+    h.run.start();
+    await advance(0);
+    h.run.pause();
+    h.run.restart();
+    await advance(START_DELAY_MS + 1);
+    expect(h.snap().phase).toBe('live');
   });
 
   it('la mascotte touchée pendant une pause répète la règle sans relancer le jeu', async () => {
@@ -745,6 +799,21 @@ describe('introduction : la démo et les essais guidés (§9)', () => {
     ]);
   });
 
+  it('règle 1 : la chouette du coin, montrée pendant la démo, a quitté l’écran au premier essai', async () => {
+    const h = setup(OWL_INTRO);
+    let wasShownByTheDemo = false;
+    h.run.subscribe(() => {
+      const { phase, mascot } = h.snap();
+      if (phase === 'demo' && mascot.isVisible) wasShownByTheDemo = true;
+    });
+    h.run.start();
+    await until(h, (snapshot) => snapshot.phase === 'trial' && snapshot.scene.subject !== null);
+    expect(wasShownByTheDemo).toBe(true);
+    // Une seule chouette : celle du castelet, qui est le signal.
+    expect(h.snap().trial).toBe(0);
+    expect(h.snap().mascot.isVisible).toBe(false);
+  });
+
   it('charge les phrases de la démo avant de la jouer', async () => {
     const h = setup(OWL_INTRO);
     h.run.start();
@@ -769,6 +838,19 @@ describe('introduction : la démo et les essais guidés (§9)', () => {
     expect(h.spoken.map(({ clips }) => clips[0])).toEqual([getVoiceClipPath('rule-owl-says')]);
     await advance(START_DELAY_MS);
     expect(h.snap().phase).toBe('trial');
+  });
+
+  it('page masquée pendant le rappel d’une étoile à essais : un appui reprend aux essais', async () => {
+    const h = setup(OWL_INTRO, { hasWon: true });
+    h.run.start();
+    await advance(0);
+    h.run.pause();
+    await advance(START_DELAY_MS);
+    expect(h.snap().phase).toBe('paused');
+    h.run.press();
+    expect(h.snap().phase).toBe('trial');
+    await until(h, (snapshot) => snapshot.scene.subject !== null);
+    expect(h.snap().trial).toBe(0);
   });
 
   it('un seul rappel aux étoiles sans introduction : pas d’essai', async () => {

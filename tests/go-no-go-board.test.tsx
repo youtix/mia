@@ -357,6 +357,41 @@ describe('au doigt : un nouveau contact n’importe où dans l’aire de jeu', (
     fireEvent.click(getBuzzer(), { detail: 0 });
     expect(getLitPearls()).toBe(1);
   });
+
+  describe('avec la garde d’activation', () => {
+    const FINGER = {
+      pointerId: 31,
+      isPrimary: true,
+      pointerType: 'touch',
+      clientX: 10,
+      clientY: 10,
+    };
+
+    it('un doigt resté posé presque une seconde ne compte pas une seconde fois à son relâchement', async () => {
+      const removeGuard = installActivationGuard();
+      try {
+        renderBoard();
+        // La scène est vide : ce contact-là n'attrape rien. Un appui long ne donne aucun clic du
+        // navigateur, la garde cliquera donc le buzzer 120 ms après le relâchement.
+        await advanceAsync(START_DELAY_MS);
+        const buzzer = getBuzzer();
+        vi.spyOn(document, 'elementFromPoint').mockReturnValue(buzzer);
+        fireEvent.pointerDown(buzzer, FINGER);
+        await advanceAsync(960);
+        // La première apparition est entrée pendant que le doigt restait posé.
+        expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+        fireEvent.pointerUp(buzzer, FINGER);
+        await advanceAsync(200);
+        expect(getFigure()).toHaveAttribute('data-moment', 'entering');
+        expect(getLitPearls()).toBe(0);
+        // Un vrai nouveau contact compte toujours.
+        touch(buzzer);
+        expect(getFigure()).toHaveAttribute('data-moment', 'caught');
+      } finally {
+        removeGuard();
+      }
+    });
+  });
 });
 
 /** Fin de l'animation d'une cible attrapée, plus la respiration : l'apparition suivante n'est pas encore là. */

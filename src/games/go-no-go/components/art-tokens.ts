@@ -78,7 +78,8 @@ export const GO_NO_GO_KEYFRAMES = [
   '@keyframes gng-pause-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4%)}}',
   // Le signal des personnages du castelet : les bras battent pendant que le personnage attend.
   '.gng-signal .go-no-go-arm-left{animation:gng-wave-left .55s ease-in-out infinite}.gng-signal .go-no-go-arm-right{animation:gng-wave-right .55s ease-in-out infinite}',
-  // Animations réduites : plus de déplacement, des fondus ; le signal et le gag deviennent des poses
-  // fixes (bras levés), et la main fantôme s'affiche sans bouger.
-  '@media (prefers-reduced-motion:reduce){.gng-rise,.gng-hoot,.gng-fly-away,.gng-sink,.gng-sulk,.gng-try-fly,.gng-statue{animation-name:gng-fade-in !important;animation-duration:.25s !important}.gng-spark,.gng-bob,.gng-pause-bob,.gng-buzzer-pulse,.gng-pearl{animation:none !important}.gng-signal .go-no-go-arm-left{animation:none !important;transform:rotate(70deg)}.gng-signal .go-no-go-arm-right{animation:none !important;transform:rotate(-70deg)}.gng-stop-pop{animation-name:gng-fade-in !important;animation-duration:.2s !important}.gng-hand-tap,.gng-hand-freeze{animation-name:gng-fade-in !important;animation-duration:.4s !important;animation-iteration-count:1 !important}}',
+  // Animations réduites : plus de déplacement, des fondus (l'entrée en fondu, chaque sortie en fondu : un
+  // même nom d'animation pour l'entrée et la sortie ne la relancerait pas) ; le signal et le gag
+  // deviennent des poses fixes (bras levés), et la main fantôme s'affiche sans bouger.
+  '@media (prefers-reduced-motion:reduce){.gng-rise{animation-name:gng-fade-in !important;animation-duration:.25s !important}.gng-hoot,.gng-fly-away,.gng-sink,.gng-sulk,.gng-try-fly,.gng-statue{animation-name:gng-fade-out !important;animation-duration:.4s !important}.gng-spark,.gng-bob,.gng-pause-bob,.gng-buzzer-pulse,.gng-pearl{animation:none !important}.gng-signal .go-no-go-arm-left{animation:none !important;transform:rotate(70deg)}.gng-signal .go-no-go-arm-right{animation:none !important;transform:rotate(-70deg)}.gng-stop-pop{animation-name:gng-fade-in !important;animation-duration:.2s !important}.gng-hand-tap,.gng-hand-freeze{animation-name:gng-fade-in !important;animation-duration:.4s !important;animation-iteration-count:1 !important}}',
 ].join('');

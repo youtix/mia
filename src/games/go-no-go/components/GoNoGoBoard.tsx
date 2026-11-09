@@ -27,7 +27,8 @@ import { useMascotVoice } from './useMascotVoice';
 
 /**
  * Un clic de lecteur d'écran (TalkBack) n'est précédé d'aucun contact ; un clic au doigt ou à la souris
- * suit un contact déjà compté, comme celui que la garde d'activation clique elle-même (FEAT-04).
+ * suit un contact déjà compté, comme celui que la garde d'activation clique elle-même (FEAT-04), 120 ms
+ * après le relâchement d'un appui long. Le délai se compte donc depuis le dernier contact posé ou levé.
  */
 const ASSISTIVE_CLICK_GUARD_MS = 1000;
 
@@ -170,6 +171,12 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
     run.press(getEventTime(event));
   };
 
+  // Un doigt resté posé près d'une seconde ne donne aucun clic au navigateur : la garde d'activation
+  // clique le buzzer après le relâchement. Ce clic suit un contact déjà compté, il ne compte pas.
+  const onPlayAreaPointerUp = () => {
+    lastContactRef.current = performance.now();
+  };
+
   const onAssistiveClick = (event: ReactMouseEvent) => {
     if (
       event.detail !== 0 ||
@@ -201,6 +208,7 @@ export function GoNoGoBoard({ level, controls }: GoNoGoBoardProps) {
         data-phase={snapshot.phase}
         className="relative flex min-h-0 flex-1 flex-col gap-[clamp(0.25rem,1.5vmin,0.75rem)] overflow-hidden"
         onPointerDown={onPlayAreaPointerDown}
+        onPointerUp={onPlayAreaPointerUp}
       >
         <Garland total={config.appearances} cleared={snapshot.game.cleared} />
         <div className="min-h-0 flex-[55] landscape:flex-[58]">

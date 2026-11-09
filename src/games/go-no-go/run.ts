@@ -250,6 +250,8 @@ export function createRun(deps: RunDeps): Run {
   let nudgeCount = 0;
   /** Où reprendre après une pause */
   let resumeTo: 'demo' | 'trial' | 'live' = 'live';
+  /** Page masquée pendant le rappel de la règle : la pause part dès qu'il est fini (§6.5) */
+  let isPausePending = false;
 
   /** Dit les clips qui existent ; la voix est résolue aussitôt s'il n'en reste aucun, le mime dure quand même. */
   function say(clips: readonly string[], mood?: 'talking' | 'flap'): Promise<void> {
@@ -353,7 +355,13 @@ export function createRun(deps: RunDeps): Run {
    */
   function enterPause(withVoice: boolean): void {
     const { phase } = snapshot;
-    if (phase === 'paused' || phase === 'won' || phase === 'starting') return;
+    if (phase === 'starting') {
+      // Le rappel de la règle va jusqu'au bout, puis la partie attend un appui au lieu de se jouer
+      // sans personne. Avant le départ (`start`), il n'y a rien à retenir.
+      isPausePending = isStarted;
+      return;
+    }
+    if (phase === 'paused' || phase === 'won') return;
     // Une victoire est acquise : l'étoile se termine, même si l'enfant ne touche plus à rien.
     if (phase === 'live' && snapshot.game.status === 'won') return;
     epoch += 1;
@@ -364,11 +372,13 @@ export function createRun(deps: RunDeps): Run {
     }
     onStage = null;
     nudgeCount = 0;
+    // `clearAll` vient d'effacer le minuteur de relâchement du buzzer : il ne doit pas rester enfoncé.
     update({
       phase: 'paused',
       scene: { ...EMPTY_SCENE, key: sceneKey },
       hand: 'none',
       isBuzzerEnabled: true,
+      isBuzzerPressed: false,
       isBuzzerPulsing: true,
       mascot: { isVisible: true, pose: 'idle' },
     });
@@ -383,7 +393,9 @@ export function createRun(deps: RunDeps): Run {
     epoch += 1;
     clearAll();
     nudgeCount = 0;
+    // L'appui qui relance a enfoncé le buzzer, puis `clearAll` a effacé son minuteur de relâchement.
     update({
+      isBuzzerPressed: false,
       isBuzzerPulsing: false,
       mascot: { isVisible: !isOwlRule || resumeTo === 'demo', pose: 'idle' },
     });
@@ -572,6 +584,8 @@ export function createRun(deps: RunDeps): Run {
   function startTrials(): void {
     update({ phase: 'trial', trial: 0 });
     emptyStage();
+    // La démo laisse la chouette dans son coin ; au premier essai, une seconde chouette serait un signal.
+    if (isOwlRule) setMascot('idle', false);
     after(BREATH_MS, beginTrial);
   }
 
@@ -646,11 +660,17 @@ export function createRun(deps: RunDeps): Run {
     update({ phase: 'starting' });
     const voice = say([getVoiceClipPath(getRuleClipId(config))]);
     void wait(START_DELAY_MS, voice).then((isCurrent) => {
-      if (isCurrent && snapshot.phase === 'starting') goOn();
+      if (!isCurrent || snapshot.phase !== 'starting') return;
+      goOn();
+      if (isPausePending) {
+        isPausePending = false;
+        enterPause(false);
+      }
     });
   }
 
   function boot(): void {
+    isPausePending = false;
     const { game } = snapshot;
     // Les essais guidés sont tirés ici, avec la file : leurs images sont chargées avec les autres.
     trialPlan = config.intro === null ? [] : createTrialPlan(config, rng);

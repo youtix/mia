@@ -191,6 +191,18 @@ describe('Images clés CSS', () => {
     expect(reduced).toContain('rotate(70deg)');
   });
 
+  it('sous « animations réduites », l’entrée est un fondu et chaque sortie en est un autre', () => {
+    const reduced = GO_NO_GO_KEYFRAMES.slice(GO_NO_GO_KEYFRAMES.indexOf('@media'));
+    // Un même nom d'animation pour l'entrée et la sortie ne la relancerait pas : la silhouette
+    // resterait là, entière, jusqu'à ce que la scène se vide.
+    expect(/\.gng-rise\{([^}]*)\}/.exec(reduced)?.[1]).toContain('animation-name:gng-fade-in');
+    const exits = /(\.gng-hoot[^{]*)\{([^}]*)\}/.exec(reduced);
+    expect(exits?.[2]).toContain('animation-name:gng-fade-out');
+    for (const name of ['hoot', 'fly-away', 'sink', 'sulk', 'try-fly', 'statue']) {
+      expect(exits?.[1]).toContain(`.gng-${name}`);
+    }
+  });
+
   it('chaque animation utilisée par la scène est définie', () => {
     const defined = new Set(
       [...GO_NO_GO_KEYFRAMES.matchAll(/@keyframes ([\w-]+)/g)].map((match) => match[1]),
