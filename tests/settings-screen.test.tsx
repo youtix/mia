@@ -1178,25 +1178,35 @@ describe('Sauvegarde', () => {
     stubClipboard(() => Promise.resolve());
     await renderSettings();
     const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
-    const lastScrolled = () => scrollIntoView.mock.contexts.at(-1);
+    /** Options des défilements qui montrent `message` : appels sur un élément qui le contient. */
+    const scrollsTo = (message: HTMLElement) =>
+      scrollIntoView.mock.calls.filter((_, index) => {
+        const element = scrollIntoView.mock.contexts[index];
+        return element instanceof Element && element.contains(message);
+      });
 
+    // La copie est asynchrone : l'effet qui défile passe une tâche après l'affichage du texte, et la
+    // fin de `waitFor` peut le devancer (machine chargée). Attendre le défilement lui-même.
     fireEvent.click(getButton('Copier'));
     const copied = within(getGroup('Exporter')).getByRole('status');
     await waitFor(() => {
       expect(copied).toHaveTextContent(BACKUP_MESSAGES.copied);
+      expect(scrollsTo(copied)).toEqual([[{ block: 'nearest' }]]);
     });
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: 'nearest' });
-    expect(lastScrolled()).toContainElement(copied);
 
     // Même texte, nouvelle action : le joueur a pu faire défiler l'écran entre-temps.
     scrollIntoView.mockClear();
     fireEvent.click(getButton('Copier'));
     await waitFor(() => {
-      expect(scrollIntoView).toHaveBeenCalledOnce();
+      expect(scrollsTo(copied)).toEqual([[{ block: 'nearest' }]]);
     });
 
+    scrollIntoView.mockClear();
     fireEvent.click(getButton('Importer'));
-    expect(lastScrolled()).toContainElement(within(getGroup('Importer')).getByRole('alert'));
+    const refused = within(getGroup('Importer')).getByRole('alert');
+    await waitFor(() => {
+      expect(scrollsTo(refused)).toEqual([[{ block: 'nearest' }]]);
+    });
 
     // Un autre rendu de l'écran ne fait pas sauter la page vers les messages déjà affichés.
     scrollIntoView.mockClear();
@@ -1204,7 +1214,8 @@ describe('Sauvegarde', () => {
     await waitFor(() => {
       expect(getSwitch('Son')).not.toBeChecked();
     });
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(scrollsTo(copied)).toEqual([]);
+    expect(scrollsTo(refused)).toEqual([]);
   });
 
   it('garde « Remplacer » sans effet 1 s : un double tap lent n’atteint pas la confirmation', async () => {
