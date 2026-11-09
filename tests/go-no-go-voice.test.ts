@@ -253,6 +253,10 @@ describe('Clips générés', () => {
     expect(manifest).toMatchObject({ voice: 'fr_FR-mls-medium', speakerId: 55, lengthScale: 1.2 });
   });
 
+  it('a généré chaque phrase du script : une phrase ajoutée sans clip serait mimée en silence', () => {
+    expect([...generated].sort()).toEqual([...GO_NO_GO_CLIP_IDS].sort());
+  });
+
   it('ne liste que des phrases du script, avec leur texte à jour (clip périmé signalé)', () => {
     for (const id of generated) {
       expect(GO_NO_GO_CLIP_IDS).toContain(id);

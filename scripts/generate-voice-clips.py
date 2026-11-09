@@ -36,9 +36,16 @@ ROOT = Path(__file__).resolve().parent.parent
 GAMES = ["bear-sort", "go-no-go"]
 
 # Pas si vite ! (FEAT-28 §10) : le leurre « Vache vole ! » doit tenir dans la fenêtre la plus courte du
-# palier 4 (1,1 s). Ces clips-là sont dits au rythme normal du modèle, sans ralentissement.
+# palier 4, soit 1,1 s de parole (la pause finale en plus). Ces clips-là sont dits au rythme normal du
+# modèle, sans ralentissement, puis accélérés un par un, juste assez, quand ils dépassent encore.
 FAST_PREFIX = "lure-"
 FAST_LENGTH_SCALE = 1.0
+FAST_MAX_SPEECH_SECONDS = 1.1
+
+# Plus vite que cela, la voix n'est plus celle d'une chouette qui parle à un enfant de 3 ans : mieux vaut
+# échouer que livrer un clip hâtif, la fenêtre se réglera alors à la main.
+FAST_MIN_LENGTH_SCALE = 0.7
+FAST_MAX_ATTEMPTS = 4
 
 VOICE_NAME = "fr_FR-mls-medium"
 
@@ -161,6 +168,24 @@ def synthesize(voice: PiperVoice, text: str, length_scale: float = LENGTH_SCALE)
     return (clip / np.abs(clip).max() * 32767).astype(np.int16).tobytes(), sample_rate
 
 
+def synthesize_to_fit(voice: PiperVoice, text: str) -> tuple[bytes, int, float]:
+    """Dit `text` au rythme normal du modèle, accéléré juste assez pour que la parole tienne dans
+    `FAST_MAX_SPEECH_SECONDS`. Renvoie le PCM, la fréquence d'échantillonnage et le ralentissement retenu."""
+    pauses = SENTENCE_PAUSE_SECONDS * len(split_sentences(text))
+    length_scale = FAST_LENGTH_SCALE
+    for _ in range(FAST_MAX_ATTEMPTS):
+        pcm, sample_rate = synthesize(voice, text, length_scale)
+        speech = len(pcm) / 2 / sample_rate - pauses
+        if speech <= FAST_MAX_SPEECH_SECONDS:
+            return pcm, sample_rate, length_scale
+        # La durée suit à peu près le ralentissement : un cran de marge sous la cible, que la durée des
+        # phonèmes, arrondie à la trame, ne rend pas tout à fait proportionnelle.
+        length_scale = round(length_scale * FAST_MAX_SPEECH_SECONDS / speech - 0.02, 2)
+        if length_scale < FAST_MIN_LENGTH_SCALE:
+            break
+    raise ValueError(f"« {text} » ne tient pas dans {FAST_MAX_SPEECH_SECONDS} s sans aller trop vite")
+
+
 def encode_mp3(pcm: bytes, sample_rate: int) -> bytes:
     encoder = lameenc.Encoder()
     encoder.set_bit_rate(MP3_BIT_RATE)
@@ -186,14 +211,17 @@ def generate(voice: PiperVoice, game: str) -> None:
     clips = {}
     for clip_id, text in script.items():
         is_fast = clip_id.startswith(FAST_PREFIX)
-        pcm, sample_rate = synthesize(voice, text, FAST_LENGTH_SCALE if is_fast else LENGTH_SCALE)
+        if is_fast:
+            pcm, sample_rate, length_scale = synthesize_to_fit(voice, text)
+        else:
+            pcm, sample_rate = synthesize(voice, text, LENGTH_SCALE)
         (output_dir / f"{clip_id}.mp3").write_bytes(encode_mp3(pcm, sample_rate))
         # 2 octets par échantillon : PCM 16 bits mono.
         seconds = round(len(pcm) / 2 / sample_rate, 2)
         clips[clip_id] = {"text": text, "seconds": seconds}
         if is_fast:
-            clips[clip_id]["lengthScale"] = FAST_LENGTH_SCALE
-        print(f"{game}/{clip_id}: {seconds} s")
+            clips[clip_id]["lengthScale"] = length_scale
+        print(f"{game}/{clip_id}: {seconds} s" + (f" (ralentissement {length_scale})" if is_fast and length_scale != FAST_LENGTH_SCALE else ""))
 
     manifest = {"voice": VOICE_NAME, "speakerId": SPEAKER_ID, "lengthScale": LENGTH_SCALE, "clips": clips}
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
