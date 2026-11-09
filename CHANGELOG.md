@@ -1,3 +1,9 @@
+## [0.19.0](https://github.com/youtix/mia/compare/v0.18.0...v0.19.0) (2026-11-09)
+
+### Features
+
+* **go-no-go:** add the go/no-go game ([#25](https://github.com/youtix/mia/issues/25)) ([dd44b01](https://github.com/youtix/mia/commit/dd44b0121fdf07980fc0b382276e89cc77f157a7))
+
 ## [0.18.0](https://github.com/youtix/mia/compare/v0.17.0...v0.18.0) (2026-11-07)
 
 ### Features
